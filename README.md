@@ -1,4 +1,4 @@
-# Libraries for Linux user_events
+# Libraries for Linux Tracepoints and user_events
 
 This repository contains libraries for using the Linux
 [user_events](https://docs.kernel.org/trace/user_events.html) facility to

@@ -1,14 +1,34 @@
-# Project
+# Libraries for Linux user_events
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
+This repository contains libraries for using the Linux
+[user_events](https://docs.kernel.org/trace/user_events.html) facility to
+generate tracepoints from user mode.
 
-As the maintainer of this project, please make a few updates:
+## Overview
 
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
+- [libtracepoint](libtracepoint) -
+  low-level C/C++ tracing interface. Designed to support replacement at
+  link-time if a different implementation is needed.
+  - [Default implementation](libtracepoint/src/tracepoint.c)
+    writes directly to the Linux `user_events` facility.
+  - [tracepoint-provider.h](libtracepoint/include/tracepoint/tracepoint-provider.h) -
+    high-level C/C++ API for writing tracepoint events to any implementation
+    of the tracepoint interface.
+- [libeventheader-tracepoint](libeventheader-tracepoint) -
+  `eventheader` envelope that supports extended attributes including severity
+  level and optional field type information.
+  - [TraceLoggingProvider.h](libeventheader-tracepoint/include/eventheader/TraceLoggingProvider.h) -
+    high-level C/C++ API for writing `eventheader`-encapsulated events to any
+    implementation of the tracepoint interface.
+  - [EventHeaderDynamic.h](libeventheader-tracepoint/include/eventheader/EventHeaderDynamic.h) -
+    mid-level C++ API for writing `eventheader`-encapsulated events, intended for
+    use as an implementation layer for a higher-level API like OpenTelemetry.
+- [libeventheader-decode-cpp](libeventheader-decode-cpp) -
+  C++ library for decoding events that use the `eventheader` envelope.
+  - `decode-perf` tool that decodes `perf.data` files to JSON.
+- [libeventheader-decode-dotnet](libeventheader-decode-dotnet) -
+  .NET library for decoding events that use the `eventheader` envelope.
+- [Rust](rust) - API for generating `eventheader`-encapsulated events from Rust.
 
 ## Contributing
 

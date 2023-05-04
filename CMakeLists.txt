@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(LinuxTraceLogging)
+project(LinuxTracepoints)
 
 if(WIN32)
     add_compile_options(/W4 /WX /permissive-)

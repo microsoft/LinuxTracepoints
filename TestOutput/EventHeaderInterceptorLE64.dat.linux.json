@@ -1,5 +1,5 @@
 
-"/mnt/e/repos/LinuxTraceLogging/TestOutput/EventHeaderInterceptorLE64.dat": [
+"/mnt/e/repos/LinuxTracepoints/TestOutput/EventHeaderInterceptorLE64.dat": [
   { "n": "Long_Provider_Name_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX0123456789:LongProviderEvent", "meta": { "level": 5 } },
   { "n": "TestProviderC:EventCG", "enabled": true, "meta": { "level": 5 } },
   { "n": "TestProviderCpp:EventCppG", "enabled": true, "meta": { "level": 5 } },

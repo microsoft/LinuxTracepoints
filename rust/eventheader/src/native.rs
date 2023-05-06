@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 use core::ffi;
+use core::marker;
 use core::mem::size_of;
 use core::pin::Pin;
 use core::ptr;
@@ -279,6 +280,8 @@ pub struct TracepointState {
     /// This will be a kernel-assigned value if registered,
     /// `UNREGISTERED_WRITE_INDEX` or `BUSY_WRITE_INDEX` if not registered.
     write_index: AtomicU32,
+
+    _pinned: marker::PhantomPinned,
 }
 
 impl TracepointState {
@@ -323,6 +326,7 @@ impl TracepointState {
         return Self {
             enable_status: AtomicU32::new(initial_enable_status),
             write_index: AtomicU32::new(Self::UNREGISTERED_WRITE_INDEX),
+            _pinned: marker::PhantomPinned,
         };
     }
 
@@ -508,10 +512,10 @@ impl TracepointState {
     ) -> i32 {
         debug_assert!(data[0].is_empty());
         debug_assert!(related_id.is_none() || activity_id.is_some());
-
-        if activity_id.is_some() || meta_len != 0 {
-            debug_assert!(event_header.flags == HeaderFlags::DefaultWithExtension);
-        }
+        debug_assert!(
+            (activity_id.is_none() && meta_len == 0)
+                || event_header.flags == HeaderFlags::DefaultWithExtension
+        );
 
         let enable_status = self.enable_status.load(Ordering::Relaxed);
         let write_index = self.write_index.load(Ordering::Relaxed);

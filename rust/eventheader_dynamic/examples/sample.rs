@@ -7,7 +7,7 @@ use eventheader_dynamic as ehd;
 fn main() {
     let mut prov1 = ehd::Provider::new(
         "MyProv_1",
-        &ehd::Provider::new_options().group_name("mygroup"),
+        ehd::Provider::new_options().group_name("mygroup"),
     );
     println!(
         "prov1: name=\"{}\", options=\"{}\", dbg={:?}",

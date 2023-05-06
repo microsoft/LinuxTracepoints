@@ -160,11 +160,15 @@ pub use enums::FieldEncoding;
 pub use enums::FieldFormat;
 pub use enums::Level;
 pub use enums::Opcode;
+pub use guid::Guid;
 pub use native::NativeImplementation;
 pub use native::NATIVE_IMPLEMENTATION;
+pub use provider::Provider;
 pub mod _internal;
 pub mod changelog;
 
 mod descriptors;
 mod enums;
+mod guid;
 mod native;
+mod provider;

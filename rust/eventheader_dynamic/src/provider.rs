@@ -8,9 +8,7 @@ use alloc::vec::Vec;
 
 use core::borrow;
 use core::cmp;
-use core::ffi;
 use core::fmt;
-use core::fmt::Write;
 use core::hash;
 use core::pin::Pin;
 use core::str;
@@ -23,37 +21,6 @@ use crate::EventBuilder;
 
 const fn is_option_val_char(ch: u8) -> bool {
     return (b'0' <= ch && ch <= b'9') || (b'a' <= ch && ch <= b'z');
-}
-
-struct CommandBuffer {
-    buf: [u8; EVENTHEADER_COMMAND_MAX],
-    pos: usize,
-}
-
-impl CommandBuffer {
-    pub fn new() -> Self {
-        return Self {
-            buf: [0; EVENTHEADER_COMMAND_MAX],
-            pos: 0,
-        };
-    }
-
-    pub fn write(&mut self, bytes: &[u8]) {
-        self.buf[self.pos..self.pos + bytes.len()].copy_from_slice(bytes);
-        self.pos += bytes.len();
-    }
-
-    pub fn as_cstr(&mut self) -> &ffi::CStr {
-        self.buf[self.pos] = b'\0';
-        return ffi::CStr::from_bytes_with_nul(&self.buf[0..self.pos + 1]).unwrap();
-    }
-}
-
-impl Write for CommandBuffer {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.write(s.as_bytes());
-        return fmt::Result::Ok(());
-    }
 }
 
 /// Represents a connection for writing dynamic Linux tracepoints.
@@ -168,14 +135,6 @@ impl Provider {
         let set_pin_arc = match self.sets.get(&EventSetKey { keyword, level }) {
             Some(set_pin_arc) => set_pin_arc.clone(),
             None => {
-                // Command = "ProviderName_LxKxOptions CommandTypes\0"
-                let mut name_args = CommandBuffer::new();
-                name_args.write(&self.name); // "ProviderName"
-                write!(name_args, "_L{:x}K{:x}", level.as_int(), keyword).unwrap(); // "_LxKx"
-                name_args.write(&self.options); // "Options"
-                write!(name_args, " {}", EVENTHEADER_COMMAND_TYPES).unwrap(); // " CommandTypes"
-                let name_args_cstr = name_args.as_cstr(); // "\0".
-
                 let mut set_arc = Arc::new(EventSet::new(0, level, keyword));
                 let set_mut = Arc::get_mut(&mut set_arc).unwrap();
 
@@ -190,14 +149,18 @@ impl Provider {
                 //   we release the Arc, so it cannot be deallocated/moved before then.
                 let state_pin = unsafe { Pin::new_unchecked(&set_mut.state) };
 
+                // Command = "ProviderName_LxKxOptions CommandTypes\0"
+                let mut command_string = CommandString::new();
+                let name_args = command_string.format(&self.name, &self.options, level, keyword);
+
                 // Safety:
                 // - unsafe because we must guarantee that state gets unregistered
                 //   before it moves or is deallocated.
                 // - state will get unregistered at self.unregister().
                 // - state cannot be deallocated or moved before it gets unregistered.
-                set_mut.errno = unsafe { state_pin.register(name_args_cstr) };
+                set_mut.errno = unsafe { state_pin.register(name_args) };
 
-                let set_pin_arc = Pin::new(set_arc);
+                let set_pin_arc = unsafe { Pin::new_unchecked(set_arc) };
                 self.sets.insert(set_pin_arc.clone());
                 set_pin_arc
             }

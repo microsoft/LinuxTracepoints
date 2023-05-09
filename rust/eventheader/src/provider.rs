@@ -28,11 +28,12 @@ use crate::write_event;
 ///
 /// # Overview
 ///
-/// 1. Use [`define_provider!`] to create a static provider variable.
-/// 2. Call [`Provider::register()`] during component initialization to open the
-///    connection.
-/// 3. Use [`write_event!`] as needed to write events.
-/// 4. Call [`Provider::unregister()`] during component cleanup to close the connection.
+/// 1. Use `define_provider!(MY_PROVIDER, ...)` to define a static provider symbol.
+/// 2. Call `unsafe { MY_PROVIDER.register() };` during component initialization to open
+///    the connection. (`register()` is unsafe because all providers registered in a
+///    shared object **must** be unregistered before the shared object unloads.)
+/// 3. Use `write_event!(MY_PROVIDER, ...)` to write events.
+/// 4. Call `MY_PROVIDER.unregister()` during component cleanup to close the connection.
 pub struct Provider<'a> {
     name: &'a [u8],
     options: &'a [u8],
@@ -51,12 +52,14 @@ impl<'a> Provider<'a> {
         return str::from_utf8(self.options).unwrap();
     }
 
-    /// If this provider is not registered, does nothing and returns 0.
-    /// Otherwise, unregisters all tracepoints in the provider.
+    /// Unregisters all registered tracepoints in the provider.
     ///
     /// Returns 0 for success or an errno if any tracepoints failed to unregister. The
     /// return value is for diagnostic purposes only and should generally be ignored in
     /// retail builds.
+    ///
+    /// Unregistering an unregistered tracepoint is a safe no-op, e.g. it is safe to
+    /// call `unregister()` even if a provider has not been registered yet.
     pub fn unregister(&self) -> u32 {
         let mut result = 0;
 
@@ -87,15 +90,19 @@ impl<'a> Provider<'a> {
         return result as u32;
     }
 
-    /// Register the provider.
+    /// Register all tracepoints in the provider.
     ///
     /// Returns 0 for success or an errno if any tracepoints failed to register. The
     /// return value is for diagnostic purposes only and should generally be ignored in
     /// retail builds.
     ///
+    /// **Note:** All providers that are registered need to be unregistered. The call
+    /// to `unregister()` is required even if the call to `register()` returns an error.
+    ///
     /// # Preconditions
     ///
-    /// - Provider must not already be registered. Verified at runtime, failure = panic.
+    /// - Provider's tracepoints must not already be registered. Verified at runtime,
+    ///   failure = panic.
     /// - For a given provider object, a call on one thread to the provider's `register`
     ///   method must not occur at the same time as a call to the same provider's
     ///   `register` or `unregister` method on any other thread. Verified at runtime,
@@ -103,21 +110,29 @@ impl<'a> Provider<'a> {
     ///
     /// # Safety
     ///
-    /// - If creating a shared object that can unload or creating a provider that might
-    ///   run as part of a shared object that can unload, all registered providers
-    ///   **must** be unregistered before the shared object unloads.
+    /// In code that might unload before the process exits (e.g. in a shared object),
+    /// every call to `provider.register()` must be matched with a call to
+    /// `provider.unregister()`. If a provider variable is registered and then unloaded
+    /// from memory without being unregistered, process memory may subsequently become
+    /// corrupted and the process may malfunction or crash.
     ///
-    ///   If a provider variable is registered by a shared object and the shared object
-    ///   unloads while the provider is still registered, the process may subsequently
-    ///   crash. This occurs because `register` asks the kernel to automatically update
-    ///   certain process variables, and `unregister` ensures that these updates are
-    ///   disabled. If the shared objects unloads without disabling the updates, the
-    ///   process memory will be corrupted if the kernel updates memory that gets
-    ///   assigned to another variable in the process.
+    /// This issue occurs because each of the tracepoints managed by the provider is a
+    /// static varible. The `provider.register()` method asks the Linux kernel to
+    /// automatically update the enabled/disabled status of these variables, and the
+    /// `provider.unregister()` method asks the Linux kernel to stop these updates. If
+    /// these variables are unloaded without being unregistered and then something else
+    /// gets loaded into the same region of memory, that memory will be corrupted if the
+    /// kernel tries to update the enabled/disabled status of a tracepoint.
     ///
-    ///   The provider cannot unregister itself because the provider is static and Rust
-    ///   does not drop static objects.
+    /// This rule applies even if `provider.register()` returns an error.
+    /// `provider.register()` returns an error if any of its tracepoints failed to
+    /// register, but it may have successfully registered one or more tracepoints. Those
+    /// tracepoints need to be unregistered before the provider unloads.
+    ///
+    /// The provider cannot unregister itself when it drops because the provider is a
+    /// static object and Rust does not drop static objects.
     pub unsafe fn register(&self) -> u32 {
+        // Use an _impl function so that I can have smaller scopes for the unsafe blocks.
         return self.register_impl();
     }
 
@@ -138,8 +153,8 @@ impl<'a> Provider<'a> {
             };
 
             // The list of tracepoints is frequently created using linker tricks.
-            // The linker tricks mean we end up with NULLs and some duplicates, so
-            // we need to fix up the list in-place:
+            // The linker tricks mean we end up with NULLs and sometimes there are
+            // duplicates, so we need to fix up the list in-place:
             // - Sort the list so that duplicates are next to each other and NULLs
             //   are at the end.
             // - Remove adjacent duplicates, filling the rest of the list with NULL.
@@ -334,12 +349,16 @@ impl CommandString {
 pub const unsafe fn provider_new<'a>(
     name: &'a [u8],
     options: &'a [u8],
-    events: ops::Range<*mut *const EventHeaderTracepoint<'a>>,
+    events_start: *const usize,
+    events_stop: *const usize,
 ) -> Provider<'a> {
     return Provider {
         name,
         options,
-        events,
+        events: ops::Range {
+            start: events_start as *mut *const EventHeaderTracepoint,
+            end: events_stop as *mut *const EventHeaderTracepoint,
+        },
         busy: atomic::AtomicBool::new(false),
     };
 }

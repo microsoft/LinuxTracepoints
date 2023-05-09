@@ -1,77 +1,84 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use eh::_internal::EventDataDescriptor;
+use eh::_internal as ehi;
 use eventheader as eh;
-use std::ffi;
-use std::pin::pin;
+
+// The following is the planned expansion for:
+// define_provider!(MY_PROVIDER, "EhProvider1", group_name("mygroup"))
+extern "C" {
+    #[link_name = "__start__eh_event_ptrs_MY_PROVIDER"] // linker-generated symbol
+    static mut _start__eh_event_ptrs_MY_PROVIDER: ::core::primitive::usize;
+    #[link_name = "__stop__eh_event_ptrs_MY_PROVIDER"] // linker-generated symbol
+    static mut _stop__eh_event_ptrs_MY_PROVIDER: ::core::primitive::usize;
+}
+#[link_section = "_eh_event_ptrs_MY_PROVIDER"]
+#[no_mangle]
+static mut _eh_define_provider_MY_PROVIDER: *const usize = ::core::ptr::null();
+static MY_PROVIDER: eh::Provider = unsafe {
+    eh::_internal::provider_new(
+        b"EhProvider1",
+        b"Gmygroup",
+        &_start__eh_event_ptrs_MY_PROVIDER as *const usize,
+        &_stop__eh_event_ptrs_MY_PROVIDER as *const usize,
+    )
+};
 
 fn main() {
-    // Various use cases for the TracepointState struct.
+    let mut err;
+    unsafe { MY_PROVIDER.register() };
 
-    let tp1 = pin!(eh::_internal::TracepointState::new(0));
-    let tp2 = pin!(eh::_internal::TracepointState::new(0));
-    let value = 42u32;
-    let mut vecs: [EventDataDescriptor; 2] = [
-        EventDataDescriptor::default(),
-        EventDataDescriptor::from_value(&value),
-    ];
-
-    println!("-------------------------");
-
-    let result = unsafe {
-        tp1.as_ref()
-            .register(ffi::CStr::from_bytes_with_nul_unchecked(
-                b"simple_tracepoint u32 field1\0",
-            ))
+    err =
+    // The following is the planned expansion for:
+    // write_event!(MY_PROVIDER, "EventName0")
+    {
+        static _EH_EVENT: ehi::EventHeaderTracepoint = ehi::EventHeaderTracepoint::new(
+            ehi::EventHeader::new(eh::Level::Verbose, true),
+            1,
+            b"EventName0\0",
+        );
+        #[link_section = "_eh_event_ptrs_MY_PROVIDER"]
+        static mut _EH_EVENT_PTR: *const ehi::EventHeaderTracepoint = &_EH_EVENT;
+        if !_EH_EVENT.enabled() {
+            0
+        } else {
+            _EH_EVENT.write_eventheader(
+                None,
+                None,
+                &mut [
+                    ehi::EventDataDescriptor::zero(), // headers
+                    ehi::EventDataDescriptor::zero(), // metadata
+                ],
+            )
+        }
     };
-    println!("Register tp1 {}: {}", tp1.enabled(), result);
+    println!("err: {}", err);
 
-    let result = tp1.write(&mut vecs);
-    println!("Write tp1 {}: {}", tp1.enabled(), result);
-    let result = tp2.write(&mut vecs);
-    println!("Write tp2 {}: {}", tp2.enabled(), result);
-
-    let result = tp1.unregister();
-    println!("Unregister tp1 {}: {}", tp1.enabled(), result);
-    let result = tp2.unregister();
-    println!("Unregister tp2 {}: {}", tp2.enabled(), result);
-
-    let result = tp1.write(&mut vecs);
-    println!("Write tp1 {}: {}", tp1.enabled(), result);
-    let result = tp2.write(&mut vecs);
-    println!("Write tp2 {}: {}", tp2.enabled(), result);
-
-    let result = tp1.unregister();
-    println!("Unregister tp1 {}: {}", tp1.enabled(), result);
-    let result = tp2.unregister();
-    println!("Unregister tp2 {}: {}", tp2.enabled(), result);
-
-    let result = unsafe {
-        tp1.as_ref()
-            .register(ffi::CStr::from_bytes_with_nul_unchecked(
-                b"simple_tracepoint u32 field1\0",
-            ))
+    err =
+    // The following is the planned expansion for:
+    // write_event!(MY_PROVIDER, "EventName1", keyword(2))
+    {
+        static _EH_EVENT: ehi::EventHeaderTracepoint = ehi::EventHeaderTracepoint::new(
+            ehi::EventHeader::new(eh::Level::Verbose, true),
+            2,
+            b"EventName1\0",
+        );
+        #[link_section = "_eh_event_ptrs_MY_PROVIDER"]
+        static mut _EH_EVENT_PTR: *const ehi::EventHeaderTracepoint = &_EH_EVENT;
+        if !_EH_EVENT.enabled() {
+            0
+        } else {
+            _EH_EVENT.write_eventheader(
+                None,
+                None,
+                &mut [
+                    ehi::EventDataDescriptor::zero(),
+                    ehi::EventDataDescriptor::zero(),
+                ],
+            )
+        }
     };
-    println!("Register tp1 {}: {}", tp1.enabled(), result);
+    println!("err: {}", err);
 
-    let result = tp1.write(&mut vecs);
-    println!("Write tp1 {}: {}", tp1.enabled(), result);
-    let result = tp2.write(&mut vecs);
-    println!("Write tp2 {}: {}", tp2.enabled(), result);
-
-    let result = tp1.unregister();
-    println!("Unregister tp1 {}: {}", tp1.enabled(), result);
-    let result = tp2.unregister();
-    println!("Unregister tp2 {}: {}", tp2.enabled(), result);
-
-    let result = tp1.write(&mut vecs);
-    println!("Write tp1 {}: {}", tp1.enabled(), result);
-    let result = tp2.write(&mut vecs);
-    println!("Write tp2 {}: {}", tp2.enabled(), result);
-
-    let result = tp1.unregister();
-    println!("Unregister tp1 {}: {}", tp1.enabled(), result);
-    let result = tp2.unregister();
-    println!("Unregister tp2 {}: {}", tp2.enabled(), result);
+    MY_PROVIDER.unregister();
 }

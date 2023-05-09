@@ -11,6 +11,9 @@ pub use crate::descriptors::EventHeader;
 pub use crate::descriptors::EventHeaderExtension;
 pub use crate::enums::HeaderFlags;
 pub use crate::native::TracepointState;
+pub use crate::provider::provider_new;
+pub use crate::provider::CommandString;
+pub use crate::provider::EventHeaderTracepoint;
 
 /// Type string for use in the DIAG_IOCSREG command string.
 pub const EVENTHEADER_COMMAND_TYPES: &str =

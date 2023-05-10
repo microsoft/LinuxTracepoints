@@ -11,14 +11,16 @@ keywords = [
     "tracepoints",
     "trace",
     "logging",
-    "Linux",
 ]
 categories = [
     "api-bindings",
     "development-tools::debugging",
     "development-tools::profiling",
     "no-std",
+    "os::linux-apis",
 ]
+repository = "https://github.com/microsoft/LinuxTracepoints"
+readme = "README.md"
 rust-version = "1.63"
 
 [features]

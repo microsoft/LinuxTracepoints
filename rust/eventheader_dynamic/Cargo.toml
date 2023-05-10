@@ -19,6 +19,8 @@ categories = [
     "no-std",
     "os::linux-apis",
 ]
+repository = "https://github.com/microsoft/LinuxTracepoints"
+readme = "README.md"
 rust-version = "1.63"
 
 [features]

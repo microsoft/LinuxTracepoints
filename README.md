@@ -30,11 +30,53 @@ generate tracepoints from user mode.
   .NET library for decoding events that use the `eventheader` envelope.
 - [Rust](rust) - API for generating `eventheader`-encapsulated events from Rust.
 
+## General Usage
+
+- Configure a Linux system with the user_events feature enabled.
+  - Supported on Linux kernel 6.4 and later.
+  - Kernel must be built with `user_events` support (CONFIG_USER_EVENTS=y).
+  - Must have either tracefs or debugfs mounted. For example, you might add the
+    following line to your `/etc/fstab` file:
+    `tracefs /sys/kernel/tracing tracefs defaults 0 0`
+  - The user that will generate events must have `x` access to the `tracing`
+    directory, e.g. `chmod a+x /sys/kernel/tracing`
+  - The user that will generate events must have `rw` access to the `tracing/user_events_data`
+    file, e.g. `chmod a+rw /sys/kernel/tracing/user_events_data`
+- Use one of the event generation APIs to write a program that generates events.
+  - C/C++ programs can use
+    [tracepoint-provider.h](libtracepoint/include/tracepoint/tracepoint-provider.h)
+    to generate regular Linux Tracepoint events that are defined at compile-time.
+    (Link with `libtracepoint`.)
+  - C/C++ programs can use
+    [TraceLoggingProvider.h](libeventheader-tracepoint/include/eventheader/TraceLoggingProvider.h)
+    to generate eventheader-enabled Tracepoint events that are defined at compile-time.
+    (Link with `libtracepoint` and `libeventheader-tracepoint`.)
+  - C++ middle-layer APIs (e.g. an OpenTelemetry exporter) can use
+    [EventHeaderDynamic.h](libeventheader-tracepoint/include/eventheader/EventHeaderDynamic.h)
+    to generate eventheader-enabled Tracepoint events that are runtime-dynamic.
+    (Link with `libtracepoint` and `libeventheader-tracepoint`.)
+  - Rust middle-layer APIs (e.g. an OpenTelemetry exporter) can use the
+    [eventheader_dynamic](rust/eventheader_dynamic/README.md) crate
+    to generate eventheader-enabled Tracepoint events that are defined at compile-time.
+- Running as a privileged user, use the Linux
+  [`perf`](https://www.man7.org/linux/man-pages/man1/perf.1.html) tool
+  to collect events to a `perf.data` file, e.g.
+  `perf record -e user_events:MyEvent1,user_events:MyEvent2`.
+- Note that the events must have been registered before you can start collecting them.
+  The `perf` command will report an error if the event is not yet registered.
+  - For regular Linux user_events Tracepoints, you might need to run the program that
+    generates the events once before the events will be available for collection.
+  - For eventheader-enabled Tracepoint events, you can use the
+    [`eventheader-register`](libeventheader-tracepoint/samples/eventheader-register.cpp)
+    tool to pre-register an event based on its tracepoint name.
+- Use the [`decode-perf`](libeventheader-decode-cpp/samples/decode-perf.cpp) tool to
+  decode the `perf.data` file to JSON text.
+
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
 Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
-the rights to use your contribution. For details, visit https://cla.opensource.microsoft.com.
+the rights to use your contribution. For details, visit [https://cla.opensource.microsoft.com].
 
 When you submit a pull request, a CLA bot will automatically determine whether you need to provide
 a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
@@ -46,8 +88,8 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 
 ## Trademarks
 
-This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft 
-trademarks or logos is subject to and must follow 
-[Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general).
+This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
+trademarks or logos is subject to and must follow
+[Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/legal/intellectualproperty/trademarks/usage/general).
 Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
 Any use of third-party trademarks or logos are subject to those third-party's policies.

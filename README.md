@@ -64,6 +64,19 @@ generate tracepoints from user mode.
   [`perf`](https://www.man7.org/linux/man-pages/man1/perf.1.html) tool
   to collect events to a `perf.data` file, e.g.
   `perf record -e user_events:MyEvent1,user_events:MyEvent2`.
+  - The `perf` tool binary is typically available as part of the `linux-perf`
+    package (e.g. can be installed by `apt install linux-perf`). However, this
+    package installs a `perf_VERSION` binary, so you will need to add an
+    appropriate VERSION suffix to your `perf` commands or use a wrapper script.
+  - The `linux-base` package installs a `perf` wrapper script that redirects to
+    the version of `perf` that matches your current kernel (if present) so that
+    can run the appropriate version of `perf` without the VERSION suffix. This
+    frequently doesn't work because the latest `perf` binary from `apt` doesn't
+    always match the running kernel, so you may want to make your own wrapper
+    script instead.
+  - Note that for purposes of collecting events, it is usually not important
+    for the version of the `perf` tool to match the kernel version, so it's
+    ok to use e.g. `perf_5.10` even if you are running a newer kernel.
 - Note that the events must have been registered before you can start
   collecting them. The `perf` command will report an error if the event is not
   yet registered.

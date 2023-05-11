@@ -156,6 +156,14 @@
 //!   Float64, Char32, Uuid) and complex (e.g. NulTerminatedString8,
 //!   CountedString16, Binary, Struct, Array) types are supported.
 
+/// define_provider
+#[cfg(feature = "macros")]
+pub use eventheader_macros::define_provider;
+
+/// write_event
+#[cfg(feature = "macros")]
+pub use eventheader_macros::write_event;
+
 pub use enums::FieldEncoding;
 pub use enums::FieldFormat;
 pub use enums::Level;
@@ -166,6 +174,35 @@ pub use native::NATIVE_IMPLEMENTATION;
 pub use provider::Provider;
 pub mod _internal;
 pub mod changelog;
+
+/// Converts a
+/// [`std::time::SystemTime`](https://doc.rust-lang.org/std/time/struct.SystemTime.html)
+/// into a [`time_t`](https://en.wikipedia.org/wiki/Unix_time) `i64` value.
+/// (Usually not needed - the `systemtime` field type does this automatically.)
+///
+/// This macro will convert the provided `SystemTime` value into a signed 64-bit
+/// integer storing the number of seconds since 1970, saturating if the value is
+/// out of the range that a 64-bit integer can represent.
+///
+/// The returned `i64` value can be used with [`write_event!`] via the `posix_time64`
+/// and `posix_time64_slice` field types. As an alternative, you can use the `systemtime`
+/// field type, which will automatically convert the provided
+/// `std::time::SystemTime` value into a `time_t` before writing the event.
+///
+/// Note: `time_from_systemtime` is implemented as a macro because this crate is
+/// `[no_std]`. Implementing this via a function would require this crate to reference
+/// `std::time::SystemTimeError`.
+#[macro_export]
+macro_rules! time_from_systemtime {
+    // Keep in sync with eventheader_dynamic::time_from_systemtime.
+    // The implementation is duplicated to allow for different doc comments.
+    ($time:expr) => {
+        match $time.duration_since(::std::time::SystemTime::UNIX_EPOCH) {
+            Ok(dur) => ::tracelogging::_internal::time_from_duration_after_1970(dur),
+            Err(err) => ::tracelogging::_internal::time_from_duration_before_1970(err.duration()),
+        }
+    };
+}
 
 mod descriptors;
 mod enums;

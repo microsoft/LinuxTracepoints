@@ -8,3 +8,6 @@
   convention. The events are written using the `user_events` system.
   This is intended for use as an implementation layer for a higher-level
   API like OpenTelemetry.
+- [eventheader_macros](eventheader_macros) provides proc macros for
+  compile-time-defined events. The macros are exposed by the
+  `eventheader` crate.

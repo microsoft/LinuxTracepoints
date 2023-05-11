@@ -95,6 +95,32 @@ pub use provider::ProviderOptions;
 
 pub mod changelog;
 
+/// Converts a
+/// [`std::time::SystemTime`](https://doc.rust-lang.org/std/time/struct.SystemTime.html)
+/// into a [`time_t`](https://en.wikipedia.org/wiki/Unix_time) `i64` value.
+///
+/// This macro will convert the provided `SystemTime` value into a signed 64-bit
+/// integer storing the number of seconds since 1970, saturating if the value is
+/// out of the range that a 64-bit integer can represent.
+///
+/// The returned `i64` value can be used with [`EventBuilder::add_value`] and
+/// [`EventBuilder::add_value_sequence`].
+///
+/// Note: `time_from_systemtime` is implemented as a macro because this crate is
+/// `[no_std]`. Implementing this via a function would require this crate to reference
+/// `std::time::SystemTimeError`.
+#[macro_export]
+macro_rules! time_from_systemtime {
+    // Keep in sync with eventheader::time_from_systemtime.
+    // The implementation is duplicated to allow for different doc comments.
+    ($time:expr) => {
+        match $time.duration_since(::std::time::SystemTime::UNIX_EPOCH) {
+            Ok(dur) => ::tracelogging::_internal::time_from_duration_after_1970(dur),
+            Err(err) => ::tracelogging::_internal::time_from_duration_before_1970(err.duration()),
+        }
+    };
+}
+
 extern crate alloc;
 mod builder;
 mod provider;

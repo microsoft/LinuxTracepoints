@@ -24,8 +24,12 @@ readme = "README.md"
 rust-version = "1.63"
 
 [features]
-default = ["user_events"]
+default = ["user_events", "macros"]
 user_events = [] # Logging is enabled if linux && user_events.
+macros = ["dep:eventheader_macros"]
+
+[dependencies]
+eventheader_macros = { optional = true, version = "= 0.1.0", path = "../eventheader_macros" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = { default-features = false, version = "0.2" }

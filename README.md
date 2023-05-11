@@ -1,8 +1,8 @@
 # Libraries for Linux Tracepoints and user_events
 
-This repository contains libraries for using the Linux
+This repository contains libraries for using the
 [user_events](https://docs.kernel.org/trace/user_events.html) facility to
-generate tracepoints from user mode.
+generate Linux Tracepoints from user mode.
 
 ## Overview
 
@@ -12,23 +12,25 @@ generate tracepoints from user mode.
   - [Default implementation](libtracepoint/src/tracepoint.c)
     writes directly to the Linux `user_events` facility.
   - [tracepoint-provider.h](libtracepoint/include/tracepoint/tracepoint-provider.h) -
-    high-level C/C++ API for writing tracepoint events to any implementation
-    of the tracepoint interface.
+    a developer-friendly C/C++ API for writing tracepoint events to any
+    implementation of the tracepoint interface.
 - [libeventheader-tracepoint](libeventheader-tracepoint) -
   `eventheader` envelope that supports extended attributes including severity
   level and optional field type information.
   - [TraceLoggingProvider.h](libeventheader-tracepoint/include/eventheader/TraceLoggingProvider.h) -
-    high-level C/C++ API for writing `eventheader`-encapsulated events to any
-    implementation of the tracepoint interface.
+    a developer-friendly C/C++ API for writing `eventheader`-encapsulated
+    events to any implementation of the tracepoint interface.
   - [EventHeaderDynamic.h](libeventheader-tracepoint/include/eventheader/EventHeaderDynamic.h) -
-    mid-level C++ API for writing `eventheader`-encapsulated events, intended for
-    use as an implementation layer for a higher-level API like OpenTelemetry.
+    C++ API for writing runtime-defined `eventheader`-encapsulated events,
+    intended for use as an implementation layer for a higher-level API like
+    OpenTelemetry.
 - [libeventheader-decode-cpp](libeventheader-decode-cpp) -
   C++ library for decoding events that use the `eventheader` envelope.
   - `decode-perf` tool that decodes `perf.data` files to JSON.
 - [libeventheader-decode-dotnet](libeventheader-decode-dotnet) -
   .NET library for decoding events that use the `eventheader` envelope.
-- [Rust](rust) - API for generating `eventheader`-encapsulated events from Rust.
+- [Rust](rust) - support for generating `eventheader`-encapsulated events from
+  Rust.
 
 ## General Usage
 
@@ -66,26 +68,30 @@ generate tracepoints from user mode.
   `perf record -e user_events:MyEvent1,user_events:MyEvent2`.
   - The `perf` tool binary is typically available as part of the `linux-perf`
     package (e.g. can be installed by `apt install linux-perf`). However, this
-    package installs a `perf_VERSION` binary, so you will need to add an
-    appropriate VERSION suffix to your `perf` commands or use a wrapper script.
+    package installs a `perf_VERSION` binary rather than a `perf` binary, so
+    you will need to add an appropriate VERSION suffix to your `perf` commands
+    or use a wrapper script.
+  - To capture tracepoints using `perf`, you'll also need to install
+    `libtraceevent`, e.g. `apt install libtraceevent-dev`.
   - The `linux-base` package installs a `perf` wrapper script that redirects to
     the version of `perf` that matches your current kernel (if present) so that
-    can run the appropriate version of `perf` without the VERSION suffix. This
-    frequently doesn't work because the latest `perf` binary from `apt` doesn't
-    always match the running kernel, so you may want to make your own wrapper
-    script instead.
+    you can run the appropriate version of `perf` without the VERSION suffix.
+    This frequently doesn't work because the latest `perf` binary from `apt`
+    doesn't always match the running kernel, so you may want to make your own
+    wrapper script instead.
   - Note that for purposes of collecting events, it is usually not important
     for the version of the `perf` tool to match the kernel version, so it's
     ok to use e.g. `perf_5.10` even if you are running a newer kernel.
-- Note that the events must have been registered before you can start
-  collecting them. The `perf` command will report an error if the event is not
-  yet registered.
-  - For regular Linux `user_events` Tracepoints, you might need to run the
-    program that generates the events once before the events will be available
-    for collection.
-  - For eventheader-enabled Tracepoint events, you can use the
+- Note that tracepoints must be registered before you can start collecting
+  them. The `perf` command will report an error if the tracepoint is not yet
+  registered.
+  - You can usually register tracepoints by running the program that generates
+    them. Most programs will register all of their tracepoints when they start
+    running.
+  - For eventheader-enabled Tracepoint events, you can also use the
     [`eventheader-register`](libeventheader-tracepoint/samples/eventheader-register.cpp)
-    tool to pre-register an event based on its tracepoint name.
+    tool to pre-register an event based on its tracepoint name so you can start
+    collecting it before starting the program that generates it.
 - Use the [`decode-perf`](libeventheader-decode-cpp/samples/decode-perf.cpp)
   tool to decode the `perf.data` file to JSON text.
 

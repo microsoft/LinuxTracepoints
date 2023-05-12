@@ -72,7 +72,7 @@ generate Linux Tracepoints from user mode.
     you will need to add an appropriate VERSION suffix to your `perf` commands
     or use a wrapper script.
   - To capture tracepoints using `perf`, you'll also need to install
-    `libtraceevent`, e.g. `apt install libtraceevent-dev`.
+    `libtraceevent`, e.g. `apt install libtraceevent1`.
   - The `linux-base` package installs a `perf` wrapper script that redirects to
     the version of `perf` that matches your current kernel (if present) so that
     you can run the appropriate version of `perf` without the VERSION suffix.

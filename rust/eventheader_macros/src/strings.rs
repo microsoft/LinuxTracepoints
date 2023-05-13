@@ -86,6 +86,8 @@ pub const TRACEPOINTS_SECTION_PREFIX: &str = "_eh_tracepoints_";
 pub const TRACEPOINTS_SECTION_START_PREFIX: &str = "__start__eh_tracepoints_";
 pub const TRACEPOINTS_SECTION_STOP_PREFIX: &str = "__stop__eh_tracepoints_";
 pub const PROVIDER_PTR_VAR_PREFIX: &str = "_eh_define_provider_";
+pub const EH_TRACEPOINT_WRITE_EVENTHEADER: &str = "write_eventheader";
+pub const EH_TRACEPOINT_ENABLED: &str = "enabled";
 
 pub const ASREF_PATH: &[&str] = &["core", "convert", "AsRef"];
 pub const IDENTITY_PATH: &[&str] = &["core", "convert", "identity"];

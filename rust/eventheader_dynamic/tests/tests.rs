@@ -40,10 +40,10 @@ fn provider() {
     let es_l5k1 = provider.register_set(Level::Verbose, 0x1);
     b.reset("GroupEvent-Start", 0)
         .opcode(Opcode::ActivityStart)
-        .write(&es_l5k1, Some(&aid.as_bytes()), Some(&rid.as_bytes()));
+        .write(&es_l5k1, Some(aid.as_bytes()), Some(rid.as_bytes()));
     b.reset("GroupEvent-Stop", 0)
         .opcode(Opcode::ActivityStop)
-        .write(&es_l5k1, Some(&aid.as_bytes()), None);
+        .write(&es_l5k1, Some(aid.as_bytes()), None);
 }
 
 #[test]

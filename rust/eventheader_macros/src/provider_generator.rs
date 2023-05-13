@@ -41,6 +41,40 @@ impl ProviderGenerator {
 
         let prov_tokens = self
             .prov_tree
+            // #[cfg(not(target_os = "linux"))]
+            .add_cfg_not_linux()
+            // static MY_PROVIDER: eh::Provider = unsafe { ... };
+            .add_ident("static")
+            .add_token(provider.symbol.clone())
+            .add_punct(":")
+            .add_path(PROVIDER_PATH)
+            .add_punct("=")
+            .add_ident("unsafe")
+            .add_group_curly(
+                self.tree1
+                    // eh::_internal::provider_new( ... )
+                    .add_path_call(
+                        PROVIDER_NEW_PATH,
+                        self.tree2
+                            // b"ProviderName",
+                            .add_literal(Literal::byte_string(provider.name.as_bytes()))
+                            .add_punct(",")
+                            // b"Ggroupname",
+                            .add_literal(Literal::byte_string(options.as_bytes()))
+                            .add_punct(",")
+                            // &_start__eh_tracepoints_MY_PROVIDER as *const usize,
+                            .add_path_call(NULL_PATH, [])
+                            .add_punct(",")
+                            // &_stop__eh_tracepoints_MY_PROVIDER as *const usize,
+                            .add_path_call(NULL_PATH, [])
+                            .add_punct(",")
+                            .drain(),
+                    )
+                    .drain(),
+            )
+            .add_punct(";")
+            // #[cfg(target_os = "linux")]
+            .add_cfg_linux()
             // extern { _start; _stop; }
             .add_ident("extern")
             .add_group_curly(
@@ -51,7 +85,7 @@ impl ProviderGenerator {
                         self.tree2
                             .add_ident("link_name")
                             .add_punct("=")
-                            .add(Literal::string(&provider_section_start))
+                            .add_literal(Literal::string(&provider_section_start))
                             .drain(),
                     )
                     // static mut _start__eh_tracepoints_MY_PROVIDER: ::core::primitive::usize;
@@ -67,7 +101,7 @@ impl ProviderGenerator {
                         self.tree2
                             .add_ident("link_name")
                             .add_punct("=")
-                            .add(Literal::string(&provider_section_stop))
+                            .add_literal(Literal::string(&provider_section_stop))
                             .drain(),
                     )
                     // static mut _stop__eh_tracepoints_MY_PROVIDER: ::core::primitive::usize;
@@ -85,7 +119,7 @@ impl ProviderGenerator {
                 self.tree1
                     .add_ident("link_section")
                     .add_punct("=")
-                    .add(Literal::string(&String::from_iter(
+                    .add_literal(Literal::string(&String::from_iter(
                         [TRACEPOINTS_SECTION_PREFIX, &provider_sym].into_iter(),
                     )))
                     .drain(),
@@ -104,11 +138,13 @@ impl ProviderGenerator {
             .add_ident("const")
             .add_path(USIZE_PATH)
             .add_punct("=")
-            .add_path_call(NULL_PATH, self.tree1.drain())
+            .add_path_call(NULL_PATH, [])
             .add_punct(";")
+            // #[cfg(target_os = "linux")]
+            .add_cfg_linux()
             // static MY_PROVIDER: eh::Provider = unsafe { ... };
             .add_ident("static")
-            .add(provider.symbol)
+            .add_token(provider.symbol)
             .add_punct(":")
             .add_path(PROVIDER_PATH)
             .add_punct("=")
@@ -120,10 +156,10 @@ impl ProviderGenerator {
                         PROVIDER_NEW_PATH,
                         self.tree2
                             // b"ProviderName",
-                            .add(Literal::byte_string(provider.name.as_bytes()))
+                            .add_literal(Literal::byte_string(provider.name.as_bytes()))
                             .add_punct(",")
                             // b"Ggroupname",
-                            .add(Literal::byte_string(options.as_bytes()))
+                            .add_literal(Literal::byte_string(options.as_bytes()))
                             .add_punct(",")
                             // &_start__eh_tracepoints_MY_PROVIDER as *const usize,
                             .add_punct("&")

@@ -20,11 +20,9 @@ pub enum FieldEncoding {
     Value128,
     ZStringChar8,
     ZStringChar16,
-    #[allow(dead_code)]
     ZStringChar32,
     StringLength16Char8,
     StringLength16Char16,
-    #[allow(dead_code)]
     StringLength16Char32,
 
     // The following type needs to be expressed symbolically in the generated code, i.e.
@@ -50,6 +48,7 @@ pub enum FieldFormat {
     UnsignedInt,
     SignedInt,
     HexInt,
+    #[allow(dead_code)]
     Errno,
     Pid,
     Time,

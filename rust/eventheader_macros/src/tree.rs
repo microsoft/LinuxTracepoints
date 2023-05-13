@@ -37,10 +37,22 @@ impl Tree {
         return self.trees.drain(..);
     }
 
-    pub fn add(&mut self, token: impl Into<TokenTree>) -> &mut Self {
+    /// Note: This overrides the token's span with the tree's span.
+    pub fn add_with_tree_span(&mut self, token: impl Into<TokenTree>) -> &mut Self {
         let mut tree = token.into();
         tree.set_span(self.span);
         self.trees.push(tree);
+        return self;
+    }
+
+    /// Note: This keeps the token's span.
+    pub fn add_token(&mut self, token: impl Into<TokenTree>) -> &mut Self {
+        self.trees.push(token.into());
+        return self;
+    }
+
+    pub fn add_literal(&mut self, token: Literal) -> &mut Self {
+        self.add_with_tree_span(token);
         return self;
     }
 
@@ -52,7 +64,7 @@ impl Tree {
             } else {
                 Spacing::Joint
             };
-            self.add(Punct::new(ch, spacing));
+            self.add_with_tree_span(Punct::new(ch, spacing));
         }
         return self;
     }
@@ -64,8 +76,8 @@ impl Tree {
 
     pub fn add_path(&mut self, parts: &[&str]) -> &mut Self {
         for part in parts {
-            self.add(Punct::new(':', Spacing::Joint));
-            self.add(Punct::new(':', Spacing::Alone));
+            self.add_with_tree_span(Punct::new(':', Spacing::Joint));
+            self.add_with_tree_span(Punct::new(':', Spacing::Alone));
             self.add_ident(part);
         }
         return self;
@@ -97,7 +109,7 @@ impl Tree {
             self.add_path(OPTION_NONE_PATH);
         } else {
             self.add_path(OPTION_SOME_PATH)
-                .add(Group::new(Delimiter::Parenthesis, stream));
+                .add_with_tree_span(Group::new(Delimiter::Parenthesis, stream));
         }
         return self;
     }
@@ -107,7 +119,7 @@ impl Tree {
         delimiter: Delimiter,
         tokens: impl IntoIterator<Item = TokenTree>,
     ) -> &mut Self {
-        self.add(Group::new(delimiter, TokenStream::from_iter(tokens)));
+        self.add_with_tree_span(Group::new(delimiter, TokenStream::from_iter(tokens)));
         return self;
     }
 
@@ -167,7 +179,7 @@ impl Tree {
                 scratch_tree
                     .add_path(type_path)
                     .add_punct(";")
-                    .add(Literal::usize_unsuffixed(array_count as usize))
+                    .add_with_tree_span(Literal::usize_unsuffixed(array_count as usize))
                     .drain(),
             );
         }
@@ -192,5 +204,65 @@ impl Tree {
             .add_scalar_type_path(scratch_tree, type_path, array_count)
             .add_punct(">")
             .add_group_paren(value_tokens);
+    }
+
+    pub fn add_cfg_linux(&mut self) -> &mut Self {
+        let span = self.span;
+        return self
+            // #[cfg(target_os = "linux")]
+            .add_punct("#")
+            .add_group_square(
+                [
+                    Ident::new("cfg", span).into(),
+                    Group::new(
+                        Delimiter::Parenthesis,
+                        TokenStream::from_iter(
+                            [
+                                TokenTree::from(Ident::new("target_os", span)),
+                                TokenTree::from(Punct::new('=', Spacing::Alone)),
+                                TokenTree::from(Literal::string("linux")),
+                            ]
+                            .into_iter(),
+                        ),
+                    )
+                    .into(),
+                ]
+                .into_iter(),
+            );
+    }
+
+    pub fn add_cfg_not_linux(&mut self) -> &mut Self {
+        let span = self.span;
+        return self
+            // #[cfg(not(target_os = "linux"))]
+            .add_punct("#")
+            .add_group_square(
+                [
+                    Ident::new("cfg", span).into(),
+                    Group::new(
+                        Delimiter::Parenthesis,
+                        TokenStream::from_iter(
+                            [
+                                TokenTree::from(Ident::new("not", span)),
+                                Group::new(
+                                    Delimiter::Parenthesis,
+                                    TokenStream::from_iter(
+                                        [
+                                            TokenTree::from(Ident::new("target_os", span)),
+                                            TokenTree::from(Punct::new('=', Spacing::Alone)),
+                                            TokenTree::from(Literal::string("linux")),
+                                        ]
+                                        .into_iter(),
+                                    ),
+                                )
+                                .into(),
+                            ]
+                            .into_iter(),
+                        ),
+                    )
+                    .into(),
+                ]
+                .into_iter(),
+            );
     }
 }

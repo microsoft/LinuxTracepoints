@@ -102,7 +102,7 @@ impl EventInfo {
         // id default: 0
         if event.id_tokens.is_empty() {
             event.id_tokens = scratch_tree
-                .add(Literal::u16_unsuffixed(0))
+                .add_literal(Literal::u16_unsuffixed(0))
                 .drain()
                 .collect();
         }
@@ -110,7 +110,7 @@ impl EventInfo {
         // version default: 0
         if event.version_tokens.is_empty() {
             event.version_tokens = scratch_tree
-                .add(Literal::u8_unsuffixed(0))
+                .add_literal(Literal::u8_unsuffixed(0))
                 .drain()
                 .collect();
         }
@@ -132,7 +132,10 @@ impl EventInfo {
         if event.keywords.is_empty() {
             event.keywords.push(Expression::new(
                 arg_span,
-                scratch_tree.add(Literal::u64_suffixed(1)).drain().collect(),
+                scratch_tree
+                    .add_literal(Literal::u64_suffixed(1))
+                    .drain()
+                    .collect(),
             ));
         }
 
@@ -141,7 +144,7 @@ impl EventInfo {
             event.tag = Expression::new(
                 arg_span,
                 scratch_tree
-                    .add(Literal::u32_unsuffixed(0))
+                    .add_literal(Literal::u32_unsuffixed(0))
                     .drain()
                     .collect(),
             );
@@ -152,7 +155,7 @@ impl EventInfo {
         return if errors.is_empty() {
             Ok(event)
         } else {
-            Err(errors.drain().collect())
+            Err(errors.into_expression())
         };
     }
 

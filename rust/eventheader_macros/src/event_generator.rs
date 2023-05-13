@@ -65,6 +65,9 @@ impl EventGenerator {
     }
 
     pub fn generate(&mut self, mut event: EventInfo) -> TokenStream {
+        let provider_symbol_string = event.provider_symbol.to_string();
+        let provider_symbol_span = event.provider_symbol.span();
+
         self.field_count = 0;
         self.lengths_count = 0;
 
@@ -74,10 +77,10 @@ impl EventGenerator {
 
         self.data_desc_init_tree
             // ::eventheader::_internal::EventDataDescriptor::zero(), // headers
-            .add_path_call(DATADESC_ZERO_PATH, self.tree1.drain())
+            .add_path_call(DATADESC_ZERO_PATH, [])
             .add_punct(",")
             // ::eventheader::_internal::EventDataDescriptor::zero(), // metadata
-            .add_path_call(DATADESC_ZERO_PATH, self.tree1.drain())
+            .add_path_call(DATADESC_ZERO_PATH, [])
             .add_punct(",");
 
         // always-present args for the helper function's prototype
@@ -98,7 +101,7 @@ impl EventGenerator {
                 self.tree1
                     .add_path(U8_PATH)
                     .add_punct(";")
-                    .add(Literal::usize_unsuffixed(16))
+                    .add_literal(Literal::usize_unsuffixed(16))
                     .drain(),
             )
             .add_punct(">")
@@ -113,7 +116,7 @@ impl EventGenerator {
                 self.tree1
                     .add_path(U8_PATH)
                     .add_punct(";")
-                    .add(Literal::usize_unsuffixed(16))
+                    .add_literal(Literal::usize_unsuffixed(16))
                     .drain(),
             )
             .add_punct(">");
@@ -142,14 +145,37 @@ impl EventGenerator {
 
         // code that runs if the provider is enabled:
         /*
-        fn _eh_write(_eh_tracepoint, _eh_aid, _eh_rid, func_args_tree...) -> u32 {
+        fn _eh_write(tp, aid, rid, func_args_tree...) -> u32 {
             let _eh_lengths = [lengths_init_tree...];
-            _eh_tracepoint.write_eventheader(_eh_aid, _eh_rid, &mut [data_desc_init_tree...]);
+            tp.write_eventheader(aid, rid, &mut [data_desc_init_tree...]);
         }
         _eh_write(func_call_tree)
         */
 
         self.enabled_tree
+            // #[link_section = "_eh_tracepoints_MY_PROVIDER"]
+            .add_punct("#")
+            .add_group_square(
+                self.tree1
+                    .add_ident("link_section")
+                    .add_punct("=")
+                    .add_literal(Literal::string(&String::from_iter(
+                        [TRACEPOINTS_SECTION_PREFIX, &provider_symbol_string].into_iter(),
+                    )))
+                    .drain(),
+            )
+            // static mut _EH_TRACEPOINT_PTR: *const ehi::EventHeaderTracepoint = &_EH_TRACEPOINT;
+            .add_ident("static")
+            .add_ident("mut")
+            .add_ident(EH_TRACEPOINT_PTR_STATIC)
+            .add_punct(":")
+            .add_punct("*")
+            .add_ident("const")
+            .add_path(EVENTHEADERTRACEPOINT_PATH)
+            .add_punct("=")
+            .add_punct("&")
+            .add_ident(EH_TRACEPOINT_STATIC)
+            .add_punct(";")
             // #[allow(clippy::too_many_arguments)]
             .add_outer_attribute(
                 "allow",
@@ -162,7 +188,7 @@ impl EventGenerator {
             // Make a helper function and then call it. This does the following:
             // - Keep temporaries alive (this could also be done with a match expression).
             // - Give the optimizer the option to merge identical helpers.
-            // fn _eh_write(prov, meta, desc, aid, rid, args...) -> { ... }
+            // fn _eh_write(tp, aid, rid, func_args_tree...) -> { ... }
             .add_ident("fn")
             .add_ident(EH_WRITE_FUNC)
             .add_group_paren(self.func_args_tree.drain())
@@ -170,7 +196,7 @@ impl EventGenerator {
             .add_path(U32_PATH)
             .add_group_curly(
                 self.tree1
-                    // let _eh_lengths = [...];
+                    // let _eh_lengths: [u16; N] = [...];
                     .add_ident("let")
                     .add_ident(EH_LENGTHS_VAR)
                     .add_punct(":")
@@ -178,16 +204,16 @@ impl EventGenerator {
                         self.tree2
                             .add_path(U16_PATH)
                             .add_punct(";")
-                            .add(Literal::u16_unsuffixed(self.lengths_count))
+                            .add_literal(Literal::u16_unsuffixed(self.lengths_count))
                             .drain(),
                     )
                     .add_punct("=")
                     .add_group_square(self.lengths_init_tree.drain())
                     .add_punct(";")
-                    // _eh_tracepoint.write_eventheader(activity_id, related_id, &[data...])
+                    // _eh_tracepoint.write_eventheader(aid, rid, &mut [data...]) as u32
                     .add_ident(EH_TRACEPOINT_VAR)
                     .add_punct(".")
-                    .add_ident("write_eventheader")
+                    .add_ident(EH_TRACEPOINT_WRITE_EVENTHEADER)
                     .add_group_paren(
                         self.tree2
                             .add_ident(EH_ACTIVITY_ID_VAR)
@@ -203,13 +229,14 @@ impl EventGenerator {
                     .add_path(U32_PATH)
                     .drain(),
             )
-            // _eh_write(prov, meta, aid, rid, values...)
+            // _eh_write(tp, aid, rid, values...)
             .add_ident(EH_WRITE_FUNC)
             .add_group_paren(self.func_call_tree.drain());
 
         // put it all together:
         /*
         const _EH_KEYWORD = keywords...;
+        const _EH_TAGn: u16 = TAGn;
         static _EH_TRACEPOINT = EventHeaderTracepoint::new(...);
         static _EH_TRACEPOINT_PTR = &_EH_TRACEPOINT;
         if !_EH_TRACEPOINT.enabled() {
@@ -250,7 +277,7 @@ impl EventGenerator {
             // Build up "0u64 | _EH_KEYWORD0 | _EH_KEYWORD1 ..." in tree1.
 
             // tree1 += "0u64"
-            self.tree1.add(Literal::u64_suffixed(0));
+            self.tree1.add_literal(Literal::u64_suffixed(0));
 
             for (n, keyword) in event.keywords.drain(..).enumerate() {
                 // event_tree += "const _EH_KEYWORDn: u64 = KEYWORDSn;"
@@ -268,6 +295,44 @@ impl EventGenerator {
         }
 
         event_tree
+            // const _EH_TAGn: u16 = TAG;
+            .add_tokens(self.tags_tree.drain())
+            // identity::<&Provider>(&PROVIDER) // ensure compile error for bad provider symbol
+            .add_identity_call(
+                &mut self.tree2,
+                PROVIDER_PATH,
+                0,
+                self.tree1
+                    .add_punct("&")
+                    .add_token(event.provider_symbol)
+                    .drain(),
+            )
+            .add_punct(";")
+            // identity::<&* const usize>(&_eh_define_provider_MY_PROVIDER) // ensure compile error for aliased provider symbol
+            .add_path(IDENTITY_PATH)
+            .add_punct("::")
+            .add_punct("<")
+            .add_punct("&")
+            .add_punct("*")
+            .add_ident("const")
+            .add_scalar_type_path(&mut self.tree2, USIZE_PATH, 0)
+            .add_punct(">")
+            .add_group_paren(
+                self.tree1
+                    .add_ident("unsafe")
+                    .add_group_curly(
+                        self.tree2
+                            .add_punct("&")
+                            .push_span(provider_symbol_span)
+                            .add_ident(&String::from_iter(
+                                [PROVIDER_PTR_VAR_PREFIX, &provider_symbol_string].into_iter(),
+                            ))
+                            .pop_span()
+                            .drain(),
+                    )
+                    .drain(),
+            )
+            .add_punct(";")
             // static _EH_TRACEPOINT: EventHeaderTracepoint = EventHeaderTracepoint::new(...);
             .add_ident("static")
             .add_ident(EH_TRACEPOINT_STATIC)
@@ -304,41 +369,14 @@ impl EventGenerator {
                     .drain(),
             )
             .add_punct(";")
-            // #[link_section = "_eh_tracepoints_MY_PROVIDER"]
-            .add_punct("#")
-            .add_group_square(
-                self.tree1
-                    .add_ident("link_section")
-                    .add_punct("=")
-                    .add(Literal::string(&String::from_iter(
-                        [
-                            TRACEPOINTS_SECTION_PREFIX,
-                            &event.provider_symbol.to_string(),
-                        ]
-                        .into_iter(),
-                    )))
-                    .drain(),
-            )
-            // static mut _EH_TRACEPOINT_PTR: *const ehi::EventHeaderTracepoint = &_EH_TRACEPOINT;
-            .add_ident("static")
-            .add_ident("mut")
-            .add_ident(EH_TRACEPOINT_PTR_STATIC)
-            .add_punct(":")
-            .add_punct("*")
-            .add_ident("const")
-            .add_path(EVENTHEADERTRACEPOINT_PATH)
-            .add_punct("=")
-            .add_punct("&")
-            .add_ident(EH_TRACEPOINT_STATIC)
-            .add_punct(";")
             // if !_EH_TRACEPOINT.enabled() { 0u32 }
             .add_ident("if")
             .add_punct("!")
             .add_ident(EH_TRACEPOINT_STATIC)
             .add_punct(".")
-            .add_ident("enabled")
-            .add_group_paren(self.tree1.drain())
-            .add_group_curly(self.tree1.add(Literal::u32_suffixed(0)).drain())
+            .add_ident(EH_TRACEPOINT_ENABLED)
+            .add_group_paren([])
+            .add_group_curly(self.tree1.add_literal(Literal::u32_suffixed(0)).drain())
             // else { enabled_tree... }
             .add_ident("else")
             .add_group_curly(self.enabled_tree.drain());
@@ -501,7 +539,7 @@ impl EventGenerator {
                     .add_group_paren(
                         self.tree1
                             .add_punct("&")
-                            .add(Literal::u8_unsuffixed(0))
+                            .add_literal(Literal::u8_unsuffixed(0))
                             .drain(),
                     )
                     .add_punct(",");
@@ -586,7 +624,7 @@ impl EventGenerator {
                     .add_ident(EH_LENGTHS_VAR)
                     .add_group_square(
                         self.tree2
-                            .add(Literal::u16_unsuffixed(self.lengths_count))
+                            .add_literal(Literal::u16_unsuffixed(self.lengths_count))
                             .drain(),
                     )
                     .drain(),
@@ -734,7 +772,7 @@ impl EventGenerator {
         if flags != 0 {
             self.meta_tree
                 .add_punct("|")
-                .add(Literal::u8_unsuffixed(flags));
+                .add_literal(Literal::u8_unsuffixed(flags));
         }
 
         self.meta_tree.add_punct(",");
@@ -779,7 +817,7 @@ impl EventGenerator {
 
     fn append_meta(&mut self, byte: u8) {
         self.meta_tree
-            .add(Literal::u8_unsuffixed(byte))
+            .add_literal(Literal::u8_unsuffixed(byte))
             .add_punct(",");
     }
 }

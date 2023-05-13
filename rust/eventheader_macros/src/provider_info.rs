@@ -99,7 +99,7 @@ impl ProviderInfo {
                         .next_string_literal(RequiredLast, "expected \"groupname\"")
                     {
                         for ch in id_str.chars() {
-                            if (ch < 'a' || 'z' < ch) && (ch < '0' || '9' < ch) {
+                            if !ch.is_ascii_lowercase() && !ch.is_ascii_digit() {
                                 option_args_parser.errors().add(id_span, "group_name must contain only lowercase ASCII letters and ASCII digits");
                                 break;
                             }
@@ -126,7 +126,7 @@ impl ProviderInfo {
         return if errors.is_empty() {
             Ok(prov)
         } else {
-            Err(errors.drain().collect())
+            Err(errors.into_items())
         };
     }
 }

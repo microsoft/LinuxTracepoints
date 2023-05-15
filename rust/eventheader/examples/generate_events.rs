@@ -88,8 +88,11 @@ fn main() {
         codepointer("codepointer", &(main as *const u8 as usize)),
 
         systemtime("now", &SystemTime::now()),
-
         hresult("E_FILENOTFOUND", &-2147024894),
+        time32("t32_100", &100),
+        time64("t64_200", &200),
+        errno("errno", &2),
+        errno_slice("errno_slice", &[1, 2]),
     );
 
     // Raw fields

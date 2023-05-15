@@ -48,7 +48,6 @@ pub enum FieldFormat {
     UnsignedInt,
     SignedInt,
     HexInt,
-    #[allow(dead_code)]
     Errno,
     Pid,
     Time,

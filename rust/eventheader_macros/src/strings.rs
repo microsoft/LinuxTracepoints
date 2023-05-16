@@ -89,6 +89,7 @@ pub const PROVIDER_PTR_VAR_PREFIX: &str = "_eh_define_provider_";
 pub const EH_TRACEPOINT_WRITE_EVENTHEADER: &str = "write_eventheader";
 pub const EH_TRACEPOINT_ENABLED: &str = "enabled";
 
+pub const BORROW_BORROW_PATH: &[&str] = &["core", "borrow", "Borrow", "borrow"];
 pub const ASREF_PATH: &[&str] = &["core", "convert", "AsRef"];
 pub const IDENTITY_PATH: &[&str] = &["core", "convert", "identity"];
 pub const NULL_PATH: &[&str] = &["core", "ptr", "null"];

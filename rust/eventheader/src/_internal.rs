@@ -46,7 +46,7 @@ pub const fn tag_byte1(tag: u16) -> u8 {
 /// let systemtime = SystemTime::now();
 /// let time_t = match systemtime.duration_since(SystemTime::UNIX_EPOCH) {
 ///     Ok(dur) => ehi::time_from_duration_after_1970(dur),
-///     Err(err) => tli::time_from_duration_before_1970(err.duration()),
+///     Err(err) => ehi::time_from_duration_before_1970(err.duration()),
 /// };
 /// ```
 pub const fn time_from_duration_after_1970(duration: Duration) -> i64 {
@@ -66,8 +66,8 @@ pub const fn time_from_duration_after_1970(duration: Duration) -> i64 {
 /// # use std::time::SystemTime;
 /// let systemtime = SystemTime::now();
 /// let filetime = match systemtime.duration_since(SystemTime::UNIX_EPOCH) {
-///     Ok(dur) => tli::time_from_duration_after_1970(dur),
-///     Err(err) => tli::time_from_duration_before_1970(err.duration()),
+///     Ok(dur) => ehi::time_from_duration_after_1970(dur),
+///     Err(err) => ehi::time_from_duration_before_1970(err.duration()),
 /// };
 /// ```
 pub const fn time_from_duration_before_1970(duration: Duration) -> i64 {

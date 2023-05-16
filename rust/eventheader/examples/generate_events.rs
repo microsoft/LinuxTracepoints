@@ -44,7 +44,7 @@ fn main() {
 
         // Optional event attributes:
 
-        activity_id(guid1.as_bytes_raw()),
+        activity_id(&guid1), // activity_id and related_id can be either &Guid or &[u8; 16].
         related_id(guid2.as_bytes_raw()),
         level(Informational),
         opcode(0),

@@ -126,15 +126,15 @@ impl EventGenerator {
             // &_EH_TRACEPOINT
             .add_punct("&")
             .add_ident(EH_TRACEPOINT_STATIC)
-            // , activity_id_tokens...
+            // , None-or-Some(borrow(activity_id_tokens...))
             .add_punct(",")
             .push_span(event.activity_id.context)
-            .add_option_from_tokens(event.activity_id.tokens)
+            .add_borrowed_option_from_tokens(&mut self.tree1, event.activity_id.tokens)
             .pop_span()
-            // , related_id_tokens...
+            // , None-or-Some(borrow(related_id_tokens...))
             .add_punct(",")
             .push_span(event.related_id.context)
-            .add_option_from_tokens(event.related_id.tokens)
+            .add_borrowed_option_from_tokens(&mut self.tree1, event.related_id.tokens)
             .pop_span();
 
         // Add the per-field stuff:

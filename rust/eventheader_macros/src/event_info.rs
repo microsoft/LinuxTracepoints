@@ -167,6 +167,8 @@ impl EventInfo {
         scratch_tree: &mut Tree,
     ) -> u8 {
         let mut logical_fields_added: u8 = 0;
+        let mut channel_set = false;
+        let mut task_set = false;
 
         while let ArgResult::Option(option_ident, mut option_parser) = parent_parser.next_arg(false)
         {
@@ -371,6 +373,16 @@ impl EventInfo {
                         self.version_tokens = option_parser
                             .next_tokens(RequiredLast, "expected Version value, e.g. 0 or 0x1F");
                     }
+                    "channel" if !in_struct => {
+                        if channel_set {
+                            errors.add(option_ident.span(), "channel already set");
+                        }
+                        channel_set = true;
+                        option_parser.next_tokens(
+                            RequiredLast,
+                            &expected_enum_message("Channel", "TraceLogging", 11),
+                        );
+                    }
                     "level" if !in_struct => {
                         if !self.level.is_empty() {
                             errors.add(option_ident.span(), "level already set");
@@ -403,6 +415,14 @@ impl EventInfo {
                             option_ident.span(),
                             scratch_tree,
                         );
+                    }
+                    "task" if !in_struct => {
+                        if task_set {
+                            errors.add(option_ident.span(), "task already set");
+                        }
+                        task_set = true;
+                        option_parser
+                            .next_tokens(RequiredLast, "expected Task value, e.g. 1 or 0x2001");
                     }
                     "keyword" if !in_struct => {
                         self.keywords.push(Expression::new(

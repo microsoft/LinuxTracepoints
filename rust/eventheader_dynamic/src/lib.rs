@@ -22,7 +22,7 @@
 //! example, `eventheader_dynamic` might be used to implement a middle-layer library
 //! providing tracing support to a scripting language like JavaScript or
 //! Python. In other cases, use the [`eventheader`] crate instead of this crate.
-//! 
+//!
 //! # Overview
 //!
 //! - Create a [Provider] object with the name of the provider to be used.

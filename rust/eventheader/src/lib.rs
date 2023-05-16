@@ -6,13 +6,13 @@
 #![warn(missing_docs)]
 
 //! # EventHeader-encoded Linux Tracepoints
-//! 
+//!
 //! The `eventheader` crate provides a simple and efficient way to log
 //! EventHeader-encoded
 //! [Tracepoints](https://www.kernel.org/doc/html/latest/trace/tracepoints.html)
 //! via the Linux [user_events](https://docs.kernel.org/trace/user_events.html)
 //! system.
-//! 
+//!
 //! This crate uses macros to generate event metadata at compile-time, improving runtime
 //! performance and minimizing dependencies. To enable compile-time metadata generation,
 //! the event schema must be specified at compile-time. For example, event name and
@@ -22,9 +22,9 @@
 //! example, you might be implementing a middle-layer library providing event support to a
 //! dynamic top-layer or a scripting language like JavaScript or Python. In these cases,
 //! you might use the `eventheader_dynamic` crate instead of this crate.
-//! 
+//!
 //! ## Configuration
-//! 
+//!
 //! - Linux kernel 6.4 or later, with `user_events` support enabled
 //!   (`CONFIG_USER_EVENTS=y`).
 //! - Must have either `tracefs` or `debugfs` mounted. For example, you might add
@@ -39,7 +39,7 @@
 //!   [`perf`](https://perf.wiki.kernel.org/index.php).
 //! - Decode traces using a tool like
 //!   [`decode-perf`](https://github.com/microsoft/LinuxTracepoints).
-//! 
+//!
 //! # Overview
 //!
 //! - Use [`define_provider!`] to create a static symbol for your [`Provider`], e.g.
@@ -106,13 +106,13 @@
 //! Collect the events using a tool like [`perf`](https://perf.wiki.kernel.org/index.php).
 //! Decode the events using a tool like
 //! [`decode-perf`](https://github.com/microsoft/LinuxTracepoints).
-//! 
+//!
 //! Note that you cannot enable a tracepoint until the tracepoint has been registered.
 //! Most programs will register all of their tracepoints when they start running, so
 //! you can run the program once and then create the session to collect the events.
 //! As an alternative, you can pre-register eventheader-based tracepoints using a tool
 //! like [`eventheader-register`](https://github.com/microsoft/LinuxTracepoints).
-//! 
+//!
 //! For example, to collect and decode events with level=5 and keyword=1 from a provider
 //! that was defined as `define_provider!(MY_PROVIDER, "MyCompany_MyComponent")`:
 //!
@@ -334,7 +334,7 @@
 ///
 ///   The token that will be used to refer to the provider. This is used with
 ///   [`write_event!`] and with [Provider] methods like [`Provider::register`].
-/// 
+///
 ///   Note that the `PROVIDER_SYMBOL` must be treated as a token, not as a variable.
 ///   Using an alias or reference to this symbol with `write_event!` will not work.
 ///
@@ -345,7 +345,7 @@
 ///   attribute for event identification. It needs to be unique so that it does not
 ///   conflict with names used by other providers. It should follow a namespace
 ///   convention like "CompanyName_ComponentName".
-/// 
+///
 ///   This string must not contain space, colon, or NUL characters. For best
 ///   compatibility with the Linux tracing system, it should start with an ASCII letter
 ///   or an underscore and should contain only ASCII letters, digits, and underscores.
@@ -364,7 +364,7 @@
 /// - `debug()`
 ///
 ///   For non-production diagnostics: prints the expanded macro during compilation.
-/// 
+///
 /// - For compability with the `tracelogging` crate, certain other options may be
 ///   accepted and ignored.
 #[cfg(feature = "macros")]
@@ -573,6 +573,9 @@ pub use eventheader_macros::define_provider;
 /// - `debug()`
 ///
 ///   For non-production diagnostics: prints the expanded macro during compilation.
+///
+/// - For compability with the `tracelogging` crate, certain other options may be
+///   accepted and ignored.
 ///
 /// ## Fields
 ///

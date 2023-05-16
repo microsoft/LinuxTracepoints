@@ -47,7 +47,7 @@ impl ProviderInfo {
 
         if let Some((prov_name, span)) = root_parser.next_string_literal(
             Required,
-            "expected string literal for provider name, e.g. define_provider!(MY_PROVIDER, \"MyCompany.MyComponent\")",
+            "expected string literal for provider name, e.g. define_provider!(MY_PROVIDER, \"MyCompany_MyComponent\")",
         ) {
             prov.name = prov_name;
             if prov.name.len() >= NAMES_MAX {

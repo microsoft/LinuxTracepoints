@@ -1,6 +1,6 @@
 [package]
 name = "eventheader"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Microsoft"]
 license = "MIT"
@@ -29,7 +29,7 @@ user_events = [] # Logging is enabled if linux && user_events.
 macros = ["dep:eventheader_macros"]
 
 [dependencies]
-eventheader_macros = { optional = true, version = "= 0.1.0", path = "../eventheader_macros" }
+eventheader_macros = { optional = true, version = "= 0.2.0", path = "../eventheader_macros" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = { default-features = false, version = "0.2" }

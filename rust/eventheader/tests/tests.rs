@@ -223,18 +223,22 @@ fn define_provider() {
     eh::define_provider!(PROV1, "TraceLoggingDynamicTest");
     eh::write_event!(PROV1, "Default");
 
+    fn prov1_enabled() -> bool {
+        eh::provider_enabled!(PROV1, eh::Level::Verbose, 1)
+    }
+
     let _u = Unregister(&PROV1);
-    assert!(!PROV1.enabled_lookup(eh::Level::Verbose, 1));
+    assert!(!prov1_enabled());
     PROV1.unregister();
-    assert!(!PROV1.enabled_lookup(eh::Level::Verbose, 1));
+    assert!(!prov1_enabled());
     unsafe { PROV1.register() };
     PROV1.unregister();
-    assert!(!PROV1.enabled_lookup(eh::Level::Verbose, 1));
+    assert!(!prov1_enabled());
     PROV1.unregister();
-    assert!(!PROV1.enabled_lookup(eh::Level::Verbose, 1));
-    assert!(!PROV1.enabled_lookup(eh::Level::Verbose, 1));
+    assert!(!prov1_enabled());
+    assert!(!prov1_enabled());
     PROV1.unregister();
-    assert!(!PROV1.enabled_lookup(eh::Level::Verbose, 1));
+    assert!(!prov1_enabled());
     PROV1.name();
     PROV1.options();
 
@@ -274,8 +278,8 @@ fn write_event() {
         "4v2o6t123c0l3k11",
         id_version(4, 2),
         opcode(6),
-        //task(123),
-        //channel(0),
+        task(123), // Task is ignored by eventheader.
+        channel(0), // Channel is ignored by eventheader.
         level(3),
         keyword(0x11),
     );

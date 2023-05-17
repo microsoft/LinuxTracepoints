@@ -4,7 +4,6 @@
 use core::ffi;
 use core::fmt;
 use core::fmt::Write;
-use core::mem;
 use core::ops;
 use core::pin;
 use core::ptr;
@@ -51,24 +50,6 @@ impl<'a> Provider<'a> {
     /// Returns this provider's options, e.g. "" or "Gmygroup".
     pub fn options(&self) -> &str {
         return str::from_utf8(self.options).unwrap();
-    }
-
-    /// Advanced: Looks for an event in this provider with the specified
-    /// level and keyword. If a matching event is found and the event is
-    /// enabled, returns true. Otherwise returns false.
-    ///
-    /// Note that this method has to scan through the provider's events, so
-    /// it takes time proportional to the number of `write_event!` macros
-    /// that use this provider.
-    ///
-    /// Note that write_event! already skips evaluation if the tracepoint is
-    /// not enabled, so this method is normally not needed.
-    pub fn enabled_lookup(&self, level: Level, keyword: u64) -> bool {
-        let option = try_find_tracepoint(self, level, keyword);
-        match option {
-            Some(tp) => return tp.enabled(),
-            None => return false,
-        };
     }
 
     /// Unregisters all registered tracepoints in the provider.
@@ -272,37 +253,6 @@ pub const unsafe fn provider_new<'a>(
         },
         busy: atomic::AtomicBool::new(false),
     };
-}
-
-/// Finds a tracepoint with the specified level and keyword (if any) in
-/// the provider.
-pub fn try_find_tracepoint<'a>(
-    provider: &Provider<'a>,
-    level: Level,
-    keyword: u64,
-) -> Option<&'a EventHeaderTracepoint<'a>> {
-    let events_slice = unsafe {
-        &*ptr::slice_from_raw_parts(
-            provider.events.start,
-            provider.events.end.offset_from(provider.events.start) as usize,
-        )
-    };
-
-    for event_ptr_ref in events_slice {
-        let atomic_ptr_ref: &atomic::AtomicPtr<EventHeaderTracepoint> =
-            unsafe { mem::transmute(event_ptr_ref) };
-        let event_ptr = atomic_ptr_ref.load(atomic::Ordering::Relaxed);
-        if event_ptr.is_null() {
-            break;
-        }
-
-        let event = unsafe { &*event_ptr };
-        if event.header.level == level && event.keyword == keyword {
-            return Some(event);
-        }
-    }
-
-    return None;
 }
 
 /// Stores the information needed for registering and managing a tracepoint.

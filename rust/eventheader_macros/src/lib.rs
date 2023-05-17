@@ -8,6 +8,8 @@
 extern crate proc_macro;
 use proc_macro::{Span, TokenStream};
 
+use crate::enabled_generator::EnabledGenerator;
+use crate::enabled_info::EnabledInfo;
 use crate::event_generator::EventGenerator;
 use crate::event_info::EventInfo;
 use crate::provider_generator::ProviderGenerator;
@@ -23,6 +25,15 @@ pub fn define_provider(arg_tokens: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
+pub fn provider_enabled(arg_tokens: TokenStream) -> TokenStream {
+    let call_site = Span::call_site();
+    return match EnabledInfo::try_from_tokens(call_site, arg_tokens) {
+        Err(error_tokens) => error_tokens,
+        Ok(enabled) => EnabledGenerator::new(call_site).generate(enabled),
+    };
+}
+
+#[proc_macro]
 pub fn write_event(arg_tokens: TokenStream) -> TokenStream {
     let call_site = Span::call_site();
     return match EventInfo::try_from_tokens(call_site, arg_tokens) {
@@ -31,6 +42,8 @@ pub fn write_event(arg_tokens: TokenStream) -> TokenStream {
     };
 }
 
+mod enabled_generator;
+mod enabled_info;
 mod enums;
 mod errors;
 mod event_generator;

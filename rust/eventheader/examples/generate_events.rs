@@ -46,8 +46,10 @@ fn main() {
 
         activity_id(&guid1), // activity_id and related_id can be either &Guid or &[u8; 16].
         related_id(guid2.as_bytes_raw()),
+        channel(tlg::Channel::TraceLogging), // For compat with ETW, ignored by eventheader.
         level(Informational),
         opcode(0),
+        task(6),        // For compat with ETW, ignored by eventheader.
         keyword(0),     // If no keyword specified, default is keyword(1).
         keyword(0x10),  // If multiple keyword specified, they will be or'ed.
         tag(0xF1FF),
@@ -120,8 +122,8 @@ fn main() {
     println!(
         "PROV1={:?}, L5K1={}, L4K10={}",
         PROV1,
-        PROV1.enabled_lookup(5.into(), 1),
-        PROV1.enabled_lookup(4.into(), 0x10),
+        tlg::provider_enabled!(PROV1, tlg::Level::from_int(5), 1),
+        tlg::provider_enabled!(PROV1, tlg::Level::Informational, 0x10),
     );
     PROV1.unregister();
 }

@@ -281,22 +281,63 @@ TraceLoggingRegister on a provider that is already registered.
 
 /*
 Macro TraceLoggingProviderEnabled(providerSymbol, eventLevel, eventKeyword):
-Returns true (non-zero) if anybody is listening for events with the specified
-level+keyword. Requires that the level+keyword combination is actually used by
-at least one event in the provider (asserts and returns false otherwise).
+Returns true (non-zero) if a TraceLoggingWrite using the specified
+providerSymbol, eventLevel, and eventKeyword would be enabled, false if it
+would be disabled.
+
+Example:
+
+    if (TraceLoggingProviderEnabled(MyProvider, event_level_warning, 0x1f))
+    {
+        // Prepare complex data needed for event.
+        int myIntVar;
+        wchar_t const* myString;
+
+        ExpensiveGetIntVar(&myIntVar);
+        ExpensiveGetString(&myString);
+
+        TraceLoggingWrite(MyProvider, "MyEventName",
+            TraceLoggingLevel(event_level_warning),
+            TraceLoggingKeyword(0x1f),
+            TraceLoggingInt32(myIntVar),
+            TraceLoggingWideString(myString));
+
+        CleanupString(myString);
+    }
+
+Note that the TraceLoggingWrite macro already checks whether the tracepoint is
+enabled -- it skips evaluating the field value expressions and skips sending
+the event if the tracepoint is not enabled. You only need to make your own
+call to TraceLoggingProviderEnabled if you want to control something other
+than TraceLoggingWrite.
+
+Implementation details: This macro registers an inert tracepoint with the
+specified provider, level, and keyword, and returns true if that tracepoint is
+enabled.
 */
-#define TraceLoggingProviderEnabled(providerSymbol, eventLevel, eventKeyword) \
-    ({                                                     \
-        static tracepoint_state const* _tlgStatePtr;         \
-        _tlgStatePtr                                       \
-            ? TRACEPOINT_ENABLED(_tlgStatePtr)              \
-            : _tlgProviderEnabled(                         \
-                  &_tlg_PASTE2(_tlgProv_, providerSymbol), \
-                  _tlg_PASTE2(__start__tlgEventPtrs_, providerSymbol), \
-                  _tlg_PASTE2(__stop__tlgEventPtrs_, providerSymbol), \
-                  eventLevel, eventKeyword,                \
-                  &_tlgStatePtr);                          \
-    })
+#define TraceLoggingProviderEnabled(providerSymbol, eventLevel, eventKeyword)  ({ \
+    enum { \
+        _tlgKeywordVal = (uint64_t)(eventKeyword), \
+        _tlgLevelVal = (uint64_t)(eventLevel) \
+    }; \
+    static tracepoint_state _tlgEvtState = TRACEPOINT_STATE_INIT; \
+    static eventheader_tracepoint const _tlgEvt = { \
+        &_tlgEvtState, \
+        (eventheader_extension*)0, \
+        { \
+            eventheader_flag_default, \
+            0, \
+            0, \
+            0, \
+            0, \
+            _tlgLevelVal \
+        }, \
+        _tlgKeywordVal \
+    }; \
+    static eventheader_tracepoint const* const _tlgEvtPtr \
+        __attribute__((section("_tlgEventPtrs_" _tlg_STRINGIZE(providerSymbol)), used)) \
+        = &_tlgEvt; \
+    TRACEPOINT_ENABLED(&_tlgEvtState); })
 
 /*
 Macro TraceLoggingProviderName(providerSymbol):
@@ -1365,54 +1406,6 @@ Notes on serializing data:
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
-
-    unsigned char
-    _tlgProviderEnabled(
-        eventheader_provider const* pProvider,
-        eventheader_tracepoint const** pEventsStart,
-        eventheader_tracepoint const** pEventsStop,
-        uint8_t eventLevel,
-        uint64_t eventKeyword,
-        tracepoint_state const** ppState)
-        _tlg_NOEXCEPT _tlg_WEAK_ATTRIBUTES;
-    unsigned char
-    _tlgProviderEnabled(
-        eventheader_provider const* pProvider,
-        eventheader_tracepoint const** pEventsStart,
-        eventheader_tracepoint const** pEventsStop,
-        uint8_t eventLevel,
-        uint64_t eventKeyword,
-        tracepoint_state const** ppState)
-        _tlg_NOEXCEPT
-    {
-        (void)pProvider; // Currently unused.
-        /*
-        Implementation for TraceLoggingProviderEnabled:
-        - Find the state of an event with the specified level+keyword.
-        - If found, cache state in *ppState, then return event's status byte.
-        - If not found (user error), assert(false), set *ppState = &NullState, return 0.
-        */
-
-        static tracepoint_state const NullState = TRACEPOINT_STATE_INIT;
-
-        for (eventheader_tracepoint const* const* ppInfo = pEventsStart;
-            ppInfo != pEventsStop;
-            ppInfo += 1)
-        {
-            eventheader_tracepoint const* const pInfo = *ppInfo;
-            if (pInfo &&
-                pInfo->header.level == eventLevel &&
-                pInfo->keyword == eventKeyword)
-            {
-                __atomic_store_n(ppState, pInfo->state, __ATOMIC_RELAXED);
-                return TRACEPOINT_ENABLED(pInfo->state);
-            }
-        }
-
-        _tlg_ASSERT(!"TraceLoggingProviderEnabled called with invalid event level+keyword");
-        __atomic_store_n(ppState, &NullState, __ATOMIC_RELAXED);
-        return 0;
-    }
 
     static inline void
     _tlgCreate1Vec(struct iovec* pVec, void const* pb, size_t cb) _tlg_NOEXCEPT _tlg_INLINE_ATTRIBUTES;

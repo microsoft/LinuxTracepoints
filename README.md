@@ -41,10 +41,12 @@ generate Linux Tracepoints from user mode.
     the following line to your `/etc/fstab` file:
     `tracefs /sys/kernel/tracing tracefs defaults 0 0`
   - The user that will generate events must have `x` access to the `tracing`
-    directory, e.g. `chmod a+x /sys/kernel/tracing`
-  - The user that will generate events must have `rw` access to the
-    `tracing/user_events_data` file, e.g.
-    `chmod a+rw /sys/kernel/tracing/user_events_data`
+    directory and `rw` access to the `tracing/user_events_data` file. One
+    possible implementation is to create a `tracers` group, then:
+    - `chgrp tracers /sys/kernel/tracing`
+    - `chgrp tracers /sys/kernel/tracing/user_events_data`
+    - `chmod g+x /sys/kernel/tracing`
+    - `chmod g+rw /sys/kernel/tracing/user_events_data`
 - Use one of the event generation APIs to write a program that generates events.
   - C/C++ programs can use
     [tracepoint-provider.h](libtracepoint/include/tracepoint/tracepoint-provider.h)

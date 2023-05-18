@@ -1,0 +1,6 @@
+add_executable(decode-perf
+    decode-perf.cpp)
+target_link_libraries(decode-perf
+    eventheader-decode)
+target_compile_features(decode-perf
+    PRIVATE cxx_std_17)

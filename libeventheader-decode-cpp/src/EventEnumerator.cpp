@@ -81,7 +81,7 @@ EventEnumerator::StartEvent(
     _In_reads_bytes_(cchTracepointName) char const* pchTracepointName,
     size_t cchTracepointName,
     _In_reads_bytes_(cbData) void const* pData,
-    uint32_t cbData,
+    size_t cbData,
     uint32_t moveNextLimit) noexcept
 {
     static auto constexpr HostEndianFlag =
@@ -94,10 +94,9 @@ EventEnumerator::StartEvent(
 
     auto const eventBuf = static_cast<uint8_t const*>(pData);
     uint32_t eventPos = 0;
-    uint32_t const eventEnd = cbData;
+    uint32_t const eventEnd = static_cast<uint32_t>(cbData);
 
-    if (eventEnd - eventPos < sizeof(eventheader) ||
-        eventEnd > 0x7FFFFFFF)
+    if (cbData < sizeof(eventheader) || cbData > 0x7FFFFFFF)
     {
         // Not a supported event: size < 8 or size >= 2GB.
         return SetNoneState(EventEnumeratorError_InvalidParameter);

@@ -2,11 +2,36 @@ cmake_minimum_required(VERSION 3.10)
 project(tracepoint)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
+set(BUILD_TESTS ON CACHE BOOL "Build test code")
+
+if(WIN32)
+    add_compile_options(/W4 /WX /permissive-)
+else()
+    add_compile_options(
+        -Wall
+        -Wextra
+        -Wformat
+        -Wformat-security
+        -Werror=format-security
+        -Wstack-protector
+        -Werror=stack-protector)
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        add_compile_options(-D_FORTIFY_SOURCE=2)
+    endif()
+endif()
 
 add_subdirectory(include)
 
 if(NOT WIN32)
     add_subdirectory(src)
-    add_subdirectory(samples)
-    add_subdirectory(utest)
+
+    if(BUILD_TESTS)
+        add_subdirectory(utest)
+    endif()
+
+    if(BUILD_SAMPLES)
+        add_subdirectory(samples)
+    endif()
+
 endif()

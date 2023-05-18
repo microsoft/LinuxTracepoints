@@ -3,13 +3,6 @@ add_executable(eventheader-decode-file
 target_link_libraries(eventheader-decode-file
     eventheader-decode)
 
-add_executable(decode-perf
-    decode-perf.cpp)
-target_link_libraries(decode-perf
-    eventheader-decode)
-target_compile_features(decode-perf
-    PRIVATE cxx_std_17)
-
 if(NOT WIN32)
 
     find_library(TRACEFS_LIBRARIES tracefs)

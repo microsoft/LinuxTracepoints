@@ -182,7 +182,7 @@ public:
         _In_reads_bytes_(cchTracepointName) char const* pchTracepointName, // e.g. "MyProvider_L4K1"
         size_t cchTracepointName, // e.g. strlen(pchTracepointName)
         _In_reads_bytes_(cbData) void const* pData, // points at the eventheader_flags field
-        uint32_t cbData, // size in bytes of the pData buffer
+        size_t cbData, // size in bytes of the pData buffer
         uint32_t moveNextLimit = MoveNextLimitDefault) noexcept;
 
     /// <summary>

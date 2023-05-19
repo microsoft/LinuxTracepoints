@@ -91,10 +91,10 @@ generate Linux Tracepoints from user mode.
     them. Most programs will register all of their tracepoints when they start
     running.
   - For eventheader-enabled Tracepoint events, you can also use the
-    [`eventheader-register`](libeventheader-tracepoint/samples/eventheader-register.cpp)
+    [`eventheader-register`](libeventheader-tracepoint/tools/eventheader-register.cpp)
     tool to pre-register an event based on its tracepoint name so you can start
     collecting it before starting the program that generates it.
-- Use the [`decode-perf`](libeventheader-decode-cpp/samples/decode-perf.cpp)
+- Use the [`decode-perf`](libeventheader-decode-cpp/tools/decode-perf.cpp)
   tool to decode the `perf.data` file to JSON text.
 
 ## Contributing

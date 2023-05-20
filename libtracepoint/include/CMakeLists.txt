@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
-project(tracepoint-headers)
+project(tracepoint-headers
+    VERSION 1.0.0
+    DESCRIPTION "Linux tracepoints interface for C/C++ (headers)"
+    HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
+    LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
@@ -27,6 +31,10 @@ configure_package_config_file(
     INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/tracepoint-headers"
     NO_SET_AND_CHECK_MACRO
     NO_CHECK_REQUIRED_COMPONENTS_MACRO)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/tracepoint-headersConfigVersion.cmake"
+    COMPATIBILITY SameMinorVersion)
 install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/tracepoint-headersConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/tracepoint-headersConfigVersion.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/tracepoint-headers")

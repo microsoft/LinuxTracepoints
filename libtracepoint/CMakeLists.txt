@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
-project(tracepoint)
+project(tracepoint
+    VERSION 1.0.0
+    DESCRIPTION "Linux tracepoints interface for C/C++"
+    HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
+    LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")

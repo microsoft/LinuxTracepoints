@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
-project(eventheader-decode-dotnet CSharp)
+project(eventheader-decode-dotnet
+    VERSION 1.0.0
+    DESCRIPTION "EventHeader tracepoint decoding for .NET"
+    HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
+    LANGUAGES CSharp)
 include(GNUInstallDirs)
 set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
 

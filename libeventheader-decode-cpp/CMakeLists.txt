@@ -11,7 +11,7 @@ set(BUILD_TOOLS ON CACHE BOOL "Build tool code")
 
 if(NOT TARGET eventheader-headers)
     find_package(eventheader-headers 1.0 REQUIRED
-        NAMES eventheader-headers libeventheader-tracepoint)
+        NAMES libeventheader-tracepoint)
 endif()
 
 if(WIN32)

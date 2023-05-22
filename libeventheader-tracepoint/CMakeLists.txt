@@ -30,13 +30,11 @@ add_subdirectory(include)
 if(NOT WIN32)
 
     if(NOT TARGET tracepoint-headers)
-        find_package(tracepoint-headers 1.0 REQUIRED
-            NAMES libtracepoint)
+        find_package(tracepoint-headers 1.0 REQUIRED)
     endif()
 
     if(NOT TARGET tracepoint)
-        find_package(tracepoint 1.0 REQUIRED
-            NAMES libtracepoint)
+        find_package(tracepoint 1.0 REQUIRED)
     endif()
 
     add_subdirectory(src)

@@ -10,8 +10,7 @@ set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
 set(BUILD_TOOLS ON CACHE BOOL "Build tool code")
 
 if(NOT TARGET eventheader-headers)
-    find_package(eventheader-headers 1.0 REQUIRED
-        NAMES libeventheader-tracepoint)
+    find_package(eventheader-headers 1.0 REQUIRED)
 endif()
 
 if(WIN32)

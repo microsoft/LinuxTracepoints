@@ -1,8 +1,7 @@
 @PACKAGE_INIT@
 
 if(NOT TARGET tracepoint-headers)
-    find_package(tracepoint-headers 1.0 REQUIRED
-        NAMES tracepoint-headers libtracepoint)
+    find_package(tracepoint-headers 1.0 REQUIRED)
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/tracepointTargets.cmake")

@@ -14,6 +14,15 @@
 //! filesystem to be mounted, and appropriate permissions configured for the
 //! `/sys/kernel/.../tracing/user_events_data` file).
 //!
+//! This "dynamic" implementation is more flexible than the implementation in the
+//! [`eventheader`] crate. For example, it supports runtime-defined schema and can
+//! easily log arrays of strings. However, it is harder to use, it has higher runtime
+//! costs, and it depends on the `alloc` crate. This dynamic implementation is intended
+//!  for use only when the set of events cannot be determined at compile-time. For
+//! example, `eventheader_dynamic` might be used to implement a middle-layer library
+//! providing tracing support to a scripting language like JavaScript or
+//! Python. In other cases, use the [`eventheader`] crate instead of this crate.
+//!
 //! # Overview
 //!
 //! - Create a [Provider] object with the name of the provider to be used.
@@ -94,6 +103,32 @@ pub use provider::Provider;
 pub use provider::ProviderOptions;
 
 pub mod changelog;
+
+/// Converts a
+/// [`std::time::SystemTime`](https://doc.rust-lang.org/std/time/struct.SystemTime.html)
+/// into a [`time_t`](https://en.wikipedia.org/wiki/Unix_time) `i64` value.
+///
+/// This macro will convert the provided `SystemTime` value into a signed 64-bit
+/// integer storing the number of seconds since 1970, saturating if the value is
+/// out of the range that a 64-bit integer can represent.
+///
+/// The returned `i64` value can be used with [`EventBuilder::add_value`] and
+/// [`EventBuilder::add_value_sequence`].
+///
+/// Note: `time_from_systemtime` is implemented as a macro because this crate is
+/// `[no_std]`. Implementing this via a function would require this crate to reference
+/// `std::time::SystemTimeError`.
+#[macro_export]
+macro_rules! time_from_systemtime {
+    // Keep in sync with eventheader::time_from_systemtime.
+    // The implementation is duplicated to allow for different doc comments.
+    ($time:expr) => {
+        match $time.duration_since(::std::time::SystemTime::UNIX_EPOCH) {
+            Ok(dur) => ::tracelogging::_internal::time_from_duration_after_1970(dur),
+            Err(err) => ::tracelogging::_internal::time_from_duration_before_1970(err.duration()),
+        }
+    };
+}
 
 extern crate alloc;
 mod builder;

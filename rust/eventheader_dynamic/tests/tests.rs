@@ -8,10 +8,10 @@ fn provider() {
     println!("{:?}", Provider::new_options().group_name("mygroup"));
 
     let provider = Provider::new(
-        "MyCompany.MyComponent",
+        "MyCompany_MyComponent",
         Provider::new_options().group_name("mygroup"),
     );
-    assert_eq!(provider.name(), "MyCompany.MyComponent");
+    assert_eq!(provider.name(), "MyCompany_MyComponent");
     assert_eq!(provider.options(), "Gmygroup");
 
     let mut provider = Provider::new("Hello", &Provider::new_options());
@@ -20,7 +20,7 @@ fn provider() {
 
     provider.unregister();
 
-    let mut provider = Provider::new("MyCompany.MyComponent", &Provider::new_options());
+    let mut provider = Provider::new("MyCompany_MyComponent", &Provider::new_options());
     let es_l5k123 = provider.register_set(Level::Verbose, 0x123);
     _ = es_l5k123.enabled();
 
@@ -40,10 +40,10 @@ fn provider() {
     let es_l5k1 = provider.register_set(Level::Verbose, 0x1);
     b.reset("GroupEvent-Start", 0)
         .opcode(Opcode::ActivityStart)
-        .write(&es_l5k1, Some(&aid.as_bytes()), Some(&rid.as_bytes()));
+        .write(&es_l5k1, Some(aid.as_bytes()), Some(rid.as_bytes()));
     b.reset("GroupEvent-Stop", 0)
         .opcode(Opcode::ActivityStop)
-        .write(&es_l5k1, Some(&aid.as_bytes()), None);
+        .write(&es_l5k1, Some(aid.as_bytes()), None);
 }
 
 #[test]

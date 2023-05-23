@@ -1,0 +1,18 @@
+[package]
+name = "eventheader_macros"
+version = "0.2.0"
+edition = "2021"
+authors = ["Microsoft"]
+license = "MIT"
+description = "Rust macros for eventheader-encoded Linux Tracepoints via user_events"
+repository = "https://github.com/microsoft/LinuxTracepoints"
+readme = "README.md"
+rust-version = "1.63"
+
+[lib]
+proc-macro = true
+doc = false
+doctest = false
+
+[dependencies]
+

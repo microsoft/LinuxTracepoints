@@ -225,11 +225,34 @@ impl fmt::Debug for Provider<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         return write!(
             f,
-            "Provider {{ name: \"{}\", options: {} }}",
+            "Provider {{ name: \"{}\", options: \"{}\" }}",
             self.name(),
             self.options(),
         );
     }
+}
+
+/// For use by the define_provider macro: creates a new provider.
+///
+/// # Safety
+///
+/// - events_start..events_stop must be a valid range of valid pointers that
+///   remain valid for the lifetime of the returned Provider.
+pub const unsafe fn provider_new<'a>(
+    name: &'a [u8],
+    options: &'a [u8],
+    events_start: *const usize,
+    events_stop: *const usize,
+) -> Provider<'a> {
+    return Provider {
+        name,
+        options,
+        events: ops::Range {
+            start: events_start as *mut *const EventHeaderTracepoint,
+            end: events_stop as *mut *const EventHeaderTracepoint,
+        },
+        busy: atomic::AtomicBool::new(false),
+    };
 }
 
 /// Stores the information needed for registering and managing a tracepoint.
@@ -338,27 +361,4 @@ impl CommandString {
         self.0.pos += 1;
         return ffi::CStr::from_bytes_with_nul(&self.0.buf[0..self.0.pos]).unwrap();
     }
-}
-
-/// For use by the define_provider macro: creates a new provider.
-///
-/// # Safety
-///
-/// - events_start..events_stop must be a valid range of valid pointers that
-///   remain valid for the lifetime of the returned Provider.
-pub const unsafe fn provider_new<'a>(
-    name: &'a [u8],
-    options: &'a [u8],
-    events_start: *const usize,
-    events_stop: *const usize,
-) -> Provider<'a> {
-    return Provider {
-        name,
-        options,
-        events: ops::Range {
-            start: events_start as *mut *const EventHeaderTracepoint,
-            end: events_stop as *mut *const EventHeaderTracepoint,
-        },
-        busy: atomic::AtomicBool::new(false),
-    };
 }

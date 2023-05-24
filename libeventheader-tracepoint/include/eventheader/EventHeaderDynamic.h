@@ -15,10 +15,11 @@ Basic usage of this API:
 
 - Create a Provider object with a name and an optional group.
 - Use the Provider to get the EventSet with the level and keyword you need.
-- As an optimization, use the Enabled(eventSet) to determine whether anybody
+- As an optimization, use Enabled(eventSet) to determine whether anybody
   is listening for a particular provider + event level + event keyword
-  combination. If nobody is listening, there is no need to build and write an
-  event that nobody will receive.
+  combination. If nobody is listening, you should skip the remaining steps
+  because there is no need to build and write an event that nobody will
+  receive.
 - Use an EventBuilder to build and write the event:
   - Create an EventBuilder.
   - Call eventBuilder.Reset(...) to set the event name and to set the event
@@ -45,12 +46,12 @@ Notes:
     lock for other provider operations like FindSet().
   - Create the provider and do all of the necessary RegisterSet() calls
     before any other threads start using it. Then you can call the const
-    methods like FindSet() on any thread as needed without any lock as long
+    methods like FindSet() as needed on any thread without any lock as long
     as nobody is calling any non-const methods.
   - Use your own thread-safe data structure to keep track of all of the
     EventSets you need. Take a lock if you ever need to register a new set.
 - Each event set maps to one tracepoint name, e.g. if the provider name is
-  "MyCompany_MyComponent", level if verbose (5), and keyword is 0x1f, the
+  "MyCompany_MyComponent", level is verbose (5), and keyword is 0x1f, the
   event set will correspond to a tracepont named
   "user_events:MyCompany_MyComponent_L5K1f".
 - Collect events to a file using a tool such as "perf", e.g.
@@ -229,7 +230,9 @@ namespace ehd
             }
         };
 
-        std::unordered_map<EventKey, std::shared_ptr<EventSet const>, EventKeyOps, EventKeyOps> m_eventSets;
+        using EventSetMap = std::unordered_map<EventKey, std::shared_ptr<EventSet const>, EventKeyOps, EventKeyOps>;
+
+        EventSetMap m_eventSets;
         tracepoint_provider_state m_providerState;
         eventheader_provider m_provider;
         int m_errno;
@@ -417,7 +420,16 @@ namespace ehd
             std::shared_ptr<EventSet const> result;
 
             EventKey const k = { keyword, static_cast<uint8_t>(level) };
-            auto const emplace_result = m_eventSets.emplace(k, std::shared_ptr<EventSet const>());
+            std::pair<EventSetMap::iterator, bool> emplace_result;
+            try
+            {
+                emplace_result = m_eventSets.emplace(k, std::shared_ptr<EventSet const>());
+            }
+            catch (...)
+            {
+                return result; // nullptr.
+            }
+
             if (!emplace_result.second)
             {
                 result = emplace_result.first->second;
@@ -467,7 +479,16 @@ namespace ehd
             std::shared_ptr<EventSet const> result;
 
             EventKey const k = { keyword, static_cast<uint8_t>(level) };
-            auto const emplace_result = m_eventSets.emplace(k, std::shared_ptr<EventSet const>());
+            std::pair<EventSetMap::iterator, bool> emplace_result;
+            try
+            {
+                emplace_result = m_eventSets.emplace(k, std::shared_ptr<EventSet const>());
+            }
+            catch (...)
+            {
+                return result; // nullptr.
+            }
+
             if (!emplace_result.second)
             {
                 result = emplace_result.first->second;

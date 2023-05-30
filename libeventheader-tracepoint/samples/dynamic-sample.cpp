@@ -111,6 +111,7 @@ int main()
     can reduce heap allocation/deallocation).
     */
     ehd::EventBuilder eb;
+    size_t bookmark;
 
     /*
     Building and writing an event is a waste of CPU time if the event is not
@@ -125,9 +126,10 @@ int main()
         eb.Opcode(event_opcode_activity_start); // Set the event's opcode (if any).
         eb.AddValue("u8", (uint8_t)1, event_field_format_default); // Default format for 8-bit is unsigned.
         eb.AddValue("guid", *(ehd::Value128 const*)guid1, event_field_format_uuid); // Use Value128 struct for GUID and IPv6.
-        eb.AddStruct("struct", 2); // The next 2 fields are sub-fields of "struct".
+        eb.AddStruct("struct", 1, 0, &bookmark); // The next N fields are sub-fields of "struct".
             eb.AddString<char>("str", "str_val", event_field_format_default); // Default format for string is UTF.
             eb.AddNulTerminatedString("str", std::wstring_view(L"zstr_\0val"), event_field_format_default); // Chars after '\0' ignored.
+            eb.SetStructFieldCount(bookmark, 2); // Update N to be 2.
         eb.AddValueRange("UintRange", &arrayOf5Bytes[0], &arrayOf5Bytes[5], event_field_format_default);
         eb.AddStringRange<char>("StringRange", &CharStrings[0], &CharStrings[2], event_field_format_default);
         eb.AddNulTerminatedStringRange<wchar_t>("NtStringRange", &WcharStrings[0], &WcharStrings[2], event_field_format_default);

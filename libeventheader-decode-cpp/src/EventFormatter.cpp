@@ -3,7 +3,8 @@
 
 #include <eventheader/EventFormatter.h>
 #include <PerfDataDecode/PerfEventMetadata.h>
-#include <PerfDataDecode/PerfDataFile.h>
+#include <PerfDataDecode/PerfEventInfo.h>
+#include <PerfDataDecode/PerfDataReader.h>
 #include <PerfDataDecode/PerfDataAbi.h>
 
 #include <assert.h>

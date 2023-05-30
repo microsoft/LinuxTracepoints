@@ -4,6 +4,7 @@
 #include <PerfDataDecode/PerfDataFile.h>
 #include <PerfDataDecode/PerfDataAbi.h>
 #include <PerfDataDecode/PerfEventMetadata.h>
+#include <PerfDataDecode/PerfEventInfo.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -167,14 +168,14 @@ PerfDataFile::DataEndFilePos() const noexcept
     return m_dataEndFilePos;
 }
 
-size_t
+uintptr_t
 PerfDataFile::AttrCount() const noexcept
 {
     return m_attrsList.size();
 }
 
 perf_event_attr const&
-PerfDataFile::Attr(size_t attrIndex) const noexcept
+PerfDataFile::Attr(uintptr_t attrIndex) const noexcept
 {
     assert(attrIndex < m_attrsList.size());
     return *m_attrsList[attrIndex];
@@ -1449,7 +1450,7 @@ PerfDataFile::AddAttr(
     uint32_t cbAttrCopied,
     _In_z_ char const* pName,
     _In_reads_bytes_(cbIdsFileEndian) void const* pbIdsFileEndian,
-    size_t cbIdsFileEndian) noexcept(false)
+    uintptr_t cbIdsFileEndian) noexcept(false)
 {
     assert(cbAttrCopied <= sizeof(perf_event_attr));
     auto const pAttr = pAttrPtr.get();
@@ -1581,7 +1582,7 @@ PerfDataFile::SectionValid(perf_file_section const& section) const noexcept
 }
 
 _Success_(return == 0) int
-PerfDataFile::FileRead(_Out_writes_bytes_all_(cb) void* p, size_t cb) noexcept
+PerfDataFile::FileRead(_Out_writes_bytes_all_(cb) void* p, uintptr_t cb) noexcept
 {
     auto pLeft = static_cast<uint8_t*>(p);
     auto cLeft = cb;
@@ -1635,7 +1636,7 @@ _Success_(return == 0) int
 PerfDataFile::FileSeekAndRead(
     uint64_t filePos,
     _Out_writes_bytes_all_(cb) void* p,
-    size_t cb) noexcept
+    uintptr_t cb) noexcept
 {
     int error = FileSeek(filePos);
     return error ? error : FileRead(p, cb);

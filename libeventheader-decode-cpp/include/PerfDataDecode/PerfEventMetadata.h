@@ -43,7 +43,7 @@ enum PerfFieldArray : uint8_t
 
 class PerfFieldMetadata
 {
-    static constexpr std::string_view noname = std::string_view("noname");
+    static constexpr std::string_view noname = std::string_view("noname", 6);
 
     std::string_view m_name;     // deduced from field, e.g. "my_field".
     std::string_view m_field;    // value of "field:" property, e.g. "char my_field[8]".
@@ -149,7 +149,7 @@ public:
     std::string_view
     GetFieldBytes(
         _In_reads_bytes_(eventRawDataSize) void const* eventRawData,
-        size_t eventRawDataSize,
+        uintptr_t eventRawDataSize,
         bool fileBigEndian) const noexcept;
 };
 

@@ -622,7 +622,7 @@ TokensDone:
 std::string_view
 PerfFieldMetadata::GetFieldBytes(
     _In_reads_bytes_(eventRawDataSize) void const* eventRawData,
-    size_t eventRawDataSize,
+    uintptr_t eventRawDataSize,
     bool fileBigEndian) const noexcept
 {
     std::string_view result;

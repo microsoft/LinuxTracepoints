@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <PerfDataDecode/PerfEventInfo.h>
 #include <PerfDataDecode/PerfDataFile.h>
 #include <PerfDataDecode/PerfDataAbi.h>
 #include <eventheader/EventFormatter.h>

@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <PerfDataDecode/PerfDataFile.h>
-#include <PerfDataDecode/PerfDataAbi.h>
-#include <PerfDataDecode/PerfEventMetadata.h>
-#include <PerfDataDecode/PerfEventInfo.h>
+#include <tracepoint/PerfDataFile.h>
+#include <tracepoint/PerfDataAbi.h>
+#include <tracepoint/PerfEventMetadata.h>
+#include <tracepoint/PerfEventInfo.h>
 
 #include <assert.h>
 #include <errno.h>

@@ -6,6 +6,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_subdirectory(libtracepoint)
+add_subdirectory(libtracepoint-decode-cpp)
 add_subdirectory(libeventheader-tracepoint)
 add_subdirectory(libeventheader-decode-cpp)
 

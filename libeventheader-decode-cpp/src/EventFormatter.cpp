@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #include <eventheader/EventFormatter.h>
-#include <PerfDataDecode/PerfEventMetadata.h>
-#include <PerfDataDecode/PerfEventInfo.h>
-#include <PerfDataDecode/PerfByteReader.h>
-#include <PerfDataDecode/PerfDataAbi.h>
+#include <tracepoint/PerfEventMetadata.h>
+#include <tracepoint/PerfEventInfo.h>
+#include <tracepoint/PerfByteReader.h>
+#include <tracepoint/PerfDataAbi.h>
 
 #include <assert.h>
 #include <math.h>

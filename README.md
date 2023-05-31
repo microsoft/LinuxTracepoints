@@ -24,8 +24,18 @@ generate Linux Tracepoints from user mode.
     C++ API for writing runtime-defined `eventheader`-encapsulated events,
     intended for use as an implementation layer for a higher-level API like
     OpenTelemetry.
+- [libtracepoint-decode-cpp](libtracepoint-decode-cpp) -
+  C++ library for decoding tracepoints. Works on both Linux and Windows.
+  - `PerfEventInfo.h` defines the `PerfSampleEventInfo` and
+    `PerfNonSampleEventInfo` structures for raw event information.
+  - `PerfDataFile.h` defines the `PerfDataFile` class that decodes
+    `perf.data` files.
+  - `PerfEventMetadata.h` defines classes for parsing ftrace event metadata
+    information.
 - [libeventheader-decode-cpp](libeventheader-decode-cpp) -
   C++ library for decoding events that use the `eventheader` envelope.
+  - `EventEnumerator` class parses an event into fields.
+  - `EventFormatter` class converts event data into a string.
   - `decode-perf` tool that decodes `perf.data` files to JSON.
 - [libeventheader-decode-dotnet](libeventheader-decode-dotnet) -
   .NET library for decoding events that use the `eventheader` envelope.

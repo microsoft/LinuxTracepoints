@@ -1,25 +1,17 @@
 # eventheader-decode = libeventheader-decode, DECODE_HEADERS
 add_library(eventheader-decode
     EventEnumerator.cpp
-    EventFormatter.cpp
-    PerfByteReader.cpp
-    PerfDataAbi.cpp
-    PerfDataFile.cpp
-    PerfEventMetadata.cpp)
+    EventFormatter.cpp)
 target_include_directories(eventheader-decode
     PUBLIC
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 target_link_libraries(eventheader-decode
-    PUBLIC eventheader-headers)
+    PUBLIC eventheader-headers
+    PRIVATE tracepoint-decode)
 set(DECODE_HEADERS
     "${PROJECT_SOURCE_DIR}/include/eventheader/EventEnumerator.h"
-    "${PROJECT_SOURCE_DIR}/include/eventheader/EventFormatter.h"
-    "${PROJECT_SOURCE_DIR}/include/PerfDataDecode/PerfByteReader.h"
-    "${PROJECT_SOURCE_DIR}/include/PerfDataDecode/PerfDataAbi.h"
-    "${PROJECT_SOURCE_DIR}/include/PerfDataDecode/PerfDataFile.h"
-    "${PROJECT_SOURCE_DIR}/include/PerfDataDecode/PerfEventInfo.h"
-    "${PROJECT_SOURCE_DIR}/include/PerfDataDecode/PerfEventMetadata.h")
+    "${PROJECT_SOURCE_DIR}/include/eventheader/EventFormatter.h")
 set_target_properties(eventheader-decode PROPERTIES
     PUBLIC_HEADER "${DECODE_HEADERS}")
 target_compile_features(eventheader-decode

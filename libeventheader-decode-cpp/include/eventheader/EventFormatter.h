@@ -8,10 +8,10 @@
 #include "EventEnumerator.h"
 #include <string>
 
-// Forward declarations from <PerfDataDecode/PerfDataFile.h>
+// Forward declarations from <tracepoint/PerfDataFile.h>
 struct PerfSampleEventInfo;
 
-// Forward declarations from <PerfDataDecode/PerfEventMetadata.h>
+// Forward declarations from <tracepoint/PerfEventMetadata.h>
 class PerfFieldMetadata;
 
 // Forward declarations from this file.

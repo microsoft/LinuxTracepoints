@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <PerfDataDecode/PerfDataAbi.h>
+#include <tracepoint/PerfDataAbi.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>

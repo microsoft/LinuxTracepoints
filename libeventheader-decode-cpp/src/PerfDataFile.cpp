@@ -61,7 +61,7 @@ struct PerfDataFile::perf_pipe_header {
     uint64_t magic; // If correctly byte-swapped, this will be equal to Magic2.
     uint64_t size;  // size of the header
 
-    // Return true if we should initialize the DataReader as big-endian.
+    // Return true if we should initialize the ByteReader as big-endian.
     bool CannotBeLittleEndian() const noexcept
     {
         // Little-endian file starts with "PERFILE2".
@@ -124,7 +124,7 @@ PerfDataFile::PerfDataFile() noexcept
     , m_dataBeginFilePos(0)
     , m_dataEndFilePos(0)
     , m_file(0)
-    , m_dataReader()
+    , m_byteReader()
     , m_sampleIdOffset(-1)
     , m_nonSampleIdOffset(-1)
     , m_commonTypeOffset(-1)
@@ -141,13 +141,13 @@ PerfDataFile::PerfDataFile() noexcept
 bool
 PerfDataFile::FileBigEndian() const noexcept
 {
-    return m_dataReader.BigEndian();
+    return m_byteReader.BigEndian();
 }
 
-PerfDataReader
-PerfDataFile::DataReader() const noexcept
+PerfByteReader
+PerfDataFile::ByteReader() const noexcept
 {
-    return m_dataReader;
+    return m_byteReader;
 }
 
 uint64_t
@@ -221,7 +221,7 @@ PerfDataFile::Close() noexcept
 
     m_attrsList.clear();
     m_eventDescById.clear();
-    m_dataReader = PerfDataReader();
+    m_byteReader = PerfByteReader();
     m_sampleIdOffset = -1;
     m_nonSampleIdOffset = -1;
     m_commonTypeOffset = -1;
@@ -259,9 +259,9 @@ PerfDataFile::Open(_In_z_ char const* filePath) noexcept
     }
     else
     {
-        m_dataReader = PerfDataReader(header.pipe_header.CannotBeLittleEndian());
-        auto const headerMagic = m_dataReader.ReadAsU64(&header.pipe_header.magic);
-        auto const headerSize = m_dataReader.ReadAsU64(&header.pipe_header.size);
+        m_byteReader = PerfByteReader(header.pipe_header.CannotBeLittleEndian());
+        auto const headerMagic = m_byteReader.ReadAsU64(&header.pipe_header.magic);
+        auto const headerSize = m_byteReader.ReadAsU64(&header.pipe_header.size);
         if (headerMagic != header.pipe_header.Magic2)
         {
             error = EINVAL; // Bad magic
@@ -293,7 +293,7 @@ PerfDataFile::Open(_In_z_ char const* filePath) noexcept
         }
         else
         {
-            if (m_dataReader.ByteSwapNeeded())
+            if (m_byteReader.ByteSwapNeeded())
             {
                 header.ByteSwap();
             }
@@ -350,9 +350,9 @@ PerfDataFile::OpenStdin() noexcept
     }
     else
     {
-        m_dataReader = PerfDataReader(header.pipe_header.CannotBeLittleEndian());
-        auto const headerMagic = m_dataReader.ReadAsU64(&header.pipe_header.magic);
-        auto const headerSize = m_dataReader.ReadAsU64(&header.pipe_header.size);
+        m_byteReader = PerfByteReader(header.pipe_header.CannotBeLittleEndian());
+        auto const headerMagic = m_byteReader.ReadAsU64(&header.pipe_header.magic);
+        auto const headerSize = m_byteReader.ReadAsU64(&header.pipe_header.size);
         if (headerMagic != header.pipe_header.Magic2)
         {
             error = EINVAL; // Bad magic
@@ -388,7 +388,7 @@ PerfDataFile::ReadPostEventData(uint16_t eventSizeFromHeader) noexcept
         return EINVAL;
     }
 
-    auto const specialDataSize = m_dataReader.ReadAs<SizeType>(
+    auto const specialDataSize = m_byteReader.ReadAs<SizeType>(
         m_eventData.data() + sizeof(perf_event_header));
     if (specialDataSize > 0x80000000 || 0 != (specialDataSize & 7u))
     {
@@ -445,7 +445,7 @@ PerfDataFile::ReadEvent(_Outptr_result_maybenull_ perf_event_header const** ppEv
             goto ErrorOrEof;
         }
 
-        if (m_dataReader.ByteSwapNeeded())
+        if (m_byteReader.ByteSwapNeeded())
         {
             reinterpret_cast<perf_event_header*>(m_eventData.data())->ByteSwap();
         }
@@ -480,7 +480,7 @@ PerfDataFile::ReadEvent(_Outptr_result_maybenull_ perf_event_header const** ppEv
             if (cbEventData >= PERF_ATTR_SIZE_VER0)
             {
                 auto const pbEventData = m_eventData.data() + sizeof(perf_event_header);
-                auto const attrSize = m_dataReader.Read(&reinterpret_cast<perf_event_attr const*>(pbEventData)->size);
+                auto const attrSize = m_byteReader.Read(&reinterpret_cast<perf_event_attr const*>(pbEventData)->size);
                 if (attrSize > cbEventData)
                 {
                     error = EINVAL;
@@ -511,7 +511,7 @@ PerfDataFile::ReadEvent(_Outptr_result_maybenull_ perf_event_header const** ppEv
             else if (!m_parsedTracingData)
             {
                 auto const pbEventData = m_eventData.data() + sizeof(perf_event_header);
-                auto const len = m_dataReader.ReadAsU32(pbEventData);
+                auto const len = m_byteReader.ReadAsU32(pbEventData);
                 assert(sizeof(perf_event_header) + sizeof(uint32_t) + len <= m_eventData.size());
                 auto& header = m_headers[PERF_HEADER_TRACING_DATA];
                 header.resize(len);
@@ -542,7 +542,7 @@ PerfDataFile::ReadEvent(_Outptr_result_maybenull_ perf_event_header const** ppEv
             if (cbEventData >= sizeof(uint64_t))
             {
                 auto const pbEventData = m_eventData.data() + sizeof(perf_event_header);
-                auto const bit = m_dataReader.ReadAsU64(pbEventData);
+                auto const bit = m_byteReader.ReadAsU64(pbEventData);
                 if (bit < ArrayCount(m_headers))
                 {
                     auto& header = m_headers[static_cast<size_t>(bit)];
@@ -638,7 +638,7 @@ PerfDataFile::GetSampleEventInfo(
         if (infoSampleTypes & PERF_SAMPLE_IP)
         {
             IF_EQUAL_GOTO_ERROR(iArray, cArray);
-            pInfo->ip = m_dataReader.Read(&pArray[iArray]);
+            pInfo->ip = m_byteReader.Read(&pArray[iArray]);
             iArray += 1;
         }
 
@@ -646,22 +646,22 @@ PerfDataFile::GetSampleEventInfo(
         {
             IF_EQUAL_GOTO_ERROR(iArray, cArray);
             auto const* p32 = reinterpret_cast<uint32_t const*>(&pArray[iArray]);
-            pInfo->pid = m_dataReader.Read(&p32[0]);
-            pInfo->tid = m_dataReader.Read(&p32[1]);
+            pInfo->pid = m_byteReader.Read(&p32[0]);
+            pInfo->tid = m_byteReader.Read(&p32[1]);
             iArray += 1;
         }
 
         if (infoSampleTypes & PERF_SAMPLE_TIME)
         {
             IF_EQUAL_GOTO_ERROR(iArray, cArray);
-            pInfo->time = m_dataReader.Read(&pArray[iArray]);
+            pInfo->time = m_byteReader.Read(&pArray[iArray]);
             iArray += 1;
         }
 
         if (infoSampleTypes & PERF_SAMPLE_ADDR)
         {
             IF_EQUAL_GOTO_ERROR(iArray, cArray);
-            pInfo->addr = m_dataReader.Read(&pArray[iArray]);
+            pInfo->addr = m_byteReader.Read(&pArray[iArray]);
             iArray += 1;
         }
 
@@ -674,7 +674,7 @@ PerfDataFile::GetSampleEventInfo(
         if (infoSampleTypes & PERF_SAMPLE_STREAM_ID)
         {
             IF_EQUAL_GOTO_ERROR(iArray, cArray);
-            pInfo->stream_id = m_dataReader.Read(&pArray[iArray]);
+            pInfo->stream_id = m_byteReader.Read(&pArray[iArray]);
             iArray += 1;
         }
 
@@ -682,15 +682,15 @@ PerfDataFile::GetSampleEventInfo(
         {
             IF_EQUAL_GOTO_ERROR(iArray, cArray);
             auto const* p32 = reinterpret_cast<uint32_t const*>(&pArray[iArray]);
-            pInfo->cpu = m_dataReader.Read(&p32[0]);
-            pInfo->cpu_reserved = m_dataReader.Read(&p32[1]);
+            pInfo->cpu = m_byteReader.Read(&p32[0]);
+            pInfo->cpu_reserved = m_byteReader.Read(&p32[1]);
             iArray += 1;
         }
 
         if (infoSampleTypes & PERF_SAMPLE_PERIOD)
         {
             IF_EQUAL_GOTO_ERROR(iArray, cArray);
-            pInfo->period = m_dataReader.Read(&pArray[iArray]);
+            pInfo->period = m_byteReader.Read(&pArray[iArray]);
             iArray += 1;
         }
 
@@ -713,7 +713,7 @@ PerfDataFile::GetSampleEventInfo(
             else if (attrReadFormat & PERF_FORMAT_GROUP)
             {
                 IF_EQUAL_GOTO_ERROR(iArray, cArray);
-                auto const cValues = m_dataReader.Read(&pArray[iArray]);
+                auto const cValues = m_byteReader.Read(&pArray[iArray]);
 
                 auto const cStaticItems = 1u // cValues
                     + (0 != (attrReadFormat & PERF_FORMAT_TOTAL_TIME_ENABLED))
@@ -757,7 +757,7 @@ PerfDataFile::GetSampleEventInfo(
         {
             IF_EQUAL_GOTO_ERROR(iArray, cArray);
             infoCallchain = &pArray[iArray];
-            auto const count = m_dataReader.Read(infoCallchain);
+            auto const count = m_byteReader.Read(infoCallchain);
             iArray += 1;
 
             if (cArray - iArray < count)
@@ -772,7 +772,7 @@ PerfDataFile::GetSampleEventInfo(
         {
             IF_EQUAL_GOTO_ERROR(iArray, cArray);
             auto const* p32 = reinterpret_cast<uint32_t const*>(&pArray[iArray]);
-            infoRawDataSize = m_dataReader.Read(&p32[0]);
+            infoRawDataSize = m_byteReader.Read(&p32[0]);
             infoRawData = reinterpret_cast<char const*>(p32 + 1);
             if ((cArray - iArray) * sizeof(uint64_t) - sizeof(uint32_t) < infoRawDataSize)
             {
@@ -783,7 +783,7 @@ PerfDataFile::GetSampleEventInfo(
             if (m_commonTypeOffset >= 0 &&
                 infoRawDataSize >= static_cast<uint32_t>(m_commonTypeOffset) + m_commonTypeSize)
             {
-                auto type = m_dataReader.ReadAsDynU32(infoRawData + m_commonTypeOffset, m_commonTypeSize);
+                auto type = m_byteReader.ReadAsDynU32(infoRawData + m_commonTypeOffset, m_commonTypeSize);
                 auto it = m_metadataById.find(type);
                 if (it != m_metadataById.end())
                 {
@@ -865,15 +865,15 @@ PerfDataFile::GetNonSampleEventInfo(
             iArray -= 1;
             IF_EQUAL_GOTO_ERROR(iArray, 0);
             auto const* p32 = reinterpret_cast<uint32_t const*>(&pArray[iArray]);
-            pInfo->cpu = m_dataReader.Read(&p32[0]);
-            pInfo->cpu_reserved = m_dataReader.Read(&p32[1]);
+            pInfo->cpu = m_byteReader.Read(&p32[0]);
+            pInfo->cpu_reserved = m_byteReader.Read(&p32[1]);
         }
 
         if (infoSampleTypes & PERF_SAMPLE_STREAM_ID)
         {
             iArray -= 1;
             IF_EQUAL_GOTO_ERROR(iArray, 0);
-            pInfo->stream_id = m_dataReader.Read(&pArray[iArray]);
+            pInfo->stream_id = m_byteReader.Read(&pArray[iArray]);
         }
 
         if (infoSampleTypes & PERF_SAMPLE_ID)
@@ -886,7 +886,7 @@ PerfDataFile::GetNonSampleEventInfo(
         {
             iArray -= 1;
             IF_EQUAL_GOTO_ERROR(iArray, 0);
-            pInfo->time = m_dataReader.Read(&pArray[iArray]);
+            pInfo->time = m_byteReader.Read(&pArray[iArray]);
         }
 
         if (infoSampleTypes & PERF_SAMPLE_TID)
@@ -894,8 +894,8 @@ PerfDataFile::GetNonSampleEventInfo(
             iArray -= 1;
             IF_EQUAL_GOTO_ERROR(iArray, 0);
             auto const* p32 = reinterpret_cast<uint32_t const*>(&pArray[iArray]);
-            pInfo->pid = m_dataReader.Read(&p32[0]);
-            pInfo->tid = m_dataReader.Read(&p32[1]);
+            pInfo->pid = m_byteReader.Read(&p32[0]);
+            pInfo->tid = m_byteReader.Read(&p32[1]);
         }
 
         assert(iArray > 0);
@@ -1080,7 +1080,7 @@ ReadSz(char const* p, char const* pEnd, _Out_ std::string_view* sv) noexcept
 template<class SizeType>
 static char const*
 ReadSection(
-    PerfDataReader dataReader,
+    PerfByteReader byteReader,
     char const* p,
     char const* pEnd,
     _Out_ std::string_view* sv) noexcept
@@ -1091,7 +1091,7 @@ ReadSection(
         return nullptr;
     }
 
-    SizeType fullSize = dataReader.ReadAs<SizeType>(p);
+    SizeType fullSize = byteReader.ReadAs<SizeType>(p);
     p += sizeof(SizeType);
 
     if (Remaining(p, pEnd) < fullSize)
@@ -1112,7 +1112,7 @@ ReadSection(
 template<class SizeType>
 static char const*
 ReadNamedSection(
-    PerfDataReader dataReader,
+    PerfByteReader byteReader,
     char const* p,
     char const* pEnd,
     std::string_view expectedName,
@@ -1126,7 +1126,7 @@ ReadNamedSection(
         return nullptr;
     }
 
-    return ReadSection<SizeType>(dataReader, p + cchExpectedName, pEnd, sv);
+    return ReadSection<SizeType>(byteReader, p + cchExpectedName, pEnd, sv);
 }
 
 void
@@ -1164,18 +1164,18 @@ PerfDataFile::ParseTracingData() noexcept
                 return; // Unexpected.
             }
 
-            PerfDataReader dataReader(*p != 0);
+            PerfByteReader byteReader(*p != 0);
             p += 1;
 
             m_tracingDataLongSize = *p;
             p += 1;
 
-            m_tracingDataPageSize = dataReader.ReadAsU32(p);
+            m_tracingDataPageSize = byteReader.ReadAsU32(p);
             p += sizeof(uint32_t);
 
             // header_page
 
-            p = ReadNamedSection<uint64_t>(dataReader, p, pEnd, "header_page"sv, &m_headerPage);
+            p = ReadNamedSection<uint64_t>(byteReader, p, pEnd, "header_page"sv, &m_headerPage);
             if (!p)
             {
                 return; // Unexpected.
@@ -1183,7 +1183,7 @@ PerfDataFile::ParseTracingData() noexcept
 
             // header_event (not really used anymore)
 
-            p = ReadNamedSection<uint64_t>(dataReader, p, pEnd, "header_event"sv, &m_headerEvent);
+            p = ReadNamedSection<uint64_t>(byteReader, p, pEnd, "header_event"sv, &m_headerEvent);
             if (!p)
             {
                 return; // Unexpected.
@@ -1196,13 +1196,13 @@ PerfDataFile::ParseTracingData() noexcept
                 return; // Unexpected.
             }
 
-            auto const ftraceCount = dataReader.ReadAsU32(p);
+            auto const ftraceCount = byteReader.ReadAsU32(p);
             p += sizeof(uint32_t);
             m_ftraces.reserve(ftraceCount);
             for (uint32_t ftraceIndex = 0; ftraceIndex != ftraceCount; ftraceIndex += 1)
             {
                 std::string_view ftrace;
-                p = ReadSection<uint64_t>(dataReader, p, pEnd, &ftrace);
+                p = ReadSection<uint64_t>(byteReader, p, pEnd, &ftrace);
                 if (!p)
                 {
                     return; // Unexpected.
@@ -1218,7 +1218,7 @@ PerfDataFile::ParseTracingData() noexcept
                 return; // Unexpected.
             }
 
-            auto const systemCount = dataReader.ReadAsU32(p);
+            auto const systemCount = byteReader.ReadAsU32(p);
             p += sizeof(uint32_t);
             for (uint32_t systemIndex = 0; systemIndex != systemCount; systemIndex += 1)
             {
@@ -1234,12 +1234,12 @@ PerfDataFile::ParseTracingData() noexcept
                     return; // Unexpected.
                 }
 
-                auto const eventCount = dataReader.ReadAsU32(p);
+                auto const eventCount = byteReader.ReadAsU32(p);
                 p += sizeof(uint32_t);
                 for (uint32_t eventIndex = 0; eventIndex != eventCount; eventIndex += 1)
                 {
                     std::string_view formatFileContents;
-                    p = ReadSection<uint64_t>(dataReader, p, pEnd, &formatFileContents);
+                    p = ReadSection<uint64_t>(byteReader, p, pEnd, &formatFileContents);
                     if (!p)
                     {
                         return; // Unexpected.
@@ -1292,7 +1292,7 @@ PerfDataFile::ParseTracingData() noexcept
 
             // kallsyms
 
-            p = ReadSection<uint32_t>(dataReader, p, pEnd, &m_kallsyms);
+            p = ReadSection<uint32_t>(byteReader, p, pEnd, &m_kallsyms);
             if (!p)
             {
                 return; // Unexpected.
@@ -1300,7 +1300,7 @@ PerfDataFile::ParseTracingData() noexcept
 
             // printk
 
-            p = ReadSection<uint32_t>(dataReader, p, pEnd, &m_printk);
+            p = ReadSection<uint32_t>(byteReader, p, pEnd, &m_printk);
             if (!p)
             {
                 return; // Unexpected.
@@ -1310,7 +1310,7 @@ PerfDataFile::ParseTracingData() noexcept
 
             if (tracingDataVersion >= 0.6)
             {
-                p = ReadSection<uint64_t>(dataReader, p, pEnd, &m_cmdline);
+                p = ReadSection<uint64_t>(byteReader, p, pEnd, &m_cmdline);
                 if (!p)
                 {
                     return; // Unexpected.
@@ -1336,9 +1336,9 @@ PerfDataFile::ParseHeaderEventDesc() noexcept
 
             auto p = eventDesc.data();
             auto const pEnd = p + eventDesc.size();
-            auto const cEvents = m_dataReader.ReadAsU32(p);
+            auto const cEvents = m_byteReader.ReadAsU32(p);
             p += sizeof(uint32_t);
-            auto const cbAttrInHeader = m_dataReader.ReadAsU32(p);
+            auto const cbAttrInHeader = m_byteReader.ReadAsU32(p);
             p += sizeof(uint32_t);
             if (cbAttrInHeader < PERF_ATTR_SIZE_VER0 || cbAttrInHeader > 0x10000)
             {
@@ -1354,12 +1354,12 @@ PerfDataFile::ParseHeaderEventDesc() noexcept
 
                 auto const pAttrInHeader = reinterpret_cast<perf_event_attr const*>(p);
                 p += cbAttrInHeader;
-                auto const cIds = m_dataReader.ReadAsU32(p);
+                auto const cIds = m_byteReader.ReadAsU32(p);
                 p += sizeof(uint32_t);
-                auto const cbString = m_dataReader.ReadAsU32(p);
+                auto const cbString = m_byteReader.ReadAsU32(p);
                 p += sizeof(uint32_t);
 
-                if (m_dataReader.Read(&pAttrInHeader->size) != cbAttrInHeader ||
+                if (m_byteReader.Read(&pAttrInHeader->size) != cbAttrInHeader ||
                     cIds > 0x10000 ||
                     cbString > 0x10000 ||
                     Remaining(p, pEnd) < cbString + cIds * sizeof(uint64_t) ||
@@ -1408,7 +1408,7 @@ PerfDataFile::GetSampleEventId(_In_ perf_event_header const* pEventHeader, _Out_
     else
     {
         auto const pArray = reinterpret_cast<uint64_t const*>(pEventHeader + 1);
-        id = m_dataReader.Read(&pArray[m_sampleIdOffset]);
+        id = m_byteReader.Read(&pArray[m_sampleIdOffset]);
         error = 0;
     }
 
@@ -1436,7 +1436,7 @@ PerfDataFile::GetNonSampleEventId(_In_ perf_event_header const* pEventHeader, _O
     {
         auto const pArrayLast = reinterpret_cast<uint64_t const*>(pEventHeader) - 1 +
             (pEventHeader->size / sizeof(uint64_t));
-        id = m_dataReader.Read(&pArrayLast[-m_nonSampleIdOffset]);
+        id = m_byteReader.Read(&pArrayLast[-m_nonSampleIdOffset]);
         error = 0;
     }
 
@@ -1455,7 +1455,7 @@ PerfDataFile::AddAttr(
     assert(cbAttrCopied <= sizeof(perf_event_attr));
     auto const pAttr = pAttrPtr.get();
 
-    if (m_dataReader.ByteSwapNeeded())
+    if (m_byteReader.ByteSwapNeeded())
     {
         pAttr->ByteSwap();
     }
@@ -1524,7 +1524,7 @@ PerfDataFile::AddAttr(
     auto const cIds = cbIdsFileEndian / sizeof(uint64_t);
     for (size_t i = 0; i != cIds; i += 1)
     {
-        auto const id = m_dataReader.Read(&pIds[i]);
+        auto const id = m_byteReader.Read(&pIds[i]);
         m_eventDescById[id] = { pAttr, pName };
     }
 

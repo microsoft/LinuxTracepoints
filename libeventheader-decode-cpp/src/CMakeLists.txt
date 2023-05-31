@@ -2,9 +2,9 @@
 add_library(eventheader-decode
     EventEnumerator.cpp
     EventFormatter.cpp
+    PerfByteReader.cpp
     PerfDataAbi.cpp
     PerfDataFile.cpp
-    PerfDataReader.cpp
     PerfEventMetadata.cpp)
 target_include_directories(eventheader-decode
     PUBLIC
@@ -15,9 +15,10 @@ target_link_libraries(eventheader-decode
 set(DECODE_HEADERS
     "${PROJECT_SOURCE_DIR}/include/eventheader/EventEnumerator.h"
     "${PROJECT_SOURCE_DIR}/include/eventheader/EventFormatter.h"
+    "${PROJECT_SOURCE_DIR}/include/PerfDataDecode/PerfByteReader.h"
     "${PROJECT_SOURCE_DIR}/include/PerfDataDecode/PerfDataAbi.h"
     "${PROJECT_SOURCE_DIR}/include/PerfDataDecode/PerfDataFile.h"
-    "${PROJECT_SOURCE_DIR}/include/PerfDataDecode/PerfDataReader.h"
+    "${PROJECT_SOURCE_DIR}/include/PerfDataDecode/PerfEventInfo.h"
     "${PROJECT_SOURCE_DIR}/include/PerfDataDecode/PerfEventMetadata.h")
 set_target_properties(eventheader-decode PROPERTIES
     PUBLIC_HEADER "${DECODE_HEADERS}")

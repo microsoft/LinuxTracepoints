@@ -5,7 +5,7 @@
 #ifndef _included_PerfDataFile_h
 #define _included_PerfDataFile_h
 
-#include "PerfDataReader.h"
+#include "PerfByteReader.h"
 #include <stdint.h>
 #include <stdio.h> // FILE
 #include <map>
@@ -115,7 +115,7 @@ class PerfDataFile
     std::vector<char> m_headers[32]; // Stored file-endian.
     std::vector<std::unique_ptr<perf_event_attr>> m_attrsList; // Stored host-endian.
     std::map<uint64_t, PerfEventDesc> m_eventDescById; // Points into m_attrsList and/or m_headers.
-    PerfDataReader m_dataReader;
+    PerfByteReader m_byteReader;
     int8_t m_sampleIdOffset; // -1 = unset, -2 = no id.
     int8_t m_nonSampleIdOffset; // -1 = unset, -2 = no id.
     int8_t m_commonTypeOffset; // -1 = unset, -2 = not available.
@@ -145,9 +145,9 @@ public:
     bool
     FileBigEndian() const noexcept;
 
-    // Returns PerfDataReader(FileBigEndian()).
-    PerfDataReader
-    DataReader() const noexcept;
+    // Returns PerfByteReader(FileBigEndian()).
+    PerfByteReader
+    ByteReader() const noexcept;
 
     // Returns the position within the input file of the event that will be
     // read by the next call to ReadEvent().
@@ -179,7 +179,8 @@ public:
     PerfEventDesc
     EventDescById(uint64_t id) const noexcept;
 
-    // Returns the raw data from the specified header (file-endian, use PerfDataReader).
+    // Returns the raw data from the specified header (file-endian, use ByteReader()
+    // to do byte-swapping as appropriate).
     // Returns empty if the requested header was not loaded from the file.
     std::string_view
     Header(PerfHeaderIndex headerIndex) const noexcept;
@@ -205,7 +206,7 @@ public:
     OpenStdin() noexcept;
 
     // Returns the event header (host-endian) followed by the raw data from the
-    // file (file-endian, use DataReader() to do byte-swapping as appropriate).
+    // file (file-endian, use ByteReader() to do byte-swapping as appropriate).
     //
     // On success, sets *ppEventHeader to the event and returns 0.
     // The returned pointer is valid until the next call to ReadEvent.

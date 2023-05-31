@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <PerfDataDecode/PerfDataReader.h>
+#include <PerfDataDecode/PerfByteReader.h>
 #include <string.h>
 #include <assert.h>
 
@@ -17,32 +17,32 @@ static bool constexpr HostIsBigEndian = false;
 static bool constexpr HostIsBigEndian = __BYTE_ORDER == __BIG_ENDIAN;
 #endif // _WIN32
 
-PerfDataReader::PerfDataReader() noexcept
+PerfByteReader::PerfByteReader() noexcept
     : m_bigEndian(HostIsBigEndian) {}
 
-PerfDataReader::PerfDataReader(bool bigEndian) noexcept
+PerfByteReader::PerfByteReader(bool bigEndian) noexcept
     : m_bigEndian(bigEndian) {}
 
 bool
-PerfDataReader::BigEndian() const noexcept
+PerfByteReader::BigEndian() const noexcept
 {
     return m_bigEndian;
 }
 
 bool
-PerfDataReader::ByteSwapNeeded() const noexcept
+PerfByteReader::ByteSwapNeeded() const noexcept
 {
     return HostIsBigEndian != m_bigEndian;
 }
 
 uint8_t
-PerfDataReader::ReadAsU8(_In_reads_bytes_(1) void const* pSrc) const noexcept
+PerfByteReader::ReadAsU8(_In_reads_bytes_(1) void const* pSrc) const noexcept
 {
     return *static_cast<uint8_t const*>(pSrc);
 }
 
 uint16_t
-PerfDataReader::ReadAsU16(_In_reads_bytes_(2) void const* pSrc) const noexcept
+PerfByteReader::ReadAsU16(_In_reads_bytes_(2) void const* pSrc) const noexcept
 {
     uint16_t fileBits;
     memcpy(&fileBits, pSrc, sizeof(fileBits));
@@ -50,7 +50,7 @@ PerfDataReader::ReadAsU16(_In_reads_bytes_(2) void const* pSrc) const noexcept
 }
 
 uint32_t
-PerfDataReader::ReadAsU32(_In_reads_bytes_(4) void const* pSrc) const noexcept
+PerfByteReader::ReadAsU32(_In_reads_bytes_(4) void const* pSrc) const noexcept
 {
     uint32_t fileBits;
     memcpy(&fileBits, pSrc, sizeof(fileBits));
@@ -58,7 +58,7 @@ PerfDataReader::ReadAsU32(_In_reads_bytes_(4) void const* pSrc) const noexcept
 }
 
 uint64_t
-PerfDataReader::ReadAsU64(_In_reads_bytes_(8) void const* pSrc) const noexcept
+PerfByteReader::ReadAsU64(_In_reads_bytes_(8) void const* pSrc) const noexcept
 {
     uint64_t fileBits;
     memcpy(&fileBits, pSrc, sizeof(fileBits));
@@ -66,7 +66,7 @@ PerfDataReader::ReadAsU64(_In_reads_bytes_(8) void const* pSrc) const noexcept
 }
 
 uint32_t
-PerfDataReader::ReadAsDynU32(
+PerfByteReader::ReadAsDynU32(
     _In_reads_bytes_(cbSrc) void const* pSrc,
     uint8_t cbSrc) const noexcept
 {
@@ -91,7 +91,7 @@ PerfDataReader::ReadAsDynU32(
 }
 
 uint64_t
-PerfDataReader::ReadAsDynU64(
+PerfByteReader::ReadAsDynU64(
     _In_reads_bytes_(cbSrc) void const* pSrc,
     uint8_t cbSrc) const noexcept
 {

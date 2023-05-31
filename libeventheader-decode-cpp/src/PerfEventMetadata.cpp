@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include <PerfDataDecode/PerfEventMetadata.h>
-#include <PerfDataDecode/PerfDataReader.h>
+#include <PerfDataDecode/PerfByteReader.h>
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -626,7 +626,7 @@ PerfFieldMetadata::GetFieldBytes(
     bool fileBigEndian) const noexcept
 {
     std::string_view result;
-    PerfDataReader const dataReader(fileBigEndian);
+    PerfByteReader const byteReader(fileBigEndian);
     auto const eventRawDataChars = static_cast<char const*>(eventRawData);
 
     if (static_cast<size_t>(m_offset) + m_size <= eventRawDataSize)
@@ -647,7 +647,7 @@ PerfFieldMetadata::GetFieldBytes(
             if (m_size == 4)
             {
                 // 4-byte value is an offset/length pair leading to the real data.
-                auto const dyn = dataReader.ReadAsU32(eventRawDataChars + m_offset);
+                auto const dyn = byteReader.ReadAsU32(eventRawDataChars + m_offset);
                 auto const dynSize = dyn >> 16;
                 auto dynOffset = dyn & 0xFFFF;
                 if (m_array == PerfFieldArrayRelDyn)
@@ -664,7 +664,7 @@ PerfFieldMetadata::GetFieldBytes(
             else if (m_size == 2)
             {
                 // 2-byte value is an offset leading to the real data, size is strlen.
-                size_t dynOffset = dataReader.ReadAsU16(eventRawDataChars + m_offset);
+                size_t dynOffset = byteReader.ReadAsU16(eventRawDataChars + m_offset);
                 if (m_array == PerfFieldArrayRelDyn)
                 {
                     // offset is relative to end of field.

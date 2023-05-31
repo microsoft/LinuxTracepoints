@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#ifndef _included_PerfDataReader_h
-#define _included_PerfDataReader_h
+#ifndef _included_PerfByteReader_h
+#define _included_PerfByteReader_h
 
 #include <stdint.h>
 #include <string.h> // memcpy
@@ -18,23 +18,28 @@
 #define _In_reads_bytes_(cb)
 #endif
 
-// Loads values from the perf file data buffer, handling misaligned
-// or byte-swapped values.
-class PerfDataReader
+// Loads values from the perf event data buffer, handling misaligned
+// and byte-swapped values.
+class PerfByteReader
 {
     bool m_bigEndian;
 
 public:
 
     // Initializes a data reader that treats input as host-endian.
-    PerfDataReader() noexcept;
+    //
+    // Postcondition: this->ByteSwapNeeded() == false.
+    PerfByteReader() noexcept;
 
     // If bigEndian is true, initializes a data reader that assumes input is
     // big-endian. Otherwise, assumes input is little-endian.
+    //
+    // Postcondition: this->BigEndian() == bigEndian.
     explicit
-    PerfDataReader(bool bigEndian) noexcept;
+    PerfByteReader(bool bigEndian) noexcept;
 
     // Returns true if this reader is treating its input data as big-endian.
+    // Returns false if this reader is treating its input data as little-endian.
     bool
     BigEndian() const noexcept;
 
@@ -111,7 +116,7 @@ public:
         else
         {
             static_assert(sizeof(ValType) == 0,
-                "PerfDataFile::Read supports values of size 1, 2, 4, and 8.");
+                "ReadAs supports values of size 1, 2, 4, and 8.");
         }
     }
 
@@ -127,4 +132,4 @@ public:
     }
 };
 
-#endif // _included_PerfDataReader_h
+#endif // _included_PerfByteReader_h

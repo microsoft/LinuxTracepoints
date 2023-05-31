@@ -1,8 +1,8 @@
 # tracepoint-decode = libtracepoint-decode, DECODE_HEADERS
 add_library(tracepoint-decode
     PerfByteReader.cpp
-    PerfDataAbi.cpp
     PerfDataFile.cpp
+    PerfEventAbi.cpp
     PerfEventMetadata.cpp)
 target_include_directories(tracepoint-decode
     PUBLIC
@@ -10,8 +10,8 @@ target_include_directories(tracepoint-decode
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 set(DECODE_HEADERS
     "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfByteReader.h"
-    "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfDataAbi.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfDataFile.h"
+    "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfEventAbi.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfEventInfo.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfEventMetadata.h")
 set_target_properties(tracepoint-decode PROPERTIES

@@ -5,7 +5,7 @@
 #include <tracepoint/PerfEventMetadata.h>
 #include <tracepoint/PerfEventInfo.h>
 #include <tracepoint/PerfByteReader.h>
-#include <tracepoint/PerfDataAbi.h>
+#include <tracepoint/PerfEventAbi.h>
 
 #include <assert.h>
 #include <math.h>

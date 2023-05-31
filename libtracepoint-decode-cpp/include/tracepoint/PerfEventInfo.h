@@ -20,7 +20,7 @@
 // Forward declaration from PerfEventMetadata.h:
 class PerfEventMetadata;
 
-// Forward declaration from PerfDataAbi.h or linux/uapi/linux/perf_event.h:
+// Forward declaration from PerfEventAbi.h or linux/uapi/linux/perf_event.h:
 struct perf_event_attr;
 
 struct PerfSampleEventInfo

@@ -44,9 +44,12 @@
 #define _Success_(condition)
 #endif
 
-// Forward declarations from PerfEventMetadata.h:
+// Forward declarations from PerfEventInfo.h:
+struct PerfSampleEventInfo;
+struct PerfNonSampleEventInfo;
+
+// Forward declaration from PerfEventMetadata.h:
 class PerfEventMetadata;
-class PerfFieldMetadata;
 
 // Forward declarations from PerfDataAbi.h or linux/uapi/linux/perf_event.h:
 struct perf_event_attr;
@@ -95,38 +98,6 @@ struct PerfEventDesc
 {
     perf_event_attr const* attr;    // NULL for unknown id.
     _Field_z_ char const* name;     // "" if no name available.
-};
-
-struct PerfSampleEventInfo
-{
-    uint64_t id;                            // Always valid if GetSampleEventInfo succeeded.
-    perf_event_attr const* attr;            // Always valid if GetSampleEventInfo succeeded.
-    _Field_z_ char const* name;             // e.g. "system:tracepoint", or "" if no name available.
-    uint64_t sample_type;                   // Bit set if corresponding info present in event.
-    uint32_t pid, tid;                      // Valid if sample_type & PERF_SAMPLE_TID.
-    uint64_t time;                          // Valid if sample_type & PERF_SAMPLE_TIME.
-    uint64_t stream_id;                     // Valid if sample_type & PERF_SAMPLE_STREAM_ID.
-    uint32_t cpu, cpu_reserved;             // Valid if sample_type & PERF_SAMPLE_CPU.
-    uint64_t ip;                            // Valid if sample_type & PERF_SAMPLE_IP.
-    uint64_t addr;                          // Valid if sample_type & PERF_SAMPLE_ADDR.
-    uint64_t period;                        // Valid if sample_type & PERF_SAMPLE_PERIOD.
-    uint64_t const* read_values;            // Valid if sample_type & PERF_SAMPLE_READ. Points into event.
-    uint64_t const* callchain;              // Valid if sample_type & PERF_SAMPLE_CALLCHAIN. Points into event.
-    PerfEventMetadata const* raw_meta;      // Valid if sample_type & PERF_SAMPLE_RAW. NULL if event unknown.
-    _Field_size_bytes_(raw_data_size) void const* raw_data; // Valid if sample_type & PERF_SAMPLE_RAW. Points into event.
-    size_t raw_data_size;                   // Valid if sample_type & PERF_SAMPLE_RAW. Size of raw_data.
-};
-
-struct PerfNonSampleEventInfo
-{
-    uint64_t id;                            // Always valid if GetNonSampleEventInfo succeeded.
-    perf_event_attr const* attr;            // Always valid if GetNonSampleEventInfo succeeded.
-    _Field_z_ char const* name;             // e.g. "system:tracepoint", or "" if no name available.
-    uint64_t sample_type;                   // Bit set if corresponding info present in event.
-    uint32_t pid, tid;                      // Valid if sample_type & PERF_SAMPLE_TID.
-    uint64_t time;                          // Valid if sample_type & PERF_SAMPLE_TIME.
-    uint64_t stream_id;                     // Valid if sample_type & PERF_SAMPLE_STREAM_ID.
-    uint32_t cpu, cpu_reserved;             // Valid if sample_type & PERF_SAMPLE_CPU.
 };
 
 class PerfDataFile
@@ -195,13 +166,13 @@ public:
     DataEndFilePos() const noexcept;
 
     // Returns the number of attribute records available from Attr().
-    size_t
+    uintptr_t
     AttrCount() const noexcept;
 
     // Combined data from perf_file_header::attrs and PERF_RECORD_HEADER_ATTR.
     // Requires attrIndex < AttrCount().
     perf_event_attr const&
-    Attr(size_t attrIndex) const noexcept;
+    Attr(uintptr_t attrIndex) const noexcept;
 
     // Combined data from perf_file_header::attrs, PERF_RECORD_HEADER_ATTR,
     // and HEADER_EVENT_DESC. Returns {NULL,""} for unknown id.
@@ -256,7 +227,7 @@ public:
     _Success_(return == 0) int
     GetSampleEventInfo(
         _In_ perf_event_header const* pEventHeader,
-        _Out_ PerfSampleEventInfo * pInfo) const noexcept;
+        _Out_ PerfSampleEventInfo* pInfo) const noexcept;
 
     // Tries to get event information from the event's suffix. The event suffix
     // is usually present only for non-sample kernel-generated events.
@@ -269,7 +240,7 @@ public:
     _Success_(return == 0) int
     GetNonSampleEventInfo(
         _In_ perf_event_header const* pEventHeader,
-        _Out_ PerfNonSampleEventInfo * pInfo) const noexcept;
+        _Out_ PerfNonSampleEventInfo* pInfo) const noexcept;
 
 private:
 
@@ -297,7 +268,7 @@ private:
         uint32_t cbAttrCopied,
         _In_z_ char const* pName,
         _In_reads_bytes_(cbIdsFileEndian) void const* pbIdsFileEndian,
-        size_t cbIdsFileEndian) noexcept(false);
+        uintptr_t cbIdsFileEndian) noexcept(false);
 
     template<class SizeType>
     _Success_(return == 0) int
@@ -315,14 +286,14 @@ private:
 
     // Returns 0 (success), EIO (fread error), or EPIPE (eof).
     _Success_(return == 0) int
-    FileRead(_Out_writes_bytes_all_(cb) void* p, size_t cb) noexcept;
+    FileRead(_Out_writes_bytes_all_(cb) void* p, uintptr_t cb) noexcept;
 
     _Success_(return == 0) int
     FileSeek(uint64_t filePos) noexcept;
 
     // Returns 0 (success), EIO (fread error), EPIPE (eof), or others.
     _Success_(return == 0) int
-    FileSeekAndRead(uint64_t filePos, _Out_writes_bytes_all_(cb) void* p, size_t cb) noexcept;
+    FileSeekAndRead(uint64_t filePos, _Out_writes_bytes_all_(cb) void* p, uintptr_t cb) noexcept;
 };
 
 #endif // _included_PerfDataFile_h

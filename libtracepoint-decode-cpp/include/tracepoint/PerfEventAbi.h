@@ -3,8 +3,8 @@
 // Adapted from linux/uapi/linux/perf_event.h.
 
 #pragma once
-#ifndef _included_PerfDataAbi_h
-#define _included_PerfDataAbi_h
+#ifndef _included_PerfEventAbi_h
+#define _included_PerfEventAbi_h
 
 #include <stdint.h>
 
@@ -759,4 +759,4 @@ PerfEnumToString(perf_type_id value, _Pre_cap_(11) char* scratch) noexcept;
 _Ret_z_ char const*
 PerfEnumToString(perf_event_type value, _Pre_cap_(11) char* scratch) noexcept;
 
-#endif // _included_PerfDataAbi_h
+#endif // _included_PerfEventAbi_h

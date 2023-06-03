@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include <tracepoint/PerfDataFile.h>
-#include <tracepoint/PerfDataAbi.h>
+#include <tracepoint/PerfEventAbi.h>
 #include <tracepoint/PerfEventMetadata.h>
 #include <tracepoint/PerfEventInfo.h>
 

@@ -51,7 +51,7 @@ struct PerfNonSampleEventInfo;
 // Forward declaration from PerfEventMetadata.h:
 class PerfEventMetadata;
 
-// Forward declarations from PerfDataAbi.h or linux/uapi/linux/perf_event.h:
+// Forward declarations from PerfEventAbi.h or linux/uapi/linux/perf_event.h:
 struct perf_event_attr;
 struct perf_event_header;
 

@@ -17,6 +17,8 @@ static bool constexpr HostIsBigEndian = false;
 static bool constexpr HostIsBigEndian = __BYTE_ORDER == __BIG_ENDIAN;
 #endif // _WIN32
 
+using namespace tracepoint_decode;
+
 PerfByteReader::PerfByteReader() noexcept
     : m_bigEndian(HostIsBigEndian) {}
 

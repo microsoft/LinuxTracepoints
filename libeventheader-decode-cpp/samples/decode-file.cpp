@@ -18,6 +18,8 @@
 #define le32toh(x) x
 #endif // _WIN32
 
+using namespace eventheader_decode;
+
 struct fcloseDelete
 {
     void operator()(FILE* file) const noexcept

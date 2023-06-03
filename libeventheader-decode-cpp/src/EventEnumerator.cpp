@@ -20,6 +20,8 @@
 
 #endif // _WIN32
 
+using namespace eventheader_decode;
+
 template<class UINTnn>
 static char const*
 LowercaseHexToInt(char const* pch, char const* pchEnd, UINTnn* pVal) noexcept

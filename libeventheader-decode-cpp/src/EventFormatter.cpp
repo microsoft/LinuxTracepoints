@@ -49,6 +49,8 @@
 #endif
 
 using namespace std::string_view_literals;
+using namespace eventheader_decode;
+using namespace tracepoint_decode;
 
 static auto constexpr HostEndianFlag =
     EVENTHEADER_LITTLE_ENDIAN

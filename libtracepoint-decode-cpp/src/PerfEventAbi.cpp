@@ -14,6 +14,8 @@
 #include <byteswap.h>
 #endif // _WIN32
 
+using namespace tracepoint_decode;
+
 template<class T, unsigned N>
 static constexpr unsigned
 ArrayCount(T(&)[N]) noexcept

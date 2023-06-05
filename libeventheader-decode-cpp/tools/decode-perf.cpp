@@ -13,6 +13,9 @@
 #define strerror_r(errnum, buf, buflen) (strerror_s(buf, buflen, errnum), buf)
 #endif // _WIN32
 
+using namespace eventheader_decode;
+using namespace tracepoint_decode;
+
 static bool
 FlushEvents(std::multimap<uint64_t, std::string>& events, bool comma) noexcept
 {

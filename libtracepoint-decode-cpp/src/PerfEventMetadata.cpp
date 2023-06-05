@@ -9,6 +9,7 @@
 #include <string.h>
 
 using namespace std::string_view_literals;
+using namespace tracepoint_decode;
 
 #ifndef _In_
 #define _In_

@@ -749,14 +749,18 @@ struct perf_event_header {
     void ByteSwap() noexcept;
 };
 
-// Returns a string for the PERF_TYPE_* enum value, e.g. "HARDWARE".
-// If enum is not recognized, formats decimal value into and returns scratch.
-_Ret_z_ char const*
-PerfEnumToString(perf_type_id value, _Pre_cap_(11) char* scratch) noexcept;
+namespace tracepoint_decode
+{
+    // Returns a string for the PERF_TYPE_* enum value, e.g. "HARDWARE".
+    // If enum is not recognized, formats decimal value into and returns scratch.
+    _Ret_z_ char const*
+    PerfEnumToString(perf_type_id value, _Pre_cap_(11) char* scratch) noexcept;
 
-// Returns a string for the PERF_RECORD_* enum value, e.g. "SAMPLE".
-// If enum is not recognized, formats decimal value into and returns scratch.
-_Ret_z_ char const*
-PerfEnumToString(perf_event_type value, _Pre_cap_(11) char* scratch) noexcept;
+    // Returns a string for the PERF_RECORD_* enum value, e.g. "SAMPLE".
+    // If enum is not recognized, formats decimal value into and returns scratch.
+    _Ret_z_ char const*
+    PerfEnumToString(perf_event_type value, _Pre_cap_(11) char* scratch) noexcept;
+}
+// namespace tracepoint_decode
 
 #endif // _included_PerfEventAbi_h

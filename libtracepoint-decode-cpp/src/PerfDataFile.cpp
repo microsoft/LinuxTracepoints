@@ -13,6 +13,7 @@
 #include <optional>
 
 using namespace std::string_view_literals;
+using namespace tracepoint_decode;
 
 #ifdef _WIN32
 #include <io.h>     // _setmode

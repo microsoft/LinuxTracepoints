@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(eventheader-decode-cpp
+project(tracepoint-decode-cpp
     VERSION 1.0.0
     DESCRIPTION "Tracepoint decoding for C/C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"

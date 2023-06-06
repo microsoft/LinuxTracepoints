@@ -3,13 +3,17 @@
     "configurePresets": [
         {
             "name": "Release",
-            "displayName": "Release CLang",
-            "description": "Compile project with clang",
+            "description": "Compile project with release build settings",
             "generator": "Unix Makefiles",
             "binaryDir": "${sourceDir}/build/out/${presetName}",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install/${presetName}"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
             },
             "vendor": {
                 "microsoft.com/VisualStudioSettings/CMake/1.0": {
@@ -26,22 +30,15 @@
         },
         {
             "name": "Debug",
-            "displayName": "Debug CLang",
-            "description": "Compile project with clang",
+            "description": "Compile project with debug build settings",
             "inherits": "Release",
-            "binaryDir": "${sourceDir}/build/out/${presetName}",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install/${presetName}"
-            },
-            "vendor": {
-                "microsoft.com/VisualStudioSettings/CMake/1.0": {
-                    "hostOS": ["Linux"]
-                }
+                "CMAKE_BUILD_TYPE": "Debug"
             }
         },
         {
             "name": "ReleaseClang",
+            "displayName": "Release clang",
             "inherits": "Release",
             "cacheVariables": {
                 "CMAKE_C_COMPILER": "clang",
@@ -77,10 +74,16 @@
             "displayName": "Debug VS",
             "description": "Compile project with VS",
             "generator": "Visual Studio 17 2022",
+            "architecture": "x64",
             "binaryDir": "${sourceDir}/out/build/${presetName}",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
             },
             "vendor": {
                 "microsoft.com/VisualStudioSettings/CMake/1.0": {

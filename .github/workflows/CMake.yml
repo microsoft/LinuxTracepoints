@@ -2,25 +2,38 @@ name: CMake
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ]
+    paths-ignore:
+      - 'rust/**'
   pull_request:
-    branches: ["main"]
+    branches: [ "main" ]
+    paths-ignore:
+      - 'rust/**'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        preset: ["Release", "Debug"]
 
     steps:
     - uses: actions/checkout@v3
 
-    - name: Configure CMake Release
-      run: cmake --preset "Release"
+    - name: Configure CMake
+      run: cmake --preset ${{matrix.preset}}
 
-    - name: build-release
-      run: cmake --build --preset "Release"
+    - name: build
+      run: cmake --build --preset ${{matrix.preset}}
 
-    - name: Configure CMake Debug
-      run: cmake --preset "Debug"
+  windows:
+    runs-on: windows-latest
 
-    - name: build-debug
-      run: cmake --build --preset "Debug"
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure CMake
+        run: cmake --preset Windows
+  
+      - name: build
+        run: cmake --build --preset Windows

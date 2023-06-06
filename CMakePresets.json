@@ -76,7 +76,7 @@
             "name": "Windows",
             "displayName": "Debug VS",
             "description": "Compile project with VS",
-            "generator": "Visual Studio 17 2022 Win64",
+            "generator": "Visual Studio 17 2022",
             "binaryDir": "${sourceDir}/out/build/${presetName}",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
@@ -84,7 +84,7 @@
             },
             "vendor": {
                 "microsoft.com/VisualStudioSettings/CMake/1.0": {
-                    "hostOS": ["Linux"]
+                    "hostOS": ["Windows"]
                 }
             }
         }
@@ -106,7 +106,9 @@
             "name": "Windows",
             "description": "",
             "displayName": "",
-            "configurePreset": "Windows"
+            "configurePreset": "Windows",
+            "configuration": "Debug",
+            "targets": ["ALL_BUILD"]
         }
     ]
 }

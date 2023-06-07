@@ -91,7 +91,7 @@ namespace tracepoint_decode
             if constexpr (sizeof(ValType) == sizeof(uint8_t))
             {
                 ValType v;
-                memcpy(&v, &pSrc, sizeof(v));
+                memcpy(&v, pSrc, sizeof(v));
                 return v;
             }
             else if constexpr (sizeof(ValType) == sizeof(uint16_t))

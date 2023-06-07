@@ -7,16 +7,22 @@ project(tracepoint-headers
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
+list(APPEND TRACEPOINT_HEADERS
+    "${PROJECT_SOURCE_DIR}/tracepoint/tracepoint.h")
+
+if(NOT WIN32)
+    list(APPEND TRACEPOINT_HEADERS
+    "${PROJECT_SOURCE_DIR}/tracepoint/tracepoint-impl.h"
+    "${PROJECT_SOURCE_DIR}/tracepoint/tracepoint-provider.h"
+    "${PROJECT_SOURCE_DIR}/tracepoint/tracepoint-state.h")
+endif()
+
 # tracepoint-headers = TRACEPOINT_HEADERS
 add_library(tracepoint-headers INTERFACE)
 target_include_directories(tracepoint-headers
     INTERFACE
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
-set(TRACEPOINT_HEADERS
-    "${PROJECT_SOURCE_DIR}/tracepoint/tracepoint.h"
-    "${PROJECT_SOURCE_DIR}/tracepoint/tracepoint-impl.h"
-    "${PROJECT_SOURCE_DIR}/tracepoint/tracepoint-state.h")
 set_target_properties(tracepoint-headers PROPERTIES
     PUBLIC_HEADER "${TRACEPOINT_HEADERS}")
 install(TARGETS tracepoint-headers

@@ -7,17 +7,22 @@ project(eventheader-tracepoint-headers
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
+list(APPEND EVENTHEADER_HEADERS
+    "${PROJECT_SOURCE_DIR}/eventheader/eventheader.h")
+
+if(NOT WIN32)
+    list(APPEND EVENTHEADER_HEADERS
+    "${PROJECT_SOURCE_DIR}/eventheader/eventheader-tracepoint.h"
+    "${PROJECT_SOURCE_DIR}/eventheader/EventHeaderDynamic.h"
+    "${PROJECT_SOURCE_DIR}/eventheader/TraceLoggingProvider.h")
+endif()
+
 # eventheader-headers = EVENTHEADER_HEADERS
 add_library(eventheader-headers INTERFACE)
 target_include_directories(eventheader-headers
     INTERFACE
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
-set(EVENTHEADER_HEADERS
-    "${PROJECT_SOURCE_DIR}/eventheader/eventheader.h"
-    "${PROJECT_SOURCE_DIR}/eventheader/EventHeaderDynamic.h"
-    "${PROJECT_SOURCE_DIR}/eventheader/eventheader-tracepoint.h"
-    "${PROJECT_SOURCE_DIR}/eventheader/TraceLoggingProvider.h")
 set_target_properties(eventheader-headers PROPERTIES
     PUBLIC_HEADER "${EVENTHEADER_HEADERS}")
 install(TARGETS eventheader-headers

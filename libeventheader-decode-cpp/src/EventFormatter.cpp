@@ -52,11 +52,6 @@ using namespace std::string_view_literals;
 using namespace eventheader_decode;
 using namespace tracepoint_decode;
 
-static auto constexpr HostEndianFlag =
-    EVENTHEADER_LITTLE_ENDIAN
-    ? eventheader_flag_little_endian
-    : eventheader_flag_none;
-
 struct SwapNo
 {
     uint8_t operator()(uint8_t val) const { return val; }
@@ -69,16 +64,6 @@ struct SwapYes
     uint16_t operator()(uint16_t val) const { return bswap_16(val); }
     uint32_t operator()(uint32_t val) const { return bswap_32(val); }
 };
-
-template<class CH>
-static size_t
-UnalignedStrnlen(CH const* pch, size_t cchMax) noexcept
-{
-    CH const UNALIGNED* p = pch;
-    size_t cch;
-    for (cch = 0; cch != cchMax && p[cch] != 0; cch += 1) {}
-    return cch;
-}
 
 class StringBuilder
 {

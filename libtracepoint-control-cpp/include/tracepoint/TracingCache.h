@@ -34,6 +34,20 @@ namespace tracepoint_control
         TracingCache() noexcept(false);
 
         /*
+        If no events are present in cache, returns -1.
+        Otherwise, returns the offset of the common_type field.
+        */
+        int8_t
+        CommonTypeOffset() const noexcept;
+
+        /*
+        If no events are present in cache, returns 0.
+        Otherwise, returns the size of the common_type field (1, 2, or 4).
+        */
+        uint8_t
+        CommonTypeSize() const noexcept;
+
+        /*
         If metadata for an event with the specified ID is cached, return it.
         Otherwise, return NULL.
         */
@@ -46,6 +60,19 @@ namespace tracepoint_control
         */
         tracepoint_decode::PerfEventMetadata const*
         FindByName(std::string_view systemName, std::string_view eventName) const noexcept;
+
+        /*
+        If metadata for an event with the specified data is cached,
+        return it. Otherwise, return NULL.
+
+        Implementation:
+
+        - Use CommonTypeOffset() and CommonTypeSize() to extract the common_type
+          field value.
+        - Use FindById() to find the matching metadata.
+        */
+        tracepoint_decode::PerfEventMetadata const*
+        FindByRawData(std::string_view rawData) const noexcept;
 
         /*
         Parse the formatFileContents to get the metadata. If metadata for an

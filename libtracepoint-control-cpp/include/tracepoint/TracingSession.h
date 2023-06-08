@@ -65,8 +65,8 @@ namespace tracepoint_control
 
     class TracingSessionOptions
     {
-        static constexpr uint32_t SampleTypeDefault = 0x486;
-        static constexpr uint32_t SampleTypeSupported = 0x107EF;
+        static constexpr auto SampleTypeDefault = 0x486u;
+        static constexpr auto SampleTypeSupported = 0x107EFu;
 
     public:
 
@@ -96,21 +96,24 @@ namespace tracepoint_control
         Flags use the perf_event_sample_format values defined in perf_event.h or
         PerfEventAbi.h. The following flags are supported:
 
-        - PERF_SAMPLE_IDENTIFIER
-        - PERF_SAMPLE_IP
-        - PERF_SAMPLE_TID
-        - PERF_SAMPLE_TIME
-        - PERF_SAMPLE_ADDR
-        - PERF_SAMPLE_ID
-        - PERF_SAMPLE_STREAM_ID
-        - PERF_SAMPLE_CPU
-        - PERF_SAMPLE_PERIOD
-        - PERF_SAMPLE_CALLCHAIN
-        - PERF_SAMPLE_RAW
+        | PERF_SAMPLE_IDENTIFIER
+        | PERF_SAMPLE_IP
+        | PERF_SAMPLE_TID
+        | PERF_SAMPLE_TIME
+        | PERF_SAMPLE_ADDR
+        | PERF_SAMPLE_ID
+        | PERF_SAMPLE_STREAM_ID
+        | PERF_SAMPLE_CPU
+        | PERF_SAMPLE_PERIOD
+        | PERF_SAMPLE_CALLCHAIN
+        | PERF_SAMPLE_RAW
 
         Default value is:
 
-            PERF_SAMPLE_TID + PERF_SAMPLE_TIME + PERF_SAMPLE_CPU + PERF_SAMPLE_RAW.
+        | PERF_SAMPLE_TID
+        | PERF_SAMPLE_TIME
+        | PERF_SAMPLE_CPU
+        | PERF_SAMPLE_RAW
         */
         constexpr TracingSessionOptions&
         SampleType(uint32_t sampleType) noexcept
@@ -202,9 +205,46 @@ namespace tracepoint_control
 
         /*
         Returns the number of buffers used for the session.
+        Usually this is the number of CPUs.
         */
         uint32_t
         BufferCount() const noexcept;
+
+        /*
+        Returns the number of SAMPLE events that have been processed
+        by this session.
+        */
+        uint64_t
+        SampleEventCount() const noexcept;
+
+        /*
+        Returns the number of lost events that have been processed
+        by this session. Events can be lost due to:
+
+        - Memory allocation failure during buffer enumeration.
+        - Event received while session is paused (circular mode only).
+        - Event received while buffer is full (realtime mode only).
+        */
+        uint64_t
+        LostEventCount() const noexcept;
+
+        /*
+        Returns the number of corrupt events that have been processed
+        by this session. An event is detected as corrupt if the event
+        header's size is too small for the event's SampleType.
+        */
+        uint64_t
+        CorruptEventCount() const noexcept;
+
+        /*
+        Returns the number of times buffer corruption has been detected
+        by this session. The buffer is detected as corrupt if the buffer
+        header has invalid values or if an event header has an invalid
+        size. Buffer corruption generally causes the buffer's remaining
+        contents to be ignored.
+        */
+        uint64_t
+        CorruptBufferCount() const noexcept;
 
         /*
         Clears the list of tracepoints we are listening to.
@@ -516,18 +556,17 @@ namespace tracepoint_control
         class BufferEnumerator
         {
             TracingSession& m_session;
-            void* const m_bufferHeader;
             uint32_t const m_cpuIndex;
+            tracepoint_decode::PerfSampleEventInfo m_current;
 
             // These should be treated as const after the constructor finishes:
-            size_t m_bufferDataHead;      // data_head
-            uint64_t m_bufferDataTail;    // data_tail
-            uint8_t const* m_bufferData;  // m_bufferHeader + data_offset
+            size_t m_bufferDataHead;      // data_head (used only by dtor)
+            uint8_t const* m_bufferData;  // buffer + data_offset
             size_t m_bufferPosMask;       // data_size - 1
-            size_t m_bufferUnmaskedPosEnd;// data_head + data_size
+            uint64_t m_bufferDataTail;    // data_tail (used only by dtor)
+            size_t m_bufferUnmaskedPosEnd;
 
-            size_t m_bufferUnmaskedPos; // data_head..m_bufferUnmaskedPosEnd
-            tracepoint_decode::PerfSampleEventInfo m_current;
+            size_t m_bufferUnmaskedPos;
             char m_nameBuffer[512];
 
         public:
@@ -581,6 +620,8 @@ namespace tracepoint_control
         unique_fd const* m_leaderCpuFiles; // == m_tracepointInfoById[N].cpuFiles.get() for some N, size is m_cpuCount
         uint64_t m_sampleEventCount;
         uint64_t m_lostEventCount;
+        uint64_t m_corruptEventCount;
+        uint64_t m_corruptBufferCount;
     };
 }
 // namespace tracepoint_control

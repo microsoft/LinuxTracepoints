@@ -2,8 +2,14 @@
 #include <tracepoint/TracingPath.h>
 #include <assert.h>
 #include <errno.h>
+#include <string.h>
 
 using namespace tracepoint_control;
+using namespace tracepoint_decode;
+using namespace std::string_view_literals;
+
+static constexpr int8_t CommonTypeOffsetInit = -1;
+static constexpr uint8_t CommonTypeSizeInit = 0;
 
 TracingCache::CacheVal::~CacheVal()
 {
@@ -12,7 +18,7 @@ TracingCache::CacheVal::~CacheVal()
 
 TracingCache::CacheVal::CacheVal(
     std::vector<char>&& systemAndFormat,
-    tracepoint_decode::PerfEventMetadata&& metadata) noexcept
+    PerfEventMetadata&& metadata) noexcept
     : SystemAndFormat(std::move(systemAndFormat))
     , Metadata(metadata)
 {
@@ -52,13 +58,25 @@ TracingCache::~TracingCache() noexcept
 TracingCache::TracingCache() noexcept(false)
     : m_byId() // may throw bad_alloc (in theory).
     , m_byName() // may throw bad_alloc (in theory).
-    , m_commonTypeOffset(-1)
-    , m_commonTypeSize(0)
+    , m_commonTypeOffset(CommonTypeOffsetInit)
+    , m_commonTypeSize(CommonTypeSizeInit)
 {
     return;
 }
 
-tracepoint_decode::PerfEventMetadata const*
+int8_t
+TracingCache::CommonTypeOffset() const noexcept
+{
+    return m_commonTypeOffset;
+}
+
+uint8_t
+TracingCache::CommonTypeSize() const noexcept
+{
+    return m_commonTypeSize;
+}
+
+PerfEventMetadata const*
 TracingCache::FindById(uint32_t id) const noexcept
 {
     auto it = m_byId.find(id);
@@ -67,7 +85,7 @@ TracingCache::FindById(uint32_t id) const noexcept
         : &it->second.Metadata;
 }
 
-tracepoint_decode::PerfEventMetadata const*
+PerfEventMetadata const*
 TracingCache::FindByName(
     std::string_view systemName,
     std::string_view eventName) const noexcept
@@ -76,6 +94,42 @@ TracingCache::FindByName(
     return it == m_byName.end()
         ? nullptr
         : &it->second.Metadata;
+}
+
+PerfEventMetadata const*
+TracingCache::FindByRawData(std::string_view rawData) const noexcept
+{
+    PerfEventMetadata const* metadata;
+
+    auto const offset = static_cast<size_t>(m_commonTypeOffset);
+    auto const commonTypeSize = m_commonTypeSize;
+    auto const rawDataSize = rawData.size();
+    if (rawDataSize <= offset ||
+        rawDataSize - offset <= commonTypeSize)
+    {
+        metadata = nullptr;
+    }
+    else if (commonTypeSize == sizeof(uint16_t))
+    {
+        uint16_t commonType;
+        memcpy(&commonType, rawData.data() + offset, sizeof(commonType));
+        metadata = FindById(commonType);
+    }
+    else if (commonTypeSize == sizeof(uint32_t))
+    {
+        uint32_t commonType;
+        memcpy(&commonType, rawData.data() + offset, sizeof(commonType));
+        metadata = FindById(commonType);
+    }
+    else
+    {
+        assert(commonTypeSize == 1);
+        uint8_t commonType;
+        memcpy(&commonType, rawData.data() + offset, sizeof(commonType));
+        metadata = FindById(commonType);
+    }
+
+    return metadata;
 }
 
 _Success_(return == 0) int
@@ -148,7 +202,7 @@ TracingCache::Add(
             systemAndFormat.data() + systemNameSize + 1,
             systemAndFormat.size() - systemNameSize - 1);
 
-        tracepoint_decode::PerfEventMetadata metadata;
+        PerfEventMetadata metadata;
         if (!metadata.Parse(longSize64, systemName, formatFile))
         {
             error = EINVAL;
@@ -161,18 +215,56 @@ TracingCache::Add(
         }
         else
         {
-            // TODO: m_commonTypeOffset, m_commonTypeSize.
+            int8_t commonTypeOffset = CommonTypeOffsetInit;
+            uint8_t commonTypeSize = CommonTypeSizeInit;
+            for (unsigned i = 0; i != metadata.CommonFieldCount(); i += 1)
+            {
+                auto const& field = metadata.Fields()[i];
+                if (field.Name() == "common_type"sv)
+                {
+                    if (field.Offset() < 128 &&
+                        (field.Size() == 1 || field.Size() == 2 || field.Size() == 4) &&
+                        field.Array() == PerfFieldArrayNone)
+                    {
+                        commonTypeOffset = static_cast<int8_t>(field.Offset());
+                        commonTypeSize = static_cast<uint8_t>(field.Size());
+                    }
+                    break;
+                }
+            }
 
-            id = metadata.Id();
+            if (m_commonTypeOffset == CommonTypeOffsetInit)
+            {
+                // First event to be parsed. Use its "common_type" field.
+                m_commonTypeOffset = commonTypeOffset;
+                m_commonTypeSize = commonTypeSize;
+            }
 
-            auto er = m_byId.try_emplace(id, std::move(systemAndFormat), std::move(metadata));
-            assert(er.second);
-            idAdded = er.second;
+            if (commonTypeOffset == CommonTypeOffsetInit)
+            {
+                // Did not find a usable "common_type" field.
+                error = EINVAL;
+            }
+            else if (
+                m_commonTypeOffset != commonTypeOffset ||
+                m_commonTypeSize != commonTypeSize)
+            {
+                // Unexpected: found a different "common_type" field.
+                error = EINVAL;
+            }
+            else
+            {
+                id = metadata.Id();
 
-            auto const& newMeta = er.first->second.Metadata;
-            m_byName.try_emplace(EventName(newMeta.SystemName(), newMeta.Name()), er.first->second);
+                auto er = m_byId.try_emplace(id, std::move(systemAndFormat), std::move(metadata));
+                assert(er.second);
+                idAdded = er.second;
 
-            error = 0;
+                auto const& newMeta = er.first->second.Metadata;
+                m_byName.try_emplace(EventName(newMeta.SystemName(), newMeta.Name()), er.first->second);
+
+                error = 0;
+            }
         }
     }
     catch (...)

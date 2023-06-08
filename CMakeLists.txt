@@ -12,4 +12,6 @@ add_subdirectory(libeventheader-decode-cpp)
 
 if(WIN32)
     add_subdirectory(libeventheader-decode-dotnet)
+else()
+    add_subdirectory(libtracepoint-control-cpp)
 endif()

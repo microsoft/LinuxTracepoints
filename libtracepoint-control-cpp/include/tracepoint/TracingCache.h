@@ -103,7 +103,7 @@ namespace tracepoint_control
         FindOrAddFromSystem(
             std::string_view systemName,
             std::string_view eventName,
-            _Out_ tracepoint_decode::PerfEventMetadata const** ppMetadata) const noexcept;
+            _Out_ tracepoint_decode::PerfEventMetadata const** ppMetadata) noexcept;
 
     private:
 

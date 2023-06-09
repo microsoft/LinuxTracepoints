@@ -174,16 +174,16 @@ tracepoint_control::AppendTracingFile(
                 {
                     if (feof(file))
                     {
+                        dest.resize(pos);
                         error = 0;
+                        break;
                     }
-                    else if (readSize == 0 || ferror(file))
+                    else if (ferror(file))
                     {
-                        pos = destOldSize;
+                        dest.resize(destOldSize);
                         error = EIO;
+                        break;
                     }
-
-                    dest.resize(pos);
-                    break;
                 }
             }
         }

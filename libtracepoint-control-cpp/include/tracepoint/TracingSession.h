@@ -349,7 +349,9 @@ namespace tracepoint_control
 
         /*
         For realtime sessions only: Waits for the wakeup condition using
-        ppoll(bufferFiles, bufferCount, timeout, sigmask).
+        ppoll(bufferFiles, bufferCount, timeout, sigmask). The wakeup condition
+        is configured by calling WakeupEvents or WakeupWatermark on a config
+        before passing the config to the session's constructor.
 
         - timeout: Maximum time to wait. NULL means wait forever.
         - sigmask: Signal mask to apply before waiting. NULL means don't mask.
@@ -443,20 +445,16 @@ namespace tracepoint_control
         template<class SampleFnTy, class... ArgTys>
         _Success_(return == 0) int
         FlushSampleEventsUnordered(
-            SampleFnTy& sampleFn,
-            ArgTys&... args) noexcept(noexcept(sampleFn(
+            SampleFnTy&& sampleFn,
+            ArgTys&&... args) noexcept(noexcept(sampleFn(
                 static_cast<uint32_t>(0),
                 std::declval<tracepoint_decode::PerfSampleEventInfo const&>(),
                 args...
                 )))
         {
-            int error;
+            int error = 0;
 
-            if (m_leaderCpuFiles == nullptr)
-            {
-                error = 0;
-            }
-            else
+            if (m_leaderCpuFiles != nullptr)
             {
                 for (unsigned cpuIndex = 0; cpuIndex != m_cpuCount; cpuIndex += 1)
                 {
@@ -560,13 +558,12 @@ namespace tracepoint_control
             tracepoint_decode::PerfSampleEventInfo m_current;
 
             // These should be treated as const after the constructor finishes:
-            size_t m_bufferDataHead;      // data_head (used only by dtor)
-            uint8_t const* m_bufferData;  // buffer + data_offset
-            size_t m_bufferPosMask;       // data_size - 1
-            uint64_t m_bufferDataTail;    // data_tail (used only by dtor)
-            size_t m_bufferUnmaskedPosEnd;
+            uint64_t m_bufferDataHead64;// data_head
+            size_t m_bufferDataTail;    // data_tail
+            uint8_t const* m_bufferData;// buffer + data_offset
+            size_t m_bufferDataPosMask; // data_size - 1
 
-            size_t m_bufferUnmaskedPos;
+            size_t m_bufferDataPos;     // data_tail..data_head
             char m_nameBuffer[512];
 
         public:

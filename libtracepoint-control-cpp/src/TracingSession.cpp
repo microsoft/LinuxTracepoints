@@ -243,7 +243,7 @@ TracingSession::EnableTracePoint(
         eventAttribs.sample_type = m_sampleType;
         eventAttribs.watermark = m_wakeupUseWatermark;
         eventAttribs.use_clockid = 1;
-        eventAttribs.write_backward = IsRealtime() ? 0 : 1;
+        eventAttribs.write_backward = !IsRealtime();
         eventAttribs.wakeup_events = m_wakeupValue;
         eventAttribs.clockid = CLOCK_MONOTONIC_RAW;
 
@@ -463,7 +463,7 @@ TracingSession::BufferEnumerator::~BufferEnumerator()
     if (!m_session.IsRealtime())
     {
         // Should not change while collection paused.
-        assert(m_bufferDataHead == AtomicLoad64AsSize(&bufferHeader->data_head));
+        assert(m_bufferDataHead64 == AtomicLoad64(&bufferHeader->data_head));
 
         int error = ioctl(m_session.m_leaderCpuFiles[m_cpuIndex].get(), PERF_EVENT_IOC_PAUSE_OUTPUT, 0);
         if (error != 0)
@@ -472,12 +472,18 @@ TracingSession::BufferEnumerator::~BufferEnumerator()
                 m_cpuIndex, error);
         }
     }
-    else if (m_bufferUnmaskedPos != m_bufferDataTail)
+    else if (m_bufferDataPos != m_bufferDataTail)
     {
+        // Create a new 64-bit tail value.
+        // If PTR64, new value is m_bufferDataPos.
+        // If PTR32, use top 32 bits from m_bufferDataHead64 and low 32 bits from m_bufferDataPos.
+        uint64_t const newTail64 = m_bufferDataHead64 - static_cast<size_t>(m_bufferDataHead64) + m_bufferDataPos;
+        assert(m_bufferDataHead64 - newTail64 <= m_bufferDataPosMask + 1);
+
         // ATOMIC_RELEASE: perf_events.h recommends smp_mb() here.
         __atomic_store_n(
             &bufferHeader->data_tail,
-            m_bufferUnmaskedPos,
+            newTail64,
             __ATOMIC_RELEASE);
     }
 
@@ -505,57 +511,80 @@ TracingSession::BufferEnumerator::BufferEnumerator(
     auto const bufferHeader = static_cast<perf_event_mmap_page const*>(session.m_cpuMmaps[cpuIndex].get());
 
     // ATOMIC_ACQUIRE: perf_events.h recommends smp_rmb() here.
-    m_bufferDataHead = AtomicLoad64AsSize(&bufferHeader->data_head, __ATOMIC_ACQUIRE);
+    m_bufferDataHead64 = AtomicLoad64(&bufferHeader->data_head, __ATOMIC_ACQUIRE);
 
     auto const bufferDataOffset = AtomicLoad64AsSize(&bufferHeader->data_offset);
     auto const bufferDataSize = AtomicLoad64AsSize(&bufferHeader->data_size);
 
     m_bufferData = reinterpret_cast<uint8_t const*>(bufferHeader) + bufferDataOffset;
-    m_bufferPosMask = bufferDataSize - 1;
+    m_bufferDataPosMask = bufferDataSize - 1;
 
-    if (realtime)
+    if (0 != (m_bufferDataHead64 & 7) ||
+        0 != (reinterpret_cast<uintptr_t>(m_bufferData) & 7) ||
+        0 == bufferDataSize ||
+        0 != (bufferDataSize & m_bufferDataPosMask))
     {
-        m_bufferDataTail = AtomicLoad64(&bufferHeader->data_tail);
-        m_bufferUnmaskedPosEnd = m_bufferDataHead;
-        m_bufferUnmaskedPos = m_bufferDataTail;
+        // Unexpected - corrupt trace buffer.
+        DEBUG_PRINTF("CPU%u bad perf_event_mmap_page: head=%llx offset=%lx size=%lx\n",
+            cpuIndex,
+            (unsigned long long)m_bufferDataHead64,
+            (unsigned long)bufferDataOffset,
+            (unsigned long)bufferDataSize);
+        m_bufferDataTail = static_cast<size_t>(m_bufferDataHead64) - bufferDataSize;
+        m_bufferDataPos = static_cast<size_t>(m_bufferDataHead64);
+        m_session.m_corruptBufferCount += 1;
+    }
+    else if (!realtime)
+    {
+        // Circular: write_backward == 1
+        m_bufferDataTail = static_cast<size_t>(m_bufferDataHead64) - bufferDataSize;
+        m_bufferDataPos = m_bufferDataTail;
     }
     else
     {
-        m_bufferDataTail = 0;
-        m_bufferUnmaskedPosEnd = m_bufferDataHead + bufferDataSize;
-        m_bufferUnmaskedPos = m_bufferDataHead;
-    }
-
-    if (0 != (reinterpret_cast<uintptr_t>(m_bufferData) & 7) ||
-        0 != (m_bufferUnmaskedPosEnd & 7) ||
-        0 != (m_bufferUnmaskedPos & 7) ||
-        0 == bufferDataSize ||
-        0 != (bufferDataSize & m_bufferPosMask) ||
-        m_bufferUnmaskedPosEnd < m_bufferUnmaskedPos)
-    {
-        // Unexpected - corrupt trace buffer.
-        DEBUG_PRINTF("CPU%u bad perf_event_mmap_page: head=%lx offs=%lx size=%lx\n",
-            cpuIndex, (unsigned long)m_bufferDataHead, (unsigned long)bufferDataOffset, (unsigned long)bufferDataSize);
-        m_bufferUnmaskedPos = m_bufferUnmaskedPosEnd; // Causes MoveNext() to immediately return false.
-        m_session.m_corruptBufferCount += 1;
+        // Realtime: write_backward == 0
+        auto const bufferDataTail64 = AtomicLoad64(&bufferHeader->data_tail);
+        m_bufferDataTail = static_cast<size_t>(bufferDataTail64);
+        if (m_bufferDataHead64 - bufferDataTail64 > bufferDataSize)
+        {
+            // Unexpected - assume bad tail pointer.
+            DEBUG_PRINTF("CPU%u bad data_tail: head=%llx tail=%llx offset=%lx size=%lx\n",
+                cpuIndex,
+                (unsigned long long)m_bufferDataHead64,
+                (unsigned long long)bufferDataTail64,
+                (unsigned long)bufferDataOffset,
+                (unsigned long)bufferDataSize);
+            m_bufferDataPos = static_cast<size_t>(m_bufferDataHead64);
+            m_session.m_corruptBufferCount += 1;
+        }
+        else
+        {
+            m_bufferDataPos = m_bufferDataTail;
+        }
     }
 }
 
 bool
 TracingSession::BufferEnumerator::MoveNext() noexcept
 {
-    while (m_bufferUnmaskedPos < m_bufferUnmaskedPosEnd)
+    for (;;)
     {
-        auto const eventHeaderBufferPos = m_bufferUnmaskedPos & m_bufferPosMask;
+        auto const remaining = static_cast<size_t>(m_bufferDataHead64) - m_bufferDataPos;
+        if (remaining == 0)
+        {
+            break;
+        }
+
+        auto const eventHeaderBufferPos = m_bufferDataPos & m_bufferDataPosMask;
         auto const pEventHeader = reinterpret_cast<perf_event_header const*>(m_bufferData + eventHeaderBufferPos);
         auto const eventHeader = PerfEventHeader(pEventHeader->type, pEventHeader->misc, pEventHeader->size);
         if (eventHeader.Size == 0 ||
-            eventHeader.Size > m_bufferUnmaskedPosEnd - m_bufferUnmaskedPos)
+            eventHeader.Size > remaining)
         {
             // If not realtime, this is probably not a real problem (unused buffer space or partially-overwritten event).
             // If this is realtime, the buffer is corrupt.
             // In either case, mark the buffer's events as consumed.
-            m_bufferUnmaskedPos = m_bufferUnmaskedPosEnd;
+            m_bufferDataPos = static_cast<size_t>(m_bufferDataHead64);
             m_session.m_corruptBufferCount += m_session.IsRealtime();
             break;
         }
@@ -564,15 +593,15 @@ TracingSession::BufferEnumerator::MoveNext() noexcept
         {
             // Unexpected - corrupt event header.
             DEBUG_PRINTF("CPU%u unaligned eventHeader.Size at pos %lx: %u\n",
-                m_cpuIndex, (unsigned long)m_bufferUnmaskedPos, eventHeader.Size);
+                m_cpuIndex, (unsigned long)m_bufferDataPos, eventHeader.Size);
 
             // The event is corrupt. Mark the buffer's events as consumed.
-            m_bufferUnmaskedPos = m_bufferUnmaskedPosEnd;
+            m_bufferDataPos = static_cast<size_t>(m_bufferDataHead64);
             m_session.m_corruptBufferCount += 1;
             break;
         }
 
-        m_bufferUnmaskedPos += eventHeader.Size;
+        m_bufferDataPos += eventHeader.Size;
 
         if (eventHeader.Type == PERF_RECORD_SAMPLE)
         {
@@ -583,10 +612,10 @@ TracingSession::BufferEnumerator::MoveNext() noexcept
         }
         else if (eventHeader.Type == PERF_RECORD_LOST)
         {
-            auto const newEventsLost = AtomicLoad64((__u64 const*)(
-                m_bufferData + ((eventHeaderBufferPos + sizeof(perf_event_header) + sizeof(uint64_t)) & m_bufferPosMask)));
-            m_session.m_lostEventCount += newEventsLost;
-            if (m_session.m_lostEventCount < newEventsLost)
+            auto const newEventsLost64 = AtomicLoad64((__u64 const*)(
+                m_bufferData + ((eventHeaderBufferPos + sizeof(perf_event_header) + sizeof(uint64_t)) & m_bufferDataPosMask)));
+            m_session.m_lostEventCount += newEventsLost64;
+            if (m_session.m_lostEventCount < newEventsLost64)
             {
                 m_session.m_lostEventCount = UINT64_MAX;
             }
@@ -607,30 +636,33 @@ TracingSession::BufferEnumerator::ParseSample(
     PerfEventHeader eventHeader,
     size_t eventHeaderBufferPos) noexcept
 {
-    assert(8 <= eventHeader.Size);
+    assert(sizeof(perf_event_header) <= eventHeader.Size);
     assert(0 == (eventHeader.Size & 7));
     assert(0 == (eventHeaderBufferPos & 7));
 
     uint8_t const* p;
-    if (auto const unmaskedPosEnd = eventHeaderBufferPos + eventHeader.Size;
-        0 == (unmaskedPosEnd & ~m_bufferPosMask))
+
+    auto const dataSize = eventHeader.Size - sizeof(perf_event_header);
+    auto const dataPos = (eventHeaderBufferPos + sizeof(perf_event_header)) & m_bufferDataPosMask;
+    if (auto const unmaskedDataPosEnd = dataPos + dataSize;
+        unmaskedDataPosEnd <= m_bufferDataPosMask + 1)
     {
         // Event does not wrap.
-        p = m_bufferData + eventHeaderBufferPos;
+        p = m_bufferData + dataPos;
     }
     else try
     {
         // Event wraps. We need to double-buffer it.
 
-        if (m_session.m_eventDataBuffer.size() < eventHeader.Size)
+        if (m_session.m_eventDataBuffer.size() < dataSize)
         {
-            m_session.m_eventDataBuffer.resize(eventHeader.Size);
+            m_session.m_eventDataBuffer.resize(dataSize);
         }
 
-        auto const afterWrap = unmaskedPosEnd - m_bufferPosMask - 1;
-        auto const beforeWrap = eventHeader.Size - afterWrap;
+        auto const afterWrap = unmaskedDataPosEnd - (m_bufferDataPosMask + 1);
+        auto const beforeWrap = dataSize - afterWrap;
         auto const buffer = m_session.m_eventDataBuffer.data();
-        memcpy(buffer, m_bufferData + eventHeaderBufferPos, beforeWrap);
+        memcpy(buffer, m_bufferData + dataPos, beforeWrap);
         memcpy(buffer + beforeWrap, m_bufferData, afterWrap);
         p = buffer;
     }
@@ -645,7 +677,7 @@ TracingSession::BufferEnumerator::ParseSample(
         return false; // out of memory
     }
 
-    auto const pEnd = p + eventHeader.Size;
+    auto const pEnd = p + dataSize;
     uint64_t infoId = -1;
     auto const infoSampleTypes = m_session.m_sampleType;
     PerfEventMetadata const* infoRawMeta = nullptr;
@@ -829,7 +861,7 @@ TracingSession::BufferEnumerator::ParseSample(
             }
         }
 
-        p += sizeof(uint32_t) + infoRawDataSize + sizeof(uint64_t) - 1;
+        p += sizeof(uint32_t) + infoRawDataSize;
     }
 
     assert(p <= pEnd);

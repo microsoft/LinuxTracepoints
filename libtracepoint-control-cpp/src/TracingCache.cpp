@@ -4,9 +4,9 @@
 #include <errno.h>
 #include <string.h>
 
+using namespace std::string_view_literals;
 using namespace tracepoint_control;
 using namespace tracepoint_decode;
-using namespace std::string_view_literals;
 
 static constexpr int8_t CommonTypeOffsetInit = -1;
 static constexpr uint8_t CommonTypeSizeInit = 0;
@@ -181,6 +181,50 @@ TracingCache::AddFromSystem(
         error = ENOMEM;
     }
 
+    return error;
+}
+
+_Success_(return == 0) int
+TracingCache::FindOrAddFromSystem(
+    std::string_view systemName,
+    std::string_view eventName,
+    _Out_ PerfEventMetadata const** ppMetadata) noexcept
+{
+    int error;
+    PerfEventMetadata const* metadata;
+
+    if (auto it = m_byName.find(EventName(systemName, eventName));
+        it != m_byName.end())
+    {
+        metadata = &it->second.Metadata;
+        error = 0;
+    }
+    else try
+    {
+        std::vector<char> systemAndFormat;
+        systemAndFormat.reserve(systemName.size() + 512);
+        systemAndFormat.assign(systemName.begin(), systemName.end());
+        systemAndFormat.push_back('\n'); // Just for convenience for debugging.
+        error = AppendTracingFormatFile(systemAndFormat, systemName, eventName);
+        if (error != 0)
+        {
+            metadata = nullptr;
+        }
+        else
+        {
+            error = Add(std::move(systemAndFormat), systemName.size(), sizeof(long) == 8);
+            metadata = error != 0
+                ? nullptr
+                : FindByName(systemName, eventName);
+        }
+    }
+    catch (...)
+    {
+        metadata = nullptr;
+        error = ENOMEM;
+    }
+
+    *ppMetadata = metadata;
     return error;
 }
 

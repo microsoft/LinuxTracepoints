@@ -1,3 +1,14 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+/*
+Helpers for locating the "/sys/.../tracing" directory and loading "format"
+files from it.
+
+The TracingCache class uses these functions to locate and load format
+information.
+*/
+
 #pragma once
 #ifndef _included_TracingPath_h
 #define _included_TracingPath_h 1
@@ -25,11 +36,11 @@ namespace tracepoint_control
     Returns the path to the "/sys/.../tracing" directory, usually either
     "/sys/kernel/tracing" or "/sys/kernel/debug/tracing".
 
-    Returns "" if no tracing directory could be found.
+    Returns "" if no tracing directory could be found (e.g. tracefs not mounted).
 
     Implementation: The first time this is called, it parses "/proc/mounts" to
-    find the tracefs mount point. Subsequent calls return the cached result.
-    This function is thread-safe.
+    find the tracefs or debugfs mount point. Subsequent calls return the cached
+    result. This function is thread-safe.
     */
     _Ret_z_ char const*
     GetTracingDirectory() noexcept;

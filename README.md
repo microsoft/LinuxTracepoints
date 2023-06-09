@@ -24,6 +24,15 @@ generate Linux Tracepoints from user mode.
     C++ API for writing runtime-defined `eventheader`-encapsulated events,
     intended for use as an implementation layer for a higher-level API like
     OpenTelemetry.
+- [libtracepoint-control-cpp](libtracepoint-control-cpp) -
+  C++ library for controlling a tracepoint collection session.
+  - `TracingPath.h` has functions for finding the `/sys/kernel/tracing`
+    mount point and reading `format` files.
+  - `TracingCache.h` implements a cache for tracking parsed `format` files
+    based on system+name or by `common_type` id.
+  - `TracingSession.h` implements session control (add/remove tracepoints
+    from a session) and data collection (enumerate the events that the
+    session has collected).
 - [libtracepoint-decode-cpp](libtracepoint-decode-cpp) -
   C++ library for decoding tracepoints. Works on both Linux and Windows.
   - `PerfEventInfo.h` defines the `PerfSampleEventInfo` and

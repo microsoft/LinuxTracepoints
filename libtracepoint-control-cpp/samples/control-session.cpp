@@ -1,7 +1,12 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <tracepoint/TracingSession.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+
+#include <tracepoint/PerfEventAbi.h>
 
 using namespace std::string_view_literals;
 using namespace tracepoint_control;
@@ -26,7 +31,10 @@ main(int argc, char* argv[])
         : TracingMode::RealTime;
 
     TracingCache cache;
-    TracingSession session(cache, TracingSessionOptions(mode, 0).WakeupEvents(1)); // 0 should result in a 1-page buffer.
+    TracingSession session(
+        cache,
+        TracingSessionOptions(mode, 0) // 0 should round up to a 1-page buffer.
+            .WakeupWatermark(100)); // WaitForWakeup waits for a buffer to have >= 100 bytes of data.
 
     fprintf(stderr, "Session: BC=%u BS=%lx RT=%u MODE=%u\n",
         session.BufferCount(), session.BufferSize(), session.IsRealtime(), (unsigned)session.Mode());
@@ -74,19 +82,18 @@ main(int argc, char* argv[])
             }
         }
 
-        error = session.FlushSampleEventsUnordered(
-            [](unsigned cpu, PerfSampleEventInfo const& event)
+        error = session.EnumerateSampleEventsUnordered(
+            [](PerfSampleEventInfo const& event)
             {
-                fprintf(stdout, "CPU%u: tid=%x time=0x%llx cpu=%u raw=0x%lx n=%s\n",
-                    cpu,
+                fprintf(stdout, "CPU%u: tid=%x time=0x%llx raw=0x%lx n=%s\n",
+                    event.cpu,
                     event.tid,
                     (long long unsigned)event.time,
-                    event.cpu,
                     event.raw_data_size,
                     event.name);
                 return 0;
             });
-        fprintf(stderr, "Flush: %u, Count=%llu, Lost=%llu, Bad=%llu, BadBuf=%llu\n",
+        fprintf(stderr, "Enum: %u, Count=%llu, Lost=%llu, Bad=%llu, BadBuf=%llu\n",
             error,
             (long long unsigned)session.SampleEventCount(),
             (long long unsigned)session.LostEventCount(),

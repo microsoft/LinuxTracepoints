@@ -1,3 +1,14 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+/*
+TracingCache: class that loads, parses, and caches the metadata (format)
+information for tracepoints.
+
+The TracingSession class uses TracingCache to manage format information for
+its tracepoints.
+*/
+
 #pragma once
 #ifndef _included_TracingCache_h
 #define _included_TracingCache_h 1
@@ -20,6 +31,9 @@
 
 namespace tracepoint_control
 {
+    /*
+    Loads, parses, and caches the metadata (format) information for tracepoints.
+    */
     class TracingCache
     {
     public:
@@ -35,14 +49,14 @@ namespace tracepoint_control
 
         /*
         If no events are present in cache, returns -1.
-        Otherwise, returns the offset of the common_type field.
+        Otherwise, returns the offset of the common_type field (usually 0).
         */
         int8_t
         CommonTypeOffset() const noexcept;
 
         /*
         If no events are present in cache, returns 0.
-        Otherwise, returns the size of the common_type field (1, 2, or 4).
+        Otherwise, returns the size of the common_type field (1, 2, or 4, usually 2).
         */
         uint8_t
         CommonTypeSize() const noexcept;
@@ -67,6 +81,7 @@ namespace tracepoint_control
 
         Implementation:
 
+        - Assume that rawData is host-endian.
         - Use CommonTypeOffset() and CommonTypeSize() to extract the common_type
           field value.
         - Use FindById() to find the matching metadata.
@@ -146,8 +161,8 @@ namespace tracepoint_control
 
         std::unordered_map<uint32_t, CacheVal> m_byId;
         std::unordered_map<EventName, CacheVal const&, EventNameHashOps, EventNameHashOps> m_byName;
-        int8_t m_commonTypeOffset; // -1 = unset.
-        uint8_t m_commonTypeSize;
+        int8_t m_commonTypeOffset; // -1 = unset
+        uint8_t m_commonTypeSize; // 0 = unset
     };
 }
 // namespace tracepoint_control

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <tracepoint/TracingSession.h>
 #include <assert.h>
 #include <errno.h>
@@ -7,7 +10,7 @@
 #include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <asm/unistd.h>
+#include <asm/unistd.h> // __NR_perf_event_open
 #include <linux/perf_event.h>
 
 #ifdef NDEBUG
@@ -32,24 +35,12 @@ perf_event_open(
     return syscall(__NR_perf_event_open, pe, pid, cpuIndex, groupFd, flags);
 }
 
-static uint64_t
-AtomicLoad64(__u64 const* src, int order = __ATOMIC_RELAXED) noexcept
-{
-    return __atomic_load_n(src, order);
-}
-
-static size_t
-AtomicLoad64AsSize(__u64 const* src, int order = __ATOMIC_RELAXED) noexcept
-{
-    return static_cast<size_t>(__atomic_load_n(src, order));
-}
-
 // Return the smallest power of 2 that is >= pageSize and >= bufferSize.
 // Assumes pageSize is a power of 2.
 static size_t
 RoundUpBufferSize(uint32_t pageSize, size_t bufferSize) noexcept
 {
-    static constexpr auto BufferSizeMax =
+    static constexpr size_t BufferSizeMax =
         static_cast<size_t>(1) << (sizeof(size_t) * 8 - 1);
 
     assert(0 != pageSize);
@@ -75,23 +66,19 @@ TracingSession::TracingSession(
     , m_wakeupUseWatermark(options.m_wakeupUseWatermark)
     , m_wakeupValue(options.m_wakeupValue)
     , m_sampleType(options.m_sampleType)
-    , m_cpuCount(sysconf(_SC_NPROCESSORS_ONLN))
+    , m_bufferCount(sysconf(_SC_NPROCESSORS_ONLN))
     , m_pageSize(sysconf(_SC_PAGESIZE))
     , m_bufferSize(RoundUpBufferSize(m_pageSize, options.m_bufferSize))
-    , m_cpuMmaps(std::make_unique<unique_mmap[]>(m_cpuCount)) // may throw bad_alloc.
-    , m_tracepointInfoById() // may throw bad_alloc.
+    , m_bufferMmaps(std::make_unique<unique_mmap[]>(m_bufferCount)) // may throw bad_alloc.
+    , m_tracepointInfoById() // may throw bad_alloc (but probably doesn't).
     , m_eventDataBuffer()
     , m_pollfd(nullptr)
-    , m_leaderCpuFiles(nullptr)
+    , m_bufferLeaderFiles(nullptr)
     , m_sampleEventCount(0)
     , m_lostEventCount(0)
     , m_corruptEventCount(0)
     , m_corruptBufferCount(0)
 {
-    // Keep in sync with comments for SampleType() method.
-    static_assert(TracingSessionOptions::SampleTypeDefault ==
-        PERF_SAMPLE_TID + PERF_SAMPLE_TIME + PERF_SAMPLE_CPU + PERF_SAMPLE_RAW,
-        "SampleFormatDefault out of sync with header and comments");
     assert(options.m_mode <= TracingMode::RealTime);
     return;
 }
@@ -117,7 +104,7 @@ TracingSession::BufferSize() const noexcept
 uint32_t
 TracingSession::BufferCount() const noexcept
 {
-    return m_cpuCount;
+    return m_bufferCount;
 }
 
 uint64_t
@@ -148,10 +135,10 @@ void
 TracingSession::Clear() noexcept
 {
     m_tracepointInfoById.clear();
-    m_leaderCpuFiles = nullptr;
-    for (unsigned cpuIndex = 0; cpuIndex != m_cpuCount; cpuIndex += 1)
+    m_bufferLeaderFiles = nullptr;
+    for (unsigned bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
     {
-        m_cpuMmaps[cpuIndex].reset();
+        m_bufferMmaps[bufferIndex].reset();
     }
 }
 
@@ -179,7 +166,7 @@ TracingSession::DisableTracePoint(
         if (it != m_tracepointInfoById.end() &&
             it->second.EnableState != TracepointEnableState::Disabled)
         {
-            error = IoctlForEachFile(it->second.CpuFiles.get(), m_cpuCount, PERF_EVENT_IOC_DISABLE, nullptr);
+            error = IoctlForEachFile(it->second.BufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_DISABLE, nullptr);
             it->second.EnableState = error
                 ? TracepointEnableState::Unknown
                 : TracepointEnableState::Disabled;
@@ -216,7 +203,7 @@ TracingSession::EnableTracePoint(
         // Create a new tpi if not already there.
         // May throw bad_alloc.
         auto er = m_tracepointInfoById.try_emplace(metadata->Id(),
-            std::make_unique<unique_fd[]>(m_cpuCount),
+            std::make_unique<unique_fd[]>(m_bufferCount),
             *metadata);
         auto& tpi = er.first->second;
         if (!er.second)
@@ -224,7 +211,7 @@ TracingSession::EnableTracePoint(
             // Event already in list. Make sure it's enabled.
             if (tpi.EnableState != TracepointEnableState::Enabled)
             {
-                error = IoctlForEachFile(tpi.CpuFiles.get(), m_cpuCount, PERF_EVENT_IOC_ENABLE, nullptr);
+                error = IoctlForEachFile(tpi.BufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_ENABLE, nullptr);
                 tpi.EnableState = error
                     ? TracepointEnableState::Unknown
                     : TracepointEnableState::Enabled;
@@ -247,11 +234,11 @@ TracingSession::EnableTracePoint(
         eventAttribs.wakeup_events = m_wakeupValue;
         eventAttribs.clockid = CLOCK_MONOTONIC_RAW;
 
-        for (unsigned cpuIndex = 0; cpuIndex != m_cpuCount; cpuIndex += 1)
+        for (unsigned bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
         {
             errno = 0;
-            tpi.CpuFiles[cpuIndex].reset(perf_event_open(&eventAttribs, -1, cpuIndex, -1, PERF_FLAG_FD_CLOEXEC));
-            if (!tpi.CpuFiles[cpuIndex])
+            tpi.BufferFiles[bufferIndex].reset(perf_event_open(&eventAttribs, -1, bufferIndex, -1, PERF_FLAG_FD_CLOEXEC));
+            if (!tpi.BufferFiles[bufferIndex])
             {
                 error = errno;
                 if (error == 0)
@@ -264,10 +251,10 @@ TracingSession::EnableTracePoint(
             }
         }
 
-        if (m_leaderCpuFiles)
+        if (m_bufferLeaderFiles)
         {
             // Leader already exists. Add this event to the leader's mmaps.
-            error = IoctlForEachFile(tpi.CpuFiles.get(), m_cpuCount, PERF_EVENT_IOC_SET_OUTPUT, m_leaderCpuFiles);
+            error = IoctlForEachFile(tpi.BufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_SET_OUTPUT, m_bufferLeaderFiles);
             if (error)
             {
                 m_tracepointInfoById.erase(metadata->Id());
@@ -282,10 +269,10 @@ TracingSession::EnableTracePoint(
                 : PROT_READ;
 
             // This is the first event. Make it the "leader".
-            for (unsigned cpuIndex = 0; cpuIndex != m_cpuCount; cpuIndex += 1)
+            for (unsigned bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
             {
                 errno = 0;
-                auto cpuMap = mmap(nullptr, mmapSize, prot, MAP_SHARED, tpi.CpuFiles[cpuIndex].get(), 0);
+                auto cpuMap = mmap(nullptr, mmapSize, prot, MAP_SHARED, tpi.BufferFiles[bufferIndex].get(), 0);
                 if (MAP_FAILED == cpuMap)
                 {
                     error = errno;
@@ -295,19 +282,19 @@ TracingSession::EnableTracePoint(
                     }
 
                     // Clean up any mmaps that we opened.
-                    for (unsigned cpuIndex2 = 0; cpuIndex2 != cpuIndex; cpuIndex2 += 1)
+                    for (unsigned bufferIndex2 = 0; bufferIndex2 != bufferIndex; bufferIndex2 += 1)
                     {
-                        m_cpuMmaps[cpuIndex2].reset();
+                        m_bufferMmaps[bufferIndex2].reset();
                     }
 
                     m_tracepointInfoById.erase(metadata->Id());
                     goto Done;
                 }
 
-                m_cpuMmaps[cpuIndex].reset(cpuMap, mmapSize);
+                m_bufferMmaps[bufferIndex].reset(cpuMap, mmapSize);
             }
 
-            m_leaderCpuFiles = tpi.CpuFiles.get(); // Commit this event as the leader.
+            m_bufferLeaderFiles = tpi.BufferFiles.get(); // Commit this event as the leader.
         }
 
         tpi.EnableState = TracepointEnableState::Enabled;
@@ -326,12 +313,12 @@ _Success_(return == 0) int
 TracingSession::WaitForWakeup(
     timespec const* timeout,
     sigset_t const* sigmask,
-    _Out_ int* pActiveCount) noexcept
+    _Out_opt_ int* pActiveCount) noexcept
 {
     int error;
     int activeCount;
 
-    if (!IsRealtime() || m_leaderCpuFiles == nullptr)
+    if (!IsRealtime() || m_bufferLeaderFiles == nullptr)
     {
         activeCount = 0;
         error = EPERM;
@@ -340,15 +327,15 @@ TracingSession::WaitForWakeup(
     {
         if (m_pollfd == nullptr)
         {
-            m_pollfd = std::make_unique<pollfd[]>(m_cpuCount);
+            m_pollfd = std::make_unique<pollfd[]>(m_bufferCount);
         }
 
-        for (unsigned i = 0; i != m_cpuCount; i += 1)
+        for (unsigned i = 0; i != m_bufferCount; i += 1)
         {
-            m_pollfd[i] = { m_leaderCpuFiles[i].get(), POLLIN, 0 };
+            m_pollfd[i] = { m_bufferLeaderFiles[i].get(), POLLIN, 0 };
         }
 
-        activeCount = ppoll(m_pollfd.get(), m_cpuCount, timeout, sigmask);
+        activeCount = ppoll(m_pollfd.get(), m_bufferCount, timeout, sigmask);
         if (activeCount < 0)
         {
             activeCount = 0;
@@ -365,7 +352,10 @@ TracingSession::WaitForWakeup(
         error = ENOMEM;
     }
 
-    *pActiveCount = activeCount;
+    if (pActiveCount)
+    {
+        *pActiveCount = activeCount;
+    }
     return error;
 }
 
@@ -375,16 +365,16 @@ TracingSession::GetBufferFiles(
 {
     int error;
 
-    if (m_leaderCpuFiles == nullptr)
+    if (m_bufferLeaderFiles == nullptr)
     {
-        memset(pBufferFiles, 0, m_cpuCount * sizeof(pBufferFiles[0]));
+        memset(pBufferFiles, 0, m_bufferCount * sizeof(pBufferFiles[0]));
         error = EPERM;
     }
     else
     {
-        for (unsigned i = 0; i != m_cpuCount; i += 1)
+        for (unsigned i = 0; i != m_bufferCount; i += 1)
         {
-            pBufferFiles[i] = m_leaderCpuFiles[i].get();
+            pBufferFiles[i] = m_bufferLeaderFiles[i].get();
         }
 
         error = 0;
@@ -425,26 +415,15 @@ TracingSession::MmapSize() const noexcept
     return m_pageSize + m_bufferSize;
 }
 
-TracingSession::PerfEventHeader::PerfEventHeader(
-    uint32_t type,
-    uint16_t misc,
-    uint16_t size) noexcept
-    : Type(type)
-    , Misc(misc)
-    , Size(size)
-{
-    return;
-}
-
 TracingSession::TracepointInfo::~TracepointInfo()
 {
     return;
 }
 
 TracingSession::TracepointInfo::TracepointInfo(
-    std::unique_ptr<unique_fd[]> cpuFiles,
+    std::unique_ptr<unique_fd[]> bufferFiles,
     tracepoint_decode::PerfEventMetadata const& metadata) noexcept
-    : CpuFiles(std::move(cpuFiles))
+    : BufferFiles(std::move(bufferFiles))
     , Metadata(metadata)
     , EnableState(TracepointEnableState::Unknown)
 {
@@ -458,33 +437,45 @@ TracingSession::~TracingSession()
 
 TracingSession::BufferEnumerator::~BufferEnumerator()
 {
-    auto const bufferHeader = static_cast<perf_event_mmap_page*>(m_session.m_cpuMmaps[m_cpuIndex].get());
+    auto const bufferHeader = static_cast<perf_event_mmap_page*>(
+        m_session.m_bufferMmaps[m_bufferIndex].get());
 
     if (!m_session.IsRealtime())
     {
         // Should not change while collection paused.
-        assert(m_bufferDataHead64 == AtomicLoad64(&bufferHeader->data_head));
+        assert(m_bufferDataHead64 == __atomic_load_n(&bufferHeader->data_head, __ATOMIC_RELAXED));
 
-        int error = ioctl(m_session.m_leaderCpuFiles[m_cpuIndex].get(), PERF_EVENT_IOC_PAUSE_OUTPUT, 0);
+        int error = ioctl(m_session.m_bufferLeaderFiles[m_bufferIndex].get(), PERF_EVENT_IOC_PAUSE_OUTPUT, 0);
         if (error != 0)
         {
             DEBUG_PRINTF("CPU%u unpause error %u\n",
-                m_cpuIndex, error);
+                m_bufferIndex, error);
         }
     }
     else if (m_bufferDataPos != m_bufferDataTail)
     {
         // Create a new 64-bit tail value.
-        // If PTR64, new value is m_bufferDataPos.
-        // If PTR32, use top 32 bits from m_bufferDataHead64 and low 32 bits from m_bufferDataPos.
-        uint64_t const newTail64 = m_bufferDataHead64 - static_cast<size_t>(m_bufferDataHead64) + m_bufferDataPos;
+        uint64_t newTail64;
+        static_assert(sizeof(m_bufferDataPos) == 8 || sizeof(m_bufferDataPos) == 4);
+        if constexpr (sizeof(m_bufferDataPos) == 8)
+        {
+            newTail64 = m_bufferDataPos;
+        }
+        else
+        {
+            // Convert m_bufferDataPos to a 64-bit value relative to m_bufferDataHead64.
+            // Order of operations needs to be careful about 64-bit wrapping, e.g.
+            // - DataHead64 = 0x600000000
+            // - DataHead32 = 0x000000000
+            // - DataPos32  = 0x0FFFFFFF8
+            // Correct newTail64 is 0x5FFFFFFF8, not 0x6FFFFFFF8
+            newTail64 = m_bufferDataHead64 - (static_cast<size_t>(m_bufferDataHead64) - m_bufferDataPos);
+        }
+        
         assert(m_bufferDataHead64 - newTail64 <= m_bufferDataPosMask + 1);
 
         // ATOMIC_RELEASE: perf_events.h recommends smp_mb() here.
-        __atomic_store_n(
-            &bufferHeader->data_tail,
-            newTail64,
-            __ATOMIC_RELEASE);
+        __atomic_store_n(&bufferHeader->data_tail, newTail64, __ATOMIC_RELEASE);
     }
 
     return;
@@ -492,31 +483,32 @@ TracingSession::BufferEnumerator::~BufferEnumerator()
 
 TracingSession::BufferEnumerator::BufferEnumerator(
     TracingSession& session,
-    unsigned cpuIndex) noexcept
+    unsigned bufferIndex) noexcept
     : m_session(session)
-    , m_cpuIndex(cpuIndex)
+    , m_bufferIndex(bufferIndex)
     , m_current()
 {
     auto const realtime = m_session.IsRealtime();
     if (!realtime)
     {
-        int error = ioctl(m_session.m_leaderCpuFiles[m_cpuIndex].get(), PERF_EVENT_IOC_PAUSE_OUTPUT, 1);
+        int error = ioctl(m_session.m_bufferLeaderFiles[m_bufferIndex].get(), PERF_EVENT_IOC_PAUSE_OUTPUT, 1);
         if (error != 0)
         {
             DEBUG_PRINTF("CPU%u pause error %u\n",
-                m_cpuIndex, error);
+                m_bufferIndex, error);
         }
     }
 
-    auto const bufferHeader = static_cast<perf_event_mmap_page const*>(session.m_cpuMmaps[cpuIndex].get());
+    auto const bufferMmap = session.m_bufferMmaps[bufferIndex].get();
+    auto const bufferHeader = static_cast<perf_event_mmap_page const*>(bufferMmap);
 
     // ATOMIC_ACQUIRE: perf_events.h recommends smp_rmb() here.
-    m_bufferDataHead64 = AtomicLoad64(&bufferHeader->data_head, __ATOMIC_ACQUIRE);
+    m_bufferDataHead64 = __atomic_load_n(&bufferHeader->data_head, __ATOMIC_ACQUIRE);
 
-    auto const bufferDataOffset = AtomicLoad64AsSize(&bufferHeader->data_offset);
-    auto const bufferDataSize = AtomicLoad64AsSize(&bufferHeader->data_size);
+    auto const bufferDataOffset = static_cast<size_t>(bufferHeader->data_offset);
+    auto const bufferDataSize = static_cast<size_t>(bufferHeader->data_size);
 
-    m_bufferData = reinterpret_cast<uint8_t const*>(bufferHeader) + bufferDataOffset;
+    m_bufferData = static_cast<uint8_t const*>(bufferMmap) + bufferDataOffset;
     m_bufferDataPosMask = bufferDataSize - 1;
 
     if (0 != (m_bufferDataHead64 & 7) ||
@@ -526,7 +518,7 @@ TracingSession::BufferEnumerator::BufferEnumerator(
     {
         // Unexpected - corrupt trace buffer.
         DEBUG_PRINTF("CPU%u bad perf_event_mmap_page: head=%llx offset=%lx size=%lx\n",
-            cpuIndex,
+            bufferIndex,
             (unsigned long long)m_bufferDataHead64,
             (unsigned long)bufferDataOffset,
             (unsigned long)bufferDataSize);
@@ -543,17 +535,18 @@ TracingSession::BufferEnumerator::BufferEnumerator(
     else
     {
         // Realtime: write_backward == 0
-        auto const bufferDataTail64 = AtomicLoad64(&bufferHeader->data_tail);
+        auto const bufferDataTail64 = bufferHeader->data_tail;
         m_bufferDataTail = static_cast<size_t>(bufferDataTail64);
         if (m_bufferDataHead64 - bufferDataTail64 > bufferDataSize)
         {
             // Unexpected - assume bad tail pointer.
             DEBUG_PRINTF("CPU%u bad data_tail: head=%llx tail=%llx offset=%lx size=%lx\n",
-                cpuIndex,
+                bufferIndex,
                 (unsigned long long)m_bufferDataHead64,
                 (unsigned long long)bufferDataTail64,
                 (unsigned long)bufferDataOffset,
                 (unsigned long)bufferDataSize);
+            m_bufferDataTail = static_cast<size_t>(m_bufferDataHead64) - bufferDataSize; // Ensure tail gets updated.
             m_bufferDataPos = static_cast<size_t>(m_bufferDataHead64);
             m_session.m_corruptBufferCount += 1;
         }
@@ -576,44 +569,48 @@ TracingSession::BufferEnumerator::MoveNext() noexcept
         }
 
         auto const eventHeaderBufferPos = m_bufferDataPos & m_bufferDataPosMask;
-        auto const pEventHeader = reinterpret_cast<perf_event_header const*>(m_bufferData + eventHeaderBufferPos);
-        auto const eventHeader = PerfEventHeader(pEventHeader->type, pEventHeader->misc, pEventHeader->size);
-        if (eventHeader.Size == 0 ||
-            eventHeader.Size > remaining)
+        auto const eventHeader = *reinterpret_cast<perf_event_header const*>(m_bufferData + eventHeaderBufferPos);
+
+        if (eventHeader.size == 0 ||
+            eventHeader.size > remaining)
         {
-            // If not realtime, this is probably not a real problem (unused buffer space or partially-overwritten event).
-            // If this is realtime, the buffer is corrupt.
+            // - Circular: this is probably not a real problem - it's probably
+            //   unused buffer space or partially-overwritten event.
+            // - Realtime: The buffer is corrupt.
+            m_session.m_corruptBufferCount += m_session.IsRealtime();
+
             // In either case, mark the buffer's events as consumed.
             m_bufferDataPos = static_cast<size_t>(m_bufferDataHead64);
-            m_session.m_corruptBufferCount += m_session.IsRealtime();
             break;
         }
 
-        if (0 != (eventHeader.Size & 7))
+        if (0 != (eventHeader.size & 7))
         {
             // Unexpected - corrupt event header.
             DEBUG_PRINTF("CPU%u unaligned eventHeader.Size at pos %lx: %u\n",
-                m_cpuIndex, (unsigned long)m_bufferDataPos, eventHeader.Size);
+                m_bufferIndex, (unsigned long)m_bufferDataPos, eventHeader.size);
 
             // The event is corrupt. Mark the buffer's events as consumed.
-            m_bufferDataPos = static_cast<size_t>(m_bufferDataHead64);
             m_session.m_corruptBufferCount += 1;
+            m_bufferDataPos = static_cast<size_t>(m_bufferDataHead64);
             break;
         }
 
-        m_bufferDataPos += eventHeader.Size;
+        m_bufferDataPos += eventHeader.size;
 
-        if (eventHeader.Type == PERF_RECORD_SAMPLE)
+        if (eventHeader.type == PERF_RECORD_SAMPLE)
         {
-            if (ParseSample(eventHeader, eventHeaderBufferPos))
+            if (ParseSample(
+                eventHeader.size - sizeof(perf_event_header),
+                (eventHeaderBufferPos + sizeof(perf_event_header)) & m_bufferDataPosMask))
             {
                 return true;
             }
         }
-        else if (eventHeader.Type == PERF_RECORD_LOST)
+        else if (eventHeader.type == PERF_RECORD_LOST)
         {
-            auto const newEventsLost64 = AtomicLoad64((__u64 const*)(
-                m_bufferData + ((eventHeaderBufferPos + sizeof(perf_event_header) + sizeof(uint64_t)) & m_bufferDataPosMask)));
+            auto const newEventsLost64 = *reinterpret_cast<uint64_t const*>(
+                m_bufferData + ((eventHeaderBufferPos + sizeof(perf_event_header) + sizeof(uint64_t)) & m_bufferDataPosMask));
             m_session.m_lostEventCount += newEventsLost64;
             if (m_session.m_lostEventCount < newEventsLost64)
             {
@@ -633,51 +630,52 @@ TracingSession::BufferEnumerator::Current() const noexcept
 
 bool
 TracingSession::BufferEnumerator::ParseSample(
-    PerfEventHeader eventHeader,
-    size_t eventHeaderBufferPos) noexcept
+    size_t sampleDataSize,
+    size_t sampleDataBufferPos) noexcept
 {
-    assert(sizeof(perf_event_header) <= eventHeader.Size);
-    assert(0 == (eventHeader.Size & 7));
-    assert(0 == (eventHeaderBufferPos & 7));
+    assert(0 == (sampleDataSize & 7));
+    assert(0 == (sampleDataBufferPos & 7));
 
     uint8_t const* p;
 
-    auto const dataSize = eventHeader.Size - sizeof(perf_event_header);
-    auto const dataPos = (eventHeaderBufferPos + sizeof(perf_event_header)) & m_bufferDataPosMask;
-    if (auto const unmaskedDataPosEnd = dataPos + dataSize;
-        unmaskedDataPosEnd <= m_bufferDataPosMask + 1)
+    auto const bufferDataSize = m_bufferDataPosMask + 1;
+    if (auto const unmaskedDataPosEnd = sampleDataBufferPos + sampleDataSize;
+        unmaskedDataPosEnd <= bufferDataSize)
     {
         // Event does not wrap.
-        p = m_bufferData + dataPos;
+        p = m_bufferData + sampleDataBufferPos;
     }
-    else try
+    else
     {
         // Event wraps. We need to double-buffer it.
 
-        if (m_session.m_eventDataBuffer.size() < dataSize)
+        if (m_session.m_eventDataBuffer.size() < sampleDataSize)
         {
-            m_session.m_eventDataBuffer.resize(dataSize);
+            try
+            {
+                m_session.m_eventDataBuffer.resize(sampleDataSize);
+            }
+            catch (...)
+            {
+                m_session.m_lostEventCount += 1;
+                if (m_session.m_lostEventCount == 0)
+                {
+                    m_session.m_lostEventCount -= 1;
+                }
+
+                return false; // out of memory
+            }
         }
 
-        auto const afterWrap = unmaskedDataPosEnd - (m_bufferDataPosMask + 1);
-        auto const beforeWrap = dataSize - afterWrap;
+        auto const afterWrap = unmaskedDataPosEnd - bufferDataSize;
+        auto const beforeWrap = sampleDataSize - afterWrap;
         auto const buffer = m_session.m_eventDataBuffer.data();
-        memcpy(buffer, m_bufferData + dataPos, beforeWrap);
+        memcpy(buffer, m_bufferData + sampleDataBufferPos, beforeWrap);
         memcpy(buffer + beforeWrap, m_bufferData, afterWrap);
         p = buffer;
     }
-    catch (...)
-    {
-        m_session.m_lostEventCount += 1;
-        if (m_session.m_lostEventCount == 0)
-        {
-            m_session.m_lostEventCount -= 1;
-        }
 
-        return false; // out of memory
-    }
-
-    auto const pEnd = p + dataSize;
+    auto const pEnd = p + sampleDataSize;
     uint64_t infoId = -1;
     auto const infoSampleTypes = m_session.m_sampleType;
     PerfEventMetadata const* infoRawMeta = nullptr;
@@ -831,6 +829,8 @@ TracingSession::BufferEnumerator::ParseSample(
 
     PerfSampleRaw:
 
+        assert(p < pEnd);
+
         auto const* pRaw = reinterpret_cast<uint32_t const*>(p);
         infoRawDataSize = pRaw[0];
         infoRawData = reinterpret_cast<char const*>(pRaw + 1);
@@ -861,10 +861,12 @@ TracingSession::BufferEnumerator::ParseSample(
             }
         }
 
-        p += sizeof(uint32_t) + infoRawDataSize;
+        assert(p + sizeof(uint32_t) + infoRawDataSize <= pEnd);
     }
-
-    assert(p <= pEnd);
+    else
+    {
+        assert(p <= pEnd);
+    }
 
     m_current.id = infoId;
     m_current.attr = nullptr;

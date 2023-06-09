@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <tracepoint/TracingCache.h>
 #include <tracepoint/TracingPath.h>
 #include <assert.h>
@@ -29,7 +32,7 @@ size_t
 TracingCache::EventNameHashOps::operator()(
     EventName const& a) const noexcept
 {
-    std::hash<std::string_view> hasher;
+    std::hash<std::string_view> const hasher;
     return hasher(a.Event) ^ hasher(a.System);
 }
 
@@ -56,8 +59,8 @@ TracingCache::~TracingCache() noexcept
 }
 
 TracingCache::TracingCache() noexcept(false)
-    : m_byId() // may throw bad_alloc (in theory).
-    , m_byName() // may throw bad_alloc (in theory).
+    : m_byId() // may throw bad_alloc (but probably doesn't).
+    , m_byName() // may throw bad_alloc (but probably doesn't).
     , m_commonTypeOffset(CommonTypeOffsetInit)
     , m_commonTypeSize(CommonTypeSizeInit)
 {
@@ -143,9 +146,9 @@ TracingCache::AddFromFormat(
     try
     {
         std::vector<char> systemAndFormat;
-        systemAndFormat.reserve(systemName.size() + 1 + formatFileContents.size());
+        systemAndFormat.reserve(systemName.size() + 1 + formatFileContents.size()); // may throw
         systemAndFormat.assign(systemName.begin(), systemName.end());
-        systemAndFormat.push_back('\n'); // Just for convenience for debugging.
+        systemAndFormat.push_back('\n'); // For readability when debugging.
         systemAndFormat.insert(systemAndFormat.end(), formatFileContents.begin(), formatFileContents.end());
         error = Add(std::move(systemAndFormat), systemName.size(), longSize64);
     }
@@ -167,9 +170,9 @@ TracingCache::AddFromSystem(
     try
     {
         std::vector<char> systemAndFormat;
-        systemAndFormat.reserve(systemName.size() + 512);
+        systemAndFormat.reserve(systemName.size() + 512); // may throw
         systemAndFormat.assign(systemName.begin(), systemName.end());
-        systemAndFormat.push_back('\n'); // Just for convenience for debugging.
+        systemAndFormat.push_back('\n'); // For readability when debugging.
         error = AppendTracingFormatFile(systemAndFormat, systemName, eventName);
         if (error == 0)
         {
@@ -199,29 +202,13 @@ TracingCache::FindOrAddFromSystem(
         metadata = &it->second.Metadata;
         error = 0;
     }
-    else try
+    else
     {
-        std::vector<char> systemAndFormat;
-        systemAndFormat.reserve(systemName.size() + 512);
-        systemAndFormat.assign(systemName.begin(), systemName.end());
-        systemAndFormat.push_back('\n'); // Just for convenience for debugging.
-        error = AppendTracingFormatFile(systemAndFormat, systemName, eventName);
-        if (error != 0)
+        error = AddFromSystem(systemName, eventName);
+        if (error == 0)
         {
-            metadata = nullptr;
+            metadata = FindByName(systemName, eventName);
         }
-        else
-        {
-            error = Add(std::move(systemAndFormat), systemName.size(), sizeof(long) == 8);
-            metadata = error != 0
-                ? nullptr
-                : FindByName(systemName, eventName);
-        }
-    }
-    catch (...)
-    {
-        metadata = nullptr;
-        error = ENOMEM;
     }
 
     *ppMetadata = metadata;
@@ -272,16 +259,17 @@ TracingCache::Add(
                     {
                         commonTypeOffset = static_cast<int8_t>(field.Offset());
                         commonTypeSize = static_cast<uint8_t>(field.Size());
+
+                        if (m_commonTypeOffset == CommonTypeOffsetInit)
+                        {
+                            // First event to be parsed. Use its "common_type" field.
+                            assert(m_commonTypeSize == CommonTypeSizeInit);
+                            m_commonTypeOffset = commonTypeOffset;
+                            m_commonTypeSize = commonTypeSize;
+                        }
                     }
                     break;
                 }
-            }
-
-            if (m_commonTypeOffset == CommonTypeOffsetInit)
-            {
-                // First event to be parsed. Use its "common_type" field.
-                m_commonTypeOffset = commonTypeOffset;
-                m_commonTypeSize = commonTypeSize;
             }
 
             if (commonTypeOffset == CommonTypeOffsetInit)

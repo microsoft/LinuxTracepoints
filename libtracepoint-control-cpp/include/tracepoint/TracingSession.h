@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/*
+TracingSession class that manages a tracepoint collection session.
+*/
+
 #pragma once
 #ifndef _included_TracingSession_h
 #define _included_TracingSession_h
@@ -25,8 +29,8 @@
 #ifndef _In_reads_opt_
 #define _In_reads_opt_(size)
 #endif
-#ifndef _Out_
-#define _Out_
+#ifndef _Out_opt_
+#define _Out_opt_
 #endif
 #ifndef _Out_writes_
 #define _Out_writes_(size)
@@ -39,15 +43,34 @@ struct timespec; // time.h
 
 namespace tracepoint_control
 {
+    /*
+    Mode to use for a tracepoint collection session:
+
+    - Circular: Used for "flight recorder" scenarios. Events are collected
+      into fixed-size buffers (one buffer per CPU). When buffer is full, new
+      events overwrite old events. At any point, you can pause collection,
+      enumerate the contents of the buffer, and resume collection. (Events
+      received while collection is paused will be lost.)
+      
+      For example, we can record information about what is happening on the
+      system into memory, and then if a program crashes, we save the data to
+      disk so we can discover what was happening on the system in the moments
+      leading up to the crash.
+
+    - RealTime: Used for logging scenarios. Events are collected into
+      fixed-size buffers (one buffer per CPU). When buffer is full, events will
+      be lost. At any point, we can enumerate events from the buffer, consuming
+      them to make room for new events (no pause required).
+    */
     enum class TracingMode : unsigned char
     {
         /*
         Buffers will be managed as circular:
 
         - If buffer is full, new events will overwrite old events.
-        - Events will be read from the buffer newest-to-oldest.
-        - Procedure for reading data: pause buffer, read events, unpause.
-          Events arriving while buffer is paused will be lost.
+        - Natural event enumeration order is newest-to-oldest (per buffer).
+        - Procedure for reading data: pause buffer, enumerate events, unpause.
+          (Events arriving while buffer is paused will be lost.)
         */
         Circular,
 
@@ -55,14 +78,29 @@ namespace tracepoint_control
         Buffers will be managed as realtime:
 
         - If buffer is full, new events will be lost.
-        - Events will be read from the buffer oldest-to-newest.
-        - Procedure for reading data: read events, mark the events as consumed.
-        - Can use WaitForWakeup() or poll() to wait for data to become available
-          (wakeup condition).
+        - Natural event enumeration order is oldest-to-newest (per buffer).
+        - Procedure for reading data: enumerate events, marking the events as
+          consumed to make room for new events.
+        - Can use WaitForWakeup() or poll() to wait for data to become available.
         */
         RealTime,
     };
 
+    /*
+    Configuration settings for a tracepoint collection session.
+
+    Required settings are specified as constructor parameters.
+    Optional settings are set by calling methods.
+
+    Example:
+
+        TracingCache cache;
+        TracingSession session(
+            cache,
+            TracingSessionOptions(TracingMode::RealTime, 65536) // Required
+                .WakeupWatermark(32768)                         // Optional
+                );
+    */
     class TracingSessionOptions
     {
         static constexpr auto SampleTypeDefault = 0x486u;
@@ -71,11 +109,14 @@ namespace tracepoint_control
     public:
 
         /*
-        Initializes a TracingSessionOptions with the specified mode and buffer size.
+        Initializes a TracingSessionOptions to configure a session with the specified
+        mode and buffer size.
 
-        - mode: controls whether the buffer is managed as circular or realtime.
-        - bufferSize: controls the size of each buffer. This value will be rounded up
-          to a power of 2. Note that the session will allocate one buffer per CPU.
+        - mode: controls whether the buffer is managed as Circular or RealTime.
+
+        - bufferSize: specifies the size of each buffer in bytes. This value will be
+          rounded up to a power of 2 that is equal to or greater than the page size.
+          Note that the session will allocate one buffer for each CPU.
         */
         constexpr
         TracingSessionOptions(
@@ -83,7 +124,7 @@ namespace tracepoint_control
             size_t bufferSize) noexcept
             : m_bufferSize(bufferSize)
             , m_mode(mode)
-            , m_wakeupUseWatermark(false)
+            , m_wakeupUseWatermark(true)
             , m_wakeupValue(0)
             , m_sampleType(SampleTypeDefault)
         {
@@ -93,8 +134,17 @@ namespace tracepoint_control
         /*
         Flags indicating what information should be recorded for each tracepoint.
 
-        Flags use the perf_event_sample_format values defined in perf_event.h or
-        PerfEventAbi.h. The following flags are supported:
+        Flags use the perf_event_sample_format values defined in <linux/perf_event.h>
+        or <tracepoint/PerfEventAbi.h>.
+        
+        The default value is:
+
+        | PERF_SAMPLE_TID
+        | PERF_SAMPLE_TIME
+        | PERF_SAMPLE_CPU
+        | PERF_SAMPLE_RAW
+
+        The following flags are supported:
 
         | PERF_SAMPLE_IDENTIFIER
         | PERF_SAMPLE_IP
@@ -108,12 +158,8 @@ namespace tracepoint_control
         | PERF_SAMPLE_CALLCHAIN
         | PERF_SAMPLE_RAW
 
-        Default value is:
-
-        | PERF_SAMPLE_TID
-        | PERF_SAMPLE_TIME
-        | PERF_SAMPLE_CPU
-        | PERF_SAMPLE_RAW
+        Note that you'll almost always want to include PERF_SAMPLE_RAW since that
+        is the event's raw data (the event field values).
         */
         constexpr TracingSessionOptions&
         SampleType(uint32_t sampleType) noexcept
@@ -123,31 +169,15 @@ namespace tracepoint_control
         }
 
         /*
-        For realtime sessions only: sets the number of unconsumed
-        PERF_RECORD_SAMPLE events that a realtime buffer must contain to
-        trigger wakeup.
+        For realtime sessions only: sets the number of bytes of unconsumed event
+        data (counting both SAMPLE and non-SAMPLE events) that a realtime buffer
+        must contain to trigger wakeup (see WaitForWakeup).
 
-        The default value is WakeupEvents(0).
+        The default value is WakeupWatermark(0).
 
-        Note that setting this will disable WakeupWatermark().
-        */
-        constexpr TracingSessionOptions&
-        WakeupEvents(uint32_t wakeupEvents) noexcept
-        {
-            m_wakeupUseWatermark = false;
-            m_wakeupValue = wakeupEvents;
-            return *this;
-        }
-
-        /*
-        For realtime sessions only: sets the number of bytes of unconsumed
-        event data (both SAMPLE and non-SAMPLE events) that a realtime
-        buffer must contain to trigger wakeup.
-
-        The default value is WakeupEvents(0), i.e. wakeup will use event count,
-        not watermark.
-
-        Note that setting this will disable WakeupEvents().
+        Note that wakeup conditions are evaluated per-buffer. For example, if 3
+        buffers each contain 32760 bytes of pending data, none of them would
+        trigger a WakeupWatermark(32768) condition.
         */
         constexpr TracingSessionOptions&
         WakeupWatermark(uint32_t wakeupWatermark) noexcept
@@ -170,6 +200,41 @@ namespace tracepoint_control
         uint32_t m_sampleType;
     };
 
+    /*
+    Manages a tracepoint collection session.
+
+    Basic usage:
+
+        TracingCache cache;
+        TracingSession session(
+            cache, // A metadata cache to use for this session.
+            TracingSessionOptions(TracingMode::RealTime, 65536) // Required settings
+                .SampleType(PERF_SAMPLE_TIME | PERF_SAMPLE_RAW) // Optional setting
+                .WakeupWatermark(32768)                         // Optional setting
+                );
+
+        error = session.EnableTracepoint("user_events", "MyFavoriteTracepoint");
+        // ... check for error.
+
+        error = session.EnableTracepoint("user_events", "MySecondTracepoint");
+        // ... check for error.
+
+        for (;;)
+        {
+            // Wait until one or more of the buffers reaches 32768 bytes of event data.
+            error = session.WaitForWakeup();
+            // ... check for error. Don't get into a busy loop if waiting fails!
+
+            error = session.EnumerateSampleEventsUnordered(
+                [](PerfSampleEventInfo const& event)
+                {
+                    // This will be called once for each SAMPLE event.
+                    // It should record or process the event's data.
+                    return 0; // If we return an error, enumeration will stop.
+                });
+            // ... check for error.
+        }
+    */
     class TracingSession
     {
     public:
@@ -180,6 +245,22 @@ namespace tracepoint_control
 
         /*
         May throw std::bad_alloc.
+
+        - cache: The TracingCache that this session will use to locate metadata
+          (format) information about tracepoints. Multiple sessions may share a
+          cache.
+
+        - options: Configuration settings that this session will use.
+
+        Example:
+
+            TracingCache cache;
+            TracingSession session(
+                cache, // A metadata cache to use for this session.
+                TracingSessionOptions(TracingMode::RealTime, 65536) // Required settings
+                    .SampleType(PERF_SAMPLE_TIME | PERF_SAMPLE_RAW) // Optional setting
+                    .WakeupWatermark(32768)                         // Optional setting
+                    );
         */
         TracingSession(
             TracingCache& cache,
@@ -198,7 +279,7 @@ namespace tracepoint_control
         IsRealtime() const noexcept;
 
         /*
-        Returns the size of the buffers used for the session.
+        Returns the size (in bytes) of the buffers used for the session.
         */
         size_t
         BufferSize() const noexcept;
@@ -211,15 +292,15 @@ namespace tracepoint_control
         BufferCount() const noexcept;
 
         /*
-        Returns the number of SAMPLE events that have been processed
-        by this session.
+        Returns the number of SAMPLE events that have been enumerated by this
+        session.
         */
         uint64_t
         SampleEventCount() const noexcept;
 
         /*
-        Returns the number of lost events that have been processed
-        by this session. Events can be lost due to:
+        Returns the number of lost events that have been enumerated by this
+        session. Events can be lost due to:
 
         - Memory allocation failure during buffer enumeration.
         - Event received while session is paused (circular mode only).
@@ -229,19 +310,18 @@ namespace tracepoint_control
         LostEventCount() const noexcept;
 
         /*
-        Returns the number of corrupt events that have been processed
-        by this session. An event is detected as corrupt if the event
-        header's size is too small for the event's SampleType.
+        Returns the number of corrupt events that have been enumerated by this
+        session. An event is detected as corrupt if the event's size is too
+        small (based on the event's SampleType).
         */
         uint64_t
         CorruptEventCount() const noexcept;
 
         /*
-        Returns the number of times buffer corruption has been detected
-        by this session. The buffer is detected as corrupt if the buffer
-        header has invalid values or if an event header has an invalid
-        size. Buffer corruption generally causes the buffer's remaining
-        contents to be ignored.
+        Returns the number of times buffer corruption has been detected by this
+        session. The buffer is detected as corrupt if the buffer header has
+        invalid values or if an event's size is invalid. Buffer corruption
+        generally causes the buffer's remaining contents to be skipped.
         */
         uint64_t
         CorruptBufferCount() const noexcept;
@@ -350,29 +430,35 @@ namespace tracepoint_control
         /*
         For realtime sessions only: Waits for the wakeup condition using
         ppoll(bufferFiles, bufferCount, timeout, sigmask). The wakeup condition
-        is configured by calling WakeupEvents or WakeupWatermark on a config
-        before passing the config to the session's constructor.
+        is configured by calling WakeupWatermark on a config before passing the
+        config to the session's constructor.
 
         - timeout: Maximum time to wait. NULL means wait forever.
         - sigmask: Signal mask to apply before waiting. NULL means don't mask.
         - activeCount: On success, receives the number of buffers that meet the
-          wakeup condition, or 0 if wait ended due to timeout or signal.
+          wakeup condition, or 0 if wait ended due to a timeout or a signal.
 
         Returns EPERM if the session is not realtime.
 
         Returns EPERM if the session is inactive. After construction and after
         Clear(), the session will be inactive until a tracepoint is added.
+
+        Note that wakeup conditions are evaluated per-buffer. For example, if 3
+        buffers each contain 32760 bytes of pending data, none of them would
+        trigger a WakeupWatermark(32768) condition.
         */
         _Success_(return == 0) int
         WaitForWakeup(
-            timespec const* timeout,
-            sigset_t const* sigmask,
-            _Out_ int* pActiveCount) noexcept;
+            timespec const* timeout = nullptr,
+            sigset_t const* sigmask = nullptr,
+            _Out_opt_ int* pActiveCount = nullptr) noexcept;
 
         /*
         Advanced scenarios: Returns the file descriptors used for the buffers
         of the session. The returned file descriptors may be used for poll()
-        but should not be read-from, written-to, closed, etc.
+        but should not be read-from, written-to, closed, etc. This may be
+        useful if you want to use a single thread to poll for events from
+        multiple sessions or to poll for both events and some other condition.
 
         Returns EPERM if the session is inactive. After construction and after
         Clear(), the session will be inactive until a tracepoint is added.
@@ -384,27 +470,38 @@ namespace tracepoint_control
             _Out_writes_(BufferCount()) int* pBufferFiles) const noexcept;
 
         /*
-        For each PERF_RECORD_SAMPLE event in the session's buffers, invoke:
+        For each PERF_RECORD_SAMPLE record in the session's buffers, invoke:
         
-            error = sampleFn(cpu, event, args...);
+            int error = eventInfoCallback(eventInfo, args...);
 
-        - int sampleFn(uint32_t cpu, PerfSampleEventInfo const& event, ...):
-          If this returns a nonzero value then FlushEventsUnordered will
-          immediately stop and return the specified error value.
+        - eventInfoCallback: Callable object (e.g. a function pointer or a lambda)
+          to invoke for each event.
+          
+          This callback should return an int (0 for success, errno for error). If
+          eventInfoCallback returns a nonzero value then EnumerateEventsUnordered
+          will immediately stop and return the specified error value.
+          
+          This callback should take a PerfSampleEventInfo const& as its first
+          parameter.
+          
+          The args... (if any) are from the args... of the call to
+          EnumerateEventsUnordered(eventInfoCallback, args...).
 
-        - args...: optional additional parameters to be passed to sampleFn.
+        - args...: optional additional parameters to be passed to eventInfoCallback.
+
+        Returns: int error code (errno), or 0 for success.
 
         For efficiency, events will be provided in a natural enumeration order.
         This is usually not the same as event timestamp order, so you may need to
         sort the events after receiving them.
 
-        Note that the PerfSampleEventInfo& provided to the sampleFn callback will
-        contain pointers into the active trace buffers. The pointers will become
-        invalidated after the callback returns. Any data that you need to use after
-        that point must be copied.
+        Note that the eventInfo provided to eventInfoCallback will contain pointers
+        into the trace buffers. The pointers will become invalidated after
+        eventInfoCallback returns. Any data that you need to use after that point
+        must be copied.
 
         Note that this method does not throw any of its own exceptions, but it may
-        exit via exception if sampleFn() throws an exception.
+        exit via exception if eventInfoCallback() throws an exception.
 
         *** Circular session behavior ***
         
@@ -416,52 +513,46 @@ namespace tracepoint_control
 
         Note that events are lost if they arrive while the buffer is paused. The lost
         event count indicates how many events were lost during previous pauses that would
-        have been part of this flush if there had been no pauses. It does not include the
-        count of events that were lost due to the current flush's pause (those will show
-        up in a subsequent flush).
+        have been part of an enumeration if there had been no pauses. It does not include
+        the count of events that were lost due to the current enumeration's pause (those
+        will show up after a subsequent enumeration).
 
         *** Realtime session behavior ***
         
         For each CPU:
 
         - Enumerate the buffer's events oldest-to-newest.
-        - Mark the CPU's buffer as consumed.
+        - Mark the enumerated events as consumed, making room for subsequent events.
 
         Note that events are lost if they arrive while the buffer is full. The lost
         event count indicates how many events were lost during previous periods when
-        the buffer was full that would have been part of this flush if the buffer had
-        never become full. It does not include the count of events that were lost due
-        to the buffer being full at the start of the current flush (those will show up
-        in a subsequent flush).
+        the buffer was full. It does not include the count of events that were lost
+        due to the buffer being full at the start of the current enumeration (those will
+        show up after a subsequent enumeration).
 
-        Note that if sampleFn throws or returns a nonzero value, events will be marked
-        consumed up to but not including the event for which sampleFn returned an error.
-
-        Note that it is possible for events to arrive while the flush is occuring.
-        Flush may ignore events that arrive after flush began. If you need to be
-        sure that all events are flushed, repeat the call to FlushEventsUnordered until
-        no more events are flushed.
+        Note that if eventInfoCallback throws or returns a nonzero value, events will be
+        marked consumed up to but not including the event for which eventInfoCallback
+        returned an error.
         */
-        template<class SampleFnTy, class... ArgTys>
+        template<class EventInfoCallbackTy, class... ArgTys>
         _Success_(return == 0) int
-        FlushSampleEventsUnordered(
-            SampleFnTy&& sampleFn,
-            ArgTys&&... args) noexcept(noexcept(sampleFn(
-                static_cast<uint32_t>(0),
-                std::declval<tracepoint_decode::PerfSampleEventInfo const&>(),
-                args...
-                )))
+        EnumerateSampleEventsUnordered(
+            EventInfoCallbackTy&& eventInfoCallback, // int eventInfoCallback(PerfSampleEventInfo const&, args...)
+            ArgTys&&... args // optional parameters to be passed to eventInfoCallback
+        ) noexcept(noexcept(eventInfoCallback( // Throws exceptions if and only if eventInfoCallback throws.
+            std::declval<tracepoint_decode::PerfSampleEventInfo const&>(),
+            args...)))
         {
             int error = 0;
 
-            if (m_leaderCpuFiles != nullptr)
+            if (m_bufferLeaderFiles != nullptr)
             {
-                for (unsigned cpuIndex = 0; cpuIndex != m_cpuCount; cpuIndex += 1)
+                for (unsigned bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
                 {
-                    BufferEnumerator enumerator(*this, cpuIndex);
+                    BufferEnumerator enumerator(*this, bufferIndex);
                     while (enumerator.MoveNext())
                     {
-                        error = sampleFn(cpuIndex, enumerator.Current(), args...);
+                        error = eventInfoCallback(enumerator.Current(), args...);
                         if (error != 0)
                         {
                             break;
@@ -531,30 +622,22 @@ namespace tracepoint_control
             Disabled,
         };
 
-        struct PerfEventHeader
-        {
-            uint32_t Type;
-            uint16_t Misc;
-            uint16_t Size;
-            PerfEventHeader(uint32_t type, uint16_t misc, uint16_t size) noexcept;
-        };
-
         struct TracepointInfo
         {
-            std::unique_ptr<unique_fd[]> CpuFiles; // size is m_cpuCount
+            std::unique_ptr<unique_fd[]> BufferFiles; // size is m_BufferCount
             tracepoint_decode::PerfEventMetadata const& Metadata;
             TracepointEnableState EnableState;
 
             ~TracepointInfo();
             TracepointInfo(
-                std::unique_ptr<unique_fd[]> cpuFiles,
+                std::unique_ptr<unique_fd[]> bufferFiles,
                 tracepoint_decode::PerfEventMetadata const& metadata) noexcept;
         };
 
         class BufferEnumerator
         {
             TracingSession& m_session;
-            uint32_t const m_cpuIndex;
+            uint32_t const m_bufferIndex;
             tracepoint_decode::PerfSampleEventInfo m_current;
 
             // These should be treated as const after the constructor finishes:
@@ -574,7 +657,7 @@ namespace tracepoint_control
 
             BufferEnumerator(
                 TracingSession& session,
-                unsigned cpuIndex) noexcept;
+                unsigned bufferIndex) noexcept;
 
             bool
             MoveNext() noexcept;
@@ -586,8 +669,8 @@ namespace tracepoint_control
 
             bool
             ParseSample(
-                PerfEventHeader eventHeader,
-                size_t eventHeaderBufferPos) noexcept;
+                size_t sampleDataSize,
+                size_t sampleDataBufferPos) noexcept;
         };
 
         _Success_(return == 0) static int
@@ -607,14 +690,14 @@ namespace tracepoint_control
         bool const m_wakeupUseWatermark;
         uint32_t const m_wakeupValue;
         uint32_t const m_sampleType;
-        uint32_t const m_cpuCount;
+        uint32_t const m_bufferCount;
         uint32_t const m_pageSize;
         size_t const m_bufferSize;
-        std::unique_ptr<unique_mmap[]> const m_cpuMmaps; // size is m_cpuCount
+        std::unique_ptr<unique_mmap[]> const m_bufferMmaps; // size is m_bufferCount
         std::unordered_map<unsigned, TracepointInfo> m_tracepointInfoById;
         std::vector<uint8_t> m_eventDataBuffer; // Double-buffer wrapped events.
         std::unique_ptr<pollfd[]> m_pollfd;
-        unique_fd const* m_leaderCpuFiles; // == m_tracepointInfoById[N].cpuFiles.get() for some N, size is m_cpuCount
+        unique_fd const* m_bufferLeaderFiles; // == m_tracepointInfoById[N].BufferFiles.get() for some N, size is m_bufferCount
         uint64_t m_sampleEventCount;
         uint64_t m_lostEventCount;
         uint64_t m_corruptEventCount;

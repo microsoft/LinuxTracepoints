@@ -36,7 +36,7 @@ main(int argc, char* argv[])
         TracingSessionOptions(mode, 0) // 0 should round up to a 1-page buffer.
             .WakeupWatermark(100)); // WaitForWakeup waits for a buffer to have >= 100 bytes of data.
 
-    fprintf(stderr, "Session: BC=%u BS=%lx RT=%u MODE=%u\n",
+    fprintf(stderr, "Session: BC=%u BS=%x RT=%u MODE=%u\n",
         session.BufferCount(), session.BufferSize(), session.IsRealtime(), (unsigned)session.Mode());
 
     fprintf(stderr, "\n");

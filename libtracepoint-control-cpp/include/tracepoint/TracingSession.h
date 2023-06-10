@@ -51,7 +51,7 @@ namespace tracepoint_control
       events overwrite old events. At any point, you can pause collection,
       enumerate the contents of the buffer, and resume collection. (Events
       received while collection is paused will be lost.)
-      
+
       For example, we can record information about what is happening on the
       system into memory, and then if a program crashes, we save the data to
       disk so we can discover what was happening on the system in the moments
@@ -121,7 +121,7 @@ namespace tracepoint_control
         constexpr
         TracingSessionOptions(
             TracingMode mode,
-            size_t bufferSize) noexcept
+            uint32_t bufferSize) noexcept
             : m_bufferSize(bufferSize)
             , m_mode(mode)
             , m_wakeupUseWatermark(true)
@@ -136,7 +136,7 @@ namespace tracepoint_control
 
         Flags use the perf_event_sample_format values defined in <linux/perf_event.h>
         or <tracepoint/PerfEventAbi.h>.
-        
+
         The default value is:
 
         | PERF_SAMPLE_TID
@@ -193,7 +193,7 @@ namespace tracepoint_control
 
     private:
 
-        size_t const m_bufferSize;
+        uint32_t const m_bufferSize;
         TracingMode const m_mode;
         bool m_wakeupUseWatermark;
         uint32_t m_wakeupValue;
@@ -281,7 +281,7 @@ namespace tracepoint_control
         /*
         Returns the size (in bytes) of the buffers used for the session.
         */
-        size_t
+        uint32_t
         BufferSize() const noexcept;
 
         /*
@@ -470,20 +470,111 @@ namespace tracepoint_control
             _Out_writes_(BufferCount()) int* pBufferFiles) const noexcept;
 
         /*
-        For each PERF_RECORD_SAMPLE record in the session's buffers, invoke:
-        
+        For each PERF_RECORD_SAMPLE record in the session's buffers, in timestamp
+        order, invoke:
+
             int error = eventInfoCallback(eventInfo, args...);
 
         - eventInfoCallback: Callable object (e.g. a function pointer or a lambda)
           to invoke for each event.
-          
+
           This callback should return an int (0 for success, errno for error). If
           eventInfoCallback returns a nonzero value then EnumerateEventsUnordered
           will immediately stop and return the specified error value.
-          
+
           This callback should take a PerfSampleEventInfo const& as its first
           parameter.
-          
+
+          The args... (if any) are from the args... of the call to
+          EnumerateEventsUnordered(eventInfoCallback, args...).
+
+        - args...: optional additional parameters to be passed to eventInfoCallback.
+
+        Returns: int error code (errno), or 0 for success.
+
+        Events will be sorted based on timestamp (session's SampleType() must include
+        PERF_SAMPLE_TIME) before invoking the callback. If your callback does not
+        need events to be sorted based on timestamp, use EnumerateSampleEventsUnordered
+        to avoid the sorting overhead.
+
+        Note that the eventInfo provided to eventInfoCallback will contain pointers
+        into the trace buffers. The pointers will become invalidated after
+        eventInfoCallback returns. Any data that you need to use after that point
+        must be copied.
+
+        Note that this method does not throw any of its own exceptions, but it may
+        exit via exception if eventInfoCallback() throws an exception.
+
+        *** Circular session behavior ***
+
+        - Pause all CPU buffers.
+        - Scan all buffers to find events.
+        - Sort the events based on timestamp.
+        - Invoke eventInfoCallback for each event.
+        - Unpause all CPU buffers.
+
+        Note that events are lost if they arrive while the buffer is paused. The lost
+        event count indicates how many events were lost during previous pauses that would
+        have been part of an enumeration if there had been no pauses. It does not include
+        the count of events that were lost due to the current enumeration's pause (those
+        will show up after a subsequent enumeration).
+
+        *** Realtime session behavior ***
+
+        - Scan all buffers to find events.
+        - Sort the events based on timestamp.
+        - Invoke eventInfoCallback for each event.
+        - Mark the enumerated events as consumed, making room for subsequent events.
+
+        Note that events are lost if they arrive while the buffer is full. The lost
+        event count indicates how many events were lost during previous periods when
+        the buffer was full. It does not include the count of events that were lost
+        due to the buffer being full at the start of the current enumeration (those will
+        show up after a subsequent enumeration).
+
+        Note that if eventInfoCallback throws or returns a nonzero value,
+        all events (FEEDBACK: should it be no events?) will be marked as consumed.
+        */
+        template<class EventInfoCallbackTy, class... ArgTys>
+        _Success_(return == 0) int
+        EnumerateSampleEvents(
+            EventInfoCallbackTy&& eventInfoCallback, // int eventInfoCallback(PerfSampleEventInfo const&, args...)
+            ArgTys&&... args // optional parameters to be passed to eventInfoCallback
+        ) noexcept(noexcept(eventInfoCallback( // Throws exceptions if and only if eventInfoCallback throws.
+            std::declval<tracepoint_decode::PerfSampleEventInfo const&>(),
+            args...)))
+        {
+            int error = 0;
+
+            if (m_bufferLeaderFiles != nullptr)
+            {
+                OrderedEnumerator enumerator(*this);
+                error = enumerator.LoadAndSort();
+                while (error == 0 && enumerator.MoveNext())
+                {
+                    error = eventInfoCallback(m_enumEventInfo, args...);
+                }
+            }
+
+            return error;
+        }
+
+        /*
+        For each PERF_RECORD_SAMPLE record in the session's buffers, in unspecified
+        order, invoke:
+
+            int error = eventInfoCallback(eventInfo, args...);
+
+        - eventInfoCallback: Callable object (e.g. a function pointer or a lambda)
+          to invoke for each event.
+
+          This callback should return an int (0 for success, errno for error). If
+          eventInfoCallback returns a nonzero value then EnumerateEventsUnordered
+          will immediately stop and return the specified error value.
+
+          This callback should take a PerfSampleEventInfo const& as its first
+          parameter.
+
           The args... (if any) are from the args... of the call to
           EnumerateEventsUnordered(eventInfoCallback, args...).
 
@@ -504,7 +595,7 @@ namespace tracepoint_control
         exit via exception if eventInfoCallback() throws an exception.
 
         *** Circular session behavior ***
-        
+
         For each CPU:
 
         - Pause the CPU's buffer.
@@ -518,7 +609,7 @@ namespace tracepoint_control
         will show up after a subsequent enumeration).
 
         *** Realtime session behavior ***
-        
+
         For each CPU:
 
         - Enumerate the buffer's events oldest-to-newest.
@@ -547,12 +638,12 @@ namespace tracepoint_control
 
             if (m_bufferLeaderFiles != nullptr)
             {
-                for (unsigned bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
+                for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
                 {
-                    BufferEnumerator enumerator(*this, bufferIndex);
+                    UnorderedEnumerator enumerator(*this, bufferIndex);
                     while (enumerator.MoveNext())
                     {
-                        error = eventInfoCallback(enumerator.Current(), args...);
+                        error = eventInfoCallback(m_enumEventInfo, args...);
                         if (error != 0)
                         {
                             break;
@@ -622,55 +713,85 @@ namespace tracepoint_control
             Disabled,
         };
 
+        struct BufferInfo
+        {
+            unique_mmap Mmap;
+            size_t DataPos;
+            size_t DataTail;
+            uint64_t DataHead64;
+
+            BufferInfo(BufferInfo const&) = delete;
+            void operator=(BufferInfo const&) = delete;
+            ~BufferInfo();
+            BufferInfo() noexcept;
+        };
+
         struct TracepointInfo
         {
             std::unique_ptr<unique_fd[]> BufferFiles; // size is m_BufferCount
             tracepoint_decode::PerfEventMetadata const& Metadata;
             TracepointEnableState EnableState;
 
+            TracepointInfo(TracepointInfo const&) = delete;
+            void operator=(TracepointInfo const&) = delete;
             ~TracepointInfo();
             TracepointInfo(
                 std::unique_ptr<unique_fd[]> bufferFiles,
                 tracepoint_decode::PerfEventMetadata const& metadata) noexcept;
         };
 
-        class BufferEnumerator
+        struct TracepointBookmark
+        {
+            uint64_t Timestamp;
+            uint16_t BufferIndex;
+            uint16_t DataSize;
+            uint32_t DataPos;
+            TracepointBookmark(
+                uint64_t timestamp,
+                uint16_t bufferIndex,
+                uint16_t dataSize,
+                uint32_t dataPos) noexcept;
+        };
+
+        class UnorderedEnumerator
         {
             TracingSession& m_session;
             uint32_t const m_bufferIndex;
-            tracepoint_decode::PerfSampleEventInfo m_current;
-
-            // These should be treated as const after the constructor finishes:
-            uint64_t m_bufferDataHead64;// data_head
-            size_t m_bufferDataTail;    // data_tail
-            uint8_t const* m_bufferData;// buffer + data_offset
-            size_t m_bufferDataPosMask; // data_size - 1
-
-            size_t m_bufferDataPos;     // data_tail..data_head
-            char m_nameBuffer[512];
 
         public:
 
-            BufferEnumerator(BufferEnumerator const&) = delete;
-            void operator=(BufferEnumerator const&) = delete;
-            ~BufferEnumerator();
+            UnorderedEnumerator(UnorderedEnumerator const&) = delete;
+            void operator=(UnorderedEnumerator const&) = delete;
+            ~UnorderedEnumerator();
 
-            BufferEnumerator(
+            UnorderedEnumerator(
                 TracingSession& session,
-                unsigned bufferIndex) noexcept;
+                uint32_t bufferIndex) noexcept;
 
             bool
             MoveNext() noexcept;
+        };
 
-            tracepoint_decode::PerfSampleEventInfo const&
-            Current() const noexcept;
+        class OrderedEnumerator
+        {
+            TracingSession& m_session;
+            bool m_needsCleanup;
+            size_t m_index;
 
-        private:
+        public:
+
+            OrderedEnumerator(OrderedEnumerator const&) = delete;
+            void operator=(OrderedEnumerator const&) = delete;
+            ~OrderedEnumerator();
+
+            explicit
+            OrderedEnumerator(TracingSession& session) noexcept;
+
+            _Success_(return == 0) int
+            LoadAndSort() noexcept;
 
             bool
-            ParseSample(
-                size_t sampleDataSize,
-                size_t sampleDataBufferPos) noexcept;
+            MoveNext() noexcept;
         };
 
         _Success_(return == 0) static int
@@ -680,8 +801,24 @@ namespace tracepoint_control
             unsigned long request,
             _In_reads_opt_(filesCount) unique_fd const* values) noexcept;
 
-        size_t
-        MmapSize() const noexcept;
+        bool
+        ParseSample(
+            uint8_t const* bufferData,
+            uint16_t sampleDataSize,
+            uint32_t sampleDataBufferPos) noexcept;
+
+        void
+        EnumeratorEnd(uint32_t bufferIndex) const noexcept;
+
+        void
+        EnumeratorBegin(uint32_t bufferIndex) noexcept;
+
+        template<class SampleFn, class NonSampleFn>
+        bool
+        EnumeratorMoveNext(
+            uint32_t bufferIndex,
+            SampleFn&& sampleFn,
+            NonSampleFn&& nonSampleFn);
 
     private:
 
@@ -692,16 +829,19 @@ namespace tracepoint_control
         uint32_t const m_sampleType;
         uint32_t const m_bufferCount;
         uint32_t const m_pageSize;
-        size_t const m_bufferSize;
-        std::unique_ptr<unique_mmap[]> const m_bufferMmaps; // size is m_bufferCount
+        uint32_t const m_bufferSize;
+        std::unique_ptr<BufferInfo[]> const m_buffers; // size is m_bufferCount
         std::unordered_map<unsigned, TracepointInfo> m_tracepointInfoById;
-        std::vector<uint8_t> m_eventDataBuffer; // Double-buffer wrapped events.
+        std::vector<uint8_t> m_eventDataBuffer; // Double-buffer for events that wrap.
+        std::vector<TracepointBookmark> m_enumSort;
         std::unique_ptr<pollfd[]> m_pollfd;
         unique_fd const* m_bufferLeaderFiles; // == m_tracepointInfoById[N].BufferFiles.get() for some N, size is m_bufferCount
         uint64_t m_sampleEventCount;
         uint64_t m_lostEventCount;
         uint64_t m_corruptEventCount;
         uint64_t m_corruptBufferCount;
+        tracepoint_decode::PerfSampleEventInfo m_enumEventInfo;
+        char m_enumNameBuffer[512];
     };
 }
 // namespace tracepoint_control

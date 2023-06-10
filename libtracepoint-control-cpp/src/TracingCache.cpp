@@ -199,16 +199,15 @@ TracingCache::FindOrAddFromSystem(
     if (auto it = m_byName.find(EventName(systemName, eventName));
         it != m_byName.end())
     {
-        metadata = &it->second.Metadata;
         error = 0;
+        metadata = &it->second.Metadata;
     }
     else
     {
         error = AddFromSystem(systemName, eventName);
-        if (error == 0)
-        {
-            metadata = FindByName(systemName, eventName);
-        }
+        metadata = error
+            ? nullptr
+            : FindByName(systemName, eventName);
     }
 
     *ppMetadata = metadata;

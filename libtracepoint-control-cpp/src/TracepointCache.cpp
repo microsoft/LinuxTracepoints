@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <tracepoint/TracingCache.h>
-#include <tracepoint/TracingPath.h>
+#include <tracepoint/TracepointCache.h>
+#include <tracepoint/TracepointPath.h>
 #include <assert.h>
 #include <errno.h>
 #include <string.h>
@@ -14,12 +14,12 @@ using namespace tracepoint_decode;
 static constexpr int8_t CommonTypeOffsetInit = -1;
 static constexpr uint8_t CommonTypeSizeInit = 0;
 
-TracingCache::CacheVal::~CacheVal()
+TracepointCache::CacheVal::~CacheVal()
 {
     return;
 }
 
-TracingCache::CacheVal::CacheVal(
+TracepointCache::CacheVal::CacheVal(
     std::vector<char>&& systemAndFormat,
     PerfEventMetadata&& metadata) noexcept
     : SystemAndFormat(std::move(systemAndFormat))
@@ -29,7 +29,7 @@ TracingCache::CacheVal::CacheVal(
 }
 
 size_t
-TracingCache::EventNameHashOps::operator()(
+TracepointCache::EventNameHashOps::operator()(
     EventName const& a) const noexcept
 {
     std::hash<std::string_view> const hasher;
@@ -37,14 +37,14 @@ TracingCache::EventNameHashOps::operator()(
 }
 
 size_t
-TracingCache::EventNameHashOps::operator()(
+TracepointCache::EventNameHashOps::operator()(
     EventName const& a,
     EventName const& b) const noexcept
 {
     return a.Event == b.Event && a.System == b.System;
 }
 
-TracingCache::EventName::EventName(
+TracepointCache::EventName::EventName(
     std::string_view system,
     std::string_view event) noexcept
     : System(system)
@@ -53,12 +53,12 @@ TracingCache::EventName::EventName(
     return;
 }
 
-TracingCache::~TracingCache() noexcept
+TracepointCache::~TracepointCache() noexcept
 {
     return;
 }
 
-TracingCache::TracingCache() noexcept(false)
+TracepointCache::TracepointCache() noexcept(false)
     : m_byId() // may throw bad_alloc (but probably doesn't).
     , m_byName() // may throw bad_alloc (but probably doesn't).
     , m_commonTypeOffset(CommonTypeOffsetInit)
@@ -68,19 +68,19 @@ TracingCache::TracingCache() noexcept(false)
 }
 
 int8_t
-TracingCache::CommonTypeOffset() const noexcept
+TracepointCache::CommonTypeOffset() const noexcept
 {
     return m_commonTypeOffset;
 }
 
 uint8_t
-TracingCache::CommonTypeSize() const noexcept
+TracepointCache::CommonTypeSize() const noexcept
 {
     return m_commonTypeSize;
 }
 
 PerfEventMetadata const*
-TracingCache::FindById(uint32_t id) const noexcept
+TracepointCache::FindById(uint32_t id) const noexcept
 {
     auto it = m_byId.find(id);
     return it == m_byId.end()
@@ -89,7 +89,7 @@ TracingCache::FindById(uint32_t id) const noexcept
 }
 
 PerfEventMetadata const*
-TracingCache::FindByName(
+TracepointCache::FindByName(
     std::string_view systemName,
     std::string_view eventName) const noexcept
 {
@@ -100,7 +100,7 @@ TracingCache::FindByName(
 }
 
 PerfEventMetadata const*
-TracingCache::FindByRawData(std::string_view rawData) const noexcept
+TracepointCache::FindByRawData(std::string_view rawData) const noexcept
 {
     PerfEventMetadata const* metadata;
 
@@ -136,7 +136,7 @@ TracingCache::FindByRawData(std::string_view rawData) const noexcept
 }
 
 _Success_(return == 0) int
-TracingCache::AddFromFormat(
+TracepointCache::AddFromFormat(
     std::string_view systemName,
     std::string_view formatFileContents,
     bool longSize64) noexcept
@@ -161,7 +161,7 @@ TracingCache::AddFromFormat(
 }
 
 _Success_(return == 0) int
-TracingCache::AddFromSystem(
+TracepointCache::AddFromSystem(
     std::string_view systemName,
     std::string_view eventName) noexcept
 {
@@ -188,7 +188,7 @@ TracingCache::AddFromSystem(
 }
 
 _Success_(return == 0) int
-TracingCache::FindOrAddFromSystem(
+TracepointCache::FindOrAddFromSystem(
     std::string_view systemName,
     std::string_view eventName,
     _Out_ PerfEventMetadata const** ppMetadata) noexcept
@@ -215,7 +215,7 @@ TracingCache::FindOrAddFromSystem(
 }
 
 _Success_(return == 0) int
-TracingCache::Add(
+TracepointCache::Add(
     std::vector<char>&& systemAndFormat,
     size_t systemNameSize,
     bool longSize64) noexcept

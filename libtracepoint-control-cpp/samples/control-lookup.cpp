@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <tracepoint/TracingCache.h>
+#include <tracepoint/TracepointCache.h>
 #include <stdio.h>
 
 using namespace std::string_view_literals;
@@ -10,7 +10,7 @@ using namespace tracepoint_control;
 int
 main(int argc, char* argv[])
 {
-    TracingCache cache;
+    TracepointCache cache;
     for (int argi = 1; argi < argc; argi += 1)
     {
         int error;

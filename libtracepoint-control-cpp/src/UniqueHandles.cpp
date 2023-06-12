@@ -1,38 +1,38 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <tracepoint/TracingSession.h>
+#include <tracepoint/TracepointSession.h>
 
 #include <unistd.h>
 #include <sys/mman.h>
 
 using namespace tracepoint_control;
 
-TracingSession::unique_fd::~unique_fd()
+TracepointSession::unique_fd::~unique_fd()
 {
     reset(-1);
 }
 
-TracingSession::unique_fd::unique_fd() noexcept
+TracepointSession::unique_fd::unique_fd() noexcept
     : m_fd(-1)
 {
     return;
 }
 
-TracingSession::unique_fd::unique_fd(int fd) noexcept
+TracepointSession::unique_fd::unique_fd(int fd) noexcept
     : m_fd(fd)
 {
     return;
 }
 
-TracingSession::unique_fd::unique_fd(unique_fd&& other) noexcept
+TracepointSession::unique_fd::unique_fd(unique_fd&& other) noexcept
     : m_fd(other.m_fd)
 {
     other.m_fd = -1;
 }
 
-TracingSession::unique_fd&
-TracingSession::unique_fd::operator=(unique_fd&& other) noexcept
+TracepointSession::unique_fd&
+TracepointSession::unique_fd::operator=(unique_fd&& other) noexcept
 {
     int fd = other.m_fd;
     other.m_fd = -1;
@@ -40,19 +40,19 @@ TracingSession::unique_fd::operator=(unique_fd&& other) noexcept
     return *this;
 }
 
-TracingSession::unique_fd::operator bool() const noexcept
+TracepointSession::unique_fd::operator bool() const noexcept
 {
     return m_fd != -1;
 }
 
 void
-TracingSession::unique_fd::reset() noexcept
+TracepointSession::unique_fd::reset() noexcept
 {
     reset(-1);
 }
 
 void
-TracingSession::unique_fd::reset(int fd) noexcept
+TracepointSession::unique_fd::reset(int fd) noexcept
 {
     if (m_fd != -1)
     {
@@ -62,31 +62,31 @@ TracingSession::unique_fd::reset(int fd) noexcept
 }
 
 int
-TracingSession::unique_fd::get() const noexcept
+TracepointSession::unique_fd::get() const noexcept
 {
     return m_fd;
 }
 
-TracingSession::unique_mmap::~unique_mmap()
+TracepointSession::unique_mmap::~unique_mmap()
 {
     reset(MAP_FAILED, 0);
 }
 
-TracingSession::unique_mmap::unique_mmap() noexcept
+TracepointSession::unique_mmap::unique_mmap() noexcept
     : m_addr(MAP_FAILED)
     , m_size(0)
 {
     return;
 }
 
-TracingSession::unique_mmap::unique_mmap(void* addr, size_t size) noexcept
+TracepointSession::unique_mmap::unique_mmap(void* addr, size_t size) noexcept
     : m_addr(addr)
     , m_size(size)
 {
     return;
 }
 
-TracingSession::unique_mmap::unique_mmap(unique_mmap&& other) noexcept
+TracepointSession::unique_mmap::unique_mmap(unique_mmap&& other) noexcept
     : m_addr(other.m_addr)
     , m_size(other.m_size)
 {
@@ -94,8 +94,8 @@ TracingSession::unique_mmap::unique_mmap(unique_mmap&& other) noexcept
     other.m_size = 0;
 }
 
-TracingSession::unique_mmap&
-TracingSession::unique_mmap::operator=(unique_mmap&& other) noexcept
+TracepointSession::unique_mmap&
+TracepointSession::unique_mmap::operator=(unique_mmap&& other) noexcept
 {
     void* addr = other.m_addr;
     size_t size = other.m_size;
@@ -105,19 +105,19 @@ TracingSession::unique_mmap::operator=(unique_mmap&& other) noexcept
     return *this;
 }
 
-TracingSession::unique_mmap::operator bool() const noexcept
+TracepointSession::unique_mmap::operator bool() const noexcept
 {
     return m_addr != MAP_FAILED;
 }
 
 void
-TracingSession::unique_mmap::reset() noexcept
+TracepointSession::unique_mmap::reset() noexcept
 {
     reset(MAP_FAILED, 0);
 }
 
 void
-TracingSession::unique_mmap::reset(void* addr, size_t size) noexcept
+TracepointSession::unique_mmap::reset(void* addr, size_t size) noexcept
 {
     if (m_addr != MAP_FAILED)
     {
@@ -128,13 +128,13 @@ TracingSession::unique_mmap::reset(void* addr, size_t size) noexcept
 }
 
 void*
-TracingSession::unique_mmap::get() const noexcept
+TracepointSession::unique_mmap::get() const noexcept
 {
     return m_addr;
 }
 
 size_t
-TracingSession::unique_mmap::get_size() const noexcept
+TracepointSession::unique_mmap::get_size() const noexcept
 {
     return m_size;
 }

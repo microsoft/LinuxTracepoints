@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <tracepoint/TracingSession.h>
+#include <tracepoint/TracepointSession.h>
 #include <algorithm>
 #include <assert.h>
 #include <errno.h>
@@ -59,9 +59,9 @@ RoundUpBufferSize(uint32_t pageSize, size_t bufferSize) noexcept
     return BufferSizeMax;
 }
 
-TracingSession::TracingSession(
-    TracingCache& cache,
-    TracingSessionOptions const& options) noexcept(false)
+TracepointSession::TracepointSession(
+    TracepointCache& cache,
+    TracepointSessionOptions const& options) noexcept(false)
     : m_cache(cache)
     , m_mode(options.m_mode)
     , m_wakeupUseWatermark(options.m_wakeupUseWatermark)
@@ -82,60 +82,60 @@ TracingSession::TracingSession(
     , m_corruptBufferCount(0)
     , m_enumEventInfo()
 {
-    assert(options.m_mode <= TracingMode::RealTime);
+    assert(options.m_mode <= TracepointSessionMode::RealTime);
     return;
 }
 
-TracingMode
-TracingSession::Mode() const noexcept
+TracepointSessionMode
+TracepointSession::Mode() const noexcept
 {
     return m_mode;
 }
 
 bool
-TracingSession::IsRealtime() const noexcept
+TracepointSession::IsRealtime() const noexcept
 {
-    return m_mode != TracingMode::Circular;
+    return m_mode != TracepointSessionMode::Circular;
 }
 
 uint32_t
-TracingSession::BufferSize() const noexcept
+TracepointSession::BufferSize() const noexcept
 {
     return m_bufferSize;
 }
 
 uint32_t
-TracingSession::BufferCount() const noexcept
+TracepointSession::BufferCount() const noexcept
 {
     return m_bufferCount;
 }
 
 uint64_t
-TracingSession::SampleEventCount() const noexcept
+TracepointSession::SampleEventCount() const noexcept
 {
     return m_sampleEventCount;
 }
 
 uint64_t
-TracingSession::LostEventCount() const noexcept
+TracepointSession::LostEventCount() const noexcept
 {
     return m_lostEventCount;
 }
 
 uint64_t
-TracingSession::CorruptEventCount() const noexcept
+TracepointSession::CorruptEventCount() const noexcept
 {
     return m_corruptEventCount;
 }
 
 uint64_t
-TracingSession::CorruptBufferCount() const noexcept
+TracepointSession::CorruptBufferCount() const noexcept
 {
     return m_corruptBufferCount;
 }
 
 void
-TracingSession::Clear() noexcept
+TracepointSession::Clear() noexcept
 {
     m_tracepointInfoById.clear();
     m_bufferLeaderFiles = nullptr;
@@ -146,7 +146,7 @@ TracingSession::Clear() noexcept
 }
 
 _Success_(return == 0) int
-TracingSession::DisableTracePoint(std::string_view tracepointPath) noexcept
+TracepointSession::DisableTracePoint(std::string_view tracepointPath) noexcept
 {
     auto const splitPos = tracepointPath.find_first_of(":/"sv);
     return splitPos == tracepointPath.npos
@@ -155,7 +155,7 @@ TracingSession::DisableTracePoint(std::string_view tracepointPath) noexcept
 }
 
 _Success_(return == 0) int
-TracingSession::DisableTracePoint(
+TracepointSession::DisableTracePoint(
     std::string_view systemName,
     std::string_view eventName) noexcept
 {
@@ -180,7 +180,7 @@ TracingSession::DisableTracePoint(
 }
 
 _Success_(return == 0) int
-TracingSession::EnableTracePoint(std::string_view tracepointPath) noexcept
+TracepointSession::EnableTracePoint(std::string_view tracepointPath) noexcept
 {
     auto const splitPos = tracepointPath.find_first_of(":/"sv);
     return splitPos == tracepointPath.npos
@@ -189,7 +189,7 @@ TracingSession::EnableTracePoint(std::string_view tracepointPath) noexcept
 }
 
 _Success_(return == 0) int
-TracingSession::EnableTracePoint(
+TracepointSession::EnableTracePoint(
     std::string_view systemName,
     std::string_view eventName) noexcept
 {
@@ -313,7 +313,7 @@ Done:
 }
 
 _Success_(return == 0) int
-TracingSession::WaitForWakeup(
+TracepointSession::WaitForWakeup(
     timespec const* timeout,
     sigset_t const* sigmask,
     _Out_opt_ int* pActiveCount) noexcept
@@ -363,7 +363,7 @@ TracingSession::WaitForWakeup(
 }
 
 _Success_(return == 0) int
-TracingSession::GetBufferFiles(
+TracepointSession::GetBufferFiles(
     _Out_writes_(BufferCount()) int* pBufferFiles) const noexcept
 {
     int error;
@@ -387,7 +387,7 @@ TracingSession::GetBufferFiles(
 }
 
 _Success_(return == 0) int
-TracingSession::IoctlForEachFile(
+TracepointSession::IoctlForEachFile(
     _In_reads_(filesCount) unique_fd const* files,
     unsigned filesCount,
     unsigned long request,
@@ -413,7 +413,7 @@ TracingSession::IoctlForEachFile(
 }
 
 bool
-TracingSession::ParseSample(
+TracepointSession::ParseSample(
     uint8_t const* bufferData,
     uint16_t sampleDataSize,
     uint32_t sampleDataBufferPos) noexcept
@@ -482,7 +482,7 @@ TracingSession::ParseSample(
         | PERF_SAMPLE_CALLCHAIN
         | PERF_SAMPLE_RAW;
     static_assert(
-        SampleTypeSupported == TracingSessionOptions::SampleTypeSupported,
+        SampleTypeSupported == TracepointSessionOptions::SampleTypeSupported,
         "SampleTypeSupported out of sync");
 
     auto const SampleTypeDefault = 0u
@@ -491,7 +491,7 @@ TracingSession::ParseSample(
         | PERF_SAMPLE_CPU
         | PERF_SAMPLE_RAW;
     static_assert(
-        SampleTypeDefault == TracingSessionOptions::SampleTypeDefault,
+        SampleTypeDefault == TracepointSessionOptions::SampleTypeDefault,
         "SampleTypeDefault out of sync");
 
     // Fast path for default sample type.
@@ -681,7 +681,7 @@ Error:
 }
 
 void
-TracingSession::EnumeratorEnd(uint32_t bufferIndex) const noexcept
+TracepointSession::EnumeratorEnd(uint32_t bufferIndex) const noexcept
 {
     auto const& buffer = m_buffers[bufferIndex];
     if (!IsRealtime())
@@ -728,7 +728,7 @@ TracingSession::EnumeratorEnd(uint32_t bufferIndex) const noexcept
 }
 
 void
-TracingSession::EnumeratorBegin(uint32_t bufferIndex) noexcept
+TracepointSession::EnumeratorBegin(uint32_t bufferIndex) noexcept
 {
     auto const realtime = IsRealtime();
     if (!realtime)
@@ -791,7 +791,7 @@ TracingSession::EnumeratorBegin(uint32_t bufferIndex) noexcept
 
 template<class SampleFn, class NonSampleFn>
 bool
-TracingSession::EnumeratorMoveNext(
+TracepointSession::EnumeratorMoveNext(
     uint32_t bufferIndex,
     SampleFn&& sampleFn,
     NonSampleFn&& nonSampleFn)
@@ -868,12 +868,12 @@ TracingSession::EnumeratorMoveNext(
     return false;
 }
 
-TracingSession::BufferInfo::~BufferInfo()
+TracepointSession::BufferInfo::~BufferInfo()
 {
     return;
 }
 
-TracingSession::BufferInfo::BufferInfo() noexcept
+TracepointSession::BufferInfo::BufferInfo() noexcept
     : Mmap()
     , DataPos()
     , DataTail()
@@ -882,12 +882,12 @@ TracingSession::BufferInfo::BufferInfo() noexcept
     return;
 }
 
-TracingSession::TracepointInfo::~TracepointInfo()
+TracepointSession::TracepointInfo::~TracepointInfo()
 {
     return;
 }
 
-TracingSession::TracepointInfo::TracepointInfo(
+TracepointSession::TracepointInfo::TracepointInfo(
     std::unique_ptr<unique_fd[]> bufferFiles,
     tracepoint_decode::PerfEventMetadata const& metadata) noexcept
     : BufferFiles(std::move(bufferFiles))
@@ -897,7 +897,7 @@ TracingSession::TracepointInfo::TracepointInfo(
     return;
 }
 
-TracingSession::TracepointBookmark::TracepointBookmark(
+TracepointSession::TracepointBookmark::TracepointBookmark(
     uint64_t timestamp,
     uint16_t bufferIndex,
     uint16_t dataSize,
@@ -910,18 +910,18 @@ TracingSession::TracepointBookmark::TracepointBookmark(
     return;
 }
 
-TracingSession::~TracingSession()
+TracepointSession::~TracepointSession()
 {
     return;
 }
 
-TracingSession::UnorderedEnumerator::~UnorderedEnumerator()
+TracepointSession::UnorderedEnumerator::~UnorderedEnumerator()
 {
     m_session.EnumeratorEnd(m_bufferIndex);
 }
 
-TracingSession::UnorderedEnumerator::UnorderedEnumerator(
-    TracingSession& session,
+TracepointSession::UnorderedEnumerator::UnorderedEnumerator(
+    TracepointSession& session,
     uint32_t bufferIndex) noexcept
     : m_session(session)
     , m_bufferIndex(bufferIndex)
@@ -940,7 +940,7 @@ NonSampleFnReturnFalse(
 }
 
 bool
-TracingSession::UnorderedEnumerator::MoveNext() noexcept
+TracepointSession::UnorderedEnumerator::MoveNext() noexcept
 {
     auto& session = m_session;
     return session.EnumeratorMoveNext(
@@ -955,7 +955,7 @@ TracingSession::UnorderedEnumerator::MoveNext() noexcept
         NonSampleFnReturnFalse);
 }
 
-TracingSession::OrderedEnumerator::~OrderedEnumerator()
+TracepointSession::OrderedEnumerator::~OrderedEnumerator()
 {
     if (m_needsCleanup)
     {
@@ -966,7 +966,7 @@ TracingSession::OrderedEnumerator::~OrderedEnumerator()
     }
 }
 
-TracingSession::OrderedEnumerator::OrderedEnumerator(TracingSession& session) noexcept
+TracepointSession::OrderedEnumerator::OrderedEnumerator(TracepointSession& session) noexcept
     : m_session(session)
     , m_needsCleanup(false)
     , m_index(0)
@@ -975,7 +975,7 @@ TracingSession::OrderedEnumerator::OrderedEnumerator(TracingSession& session) no
 }
 
 _Success_(return == 0) int
-TracingSession::OrderedEnumerator::LoadAndSort() noexcept
+TracepointSession::OrderedEnumerator::LoadAndSort() noexcept
 {
     int error;
     auto& session = m_session;
@@ -1066,7 +1066,7 @@ TracingSession::OrderedEnumerator::LoadAndSort() noexcept
 }
 
 bool
-TracingSession::OrderedEnumerator::MoveNext() noexcept
+TracepointSession::OrderedEnumerator::MoveNext() noexcept
 {
     auto& session = m_session;
     auto const& enumSort = session.m_enumSort;

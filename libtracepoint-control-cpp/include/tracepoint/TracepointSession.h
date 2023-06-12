@@ -2,16 +2,16 @@
 // Licensed under the MIT License.
 
 /*
-TracingSession class that manages a tracepoint collection session.
+TracepointSession class that manages a tracepoint collection session.
 */
 
 #pragma once
-#ifndef _included_TracingSession_h
-#define _included_TracingSession_h
+#ifndef _included_TracepointSession_h
+#define _included_TracepointSession_h
 
 #include <tracepoint/PerfEventMetadata.h>
 #include <tracepoint/PerfEventInfo.h>
-#include <tracepoint/TracingCache.h>
+#include <tracepoint/TracepointCache.h>
 
 #include <unordered_map>
 #include <string_view>
@@ -62,7 +62,7 @@ namespace tracepoint_control
       be lost. At any point, we can enumerate events from the buffer, consuming
       them to make room for new events (no pause required).
     */
-    enum class TracingMode : unsigned char
+    enum class TracepointSessionMode : unsigned char
     {
         /*
         Buffers will be managed as circular:
@@ -94,14 +94,14 @@ namespace tracepoint_control
 
     Example:
 
-        TracingCache cache;
-        TracingSession session(
+        TracepointCache cache;
+        TracepointSession session(
             cache,
-            TracingSessionOptions(TracingMode::RealTime, 65536) // Required
-                .WakeupWatermark(32768)                         // Optional
+            TracepointSessionOptions(TracepointSessionMode::RealTime, 65536) // Required
+                .WakeupWatermark(32768)                                      // Optional
                 );
     */
-    class TracingSessionOptions
+    class TracepointSessionOptions
     {
         static constexpr auto SampleTypeDefault = 0x486u;
         static constexpr auto SampleTypeSupported = 0x107EFu;
@@ -109,8 +109,8 @@ namespace tracepoint_control
     public:
 
         /*
-        Initializes a TracingSessionOptions to configure a session with the specified
-        mode and buffer size.
+        Initializes a TracepointSessionOptions to configure a session with the
+        specified mode and buffer size.
 
         - mode: controls whether the buffer is managed as Circular or RealTime.
 
@@ -119,8 +119,8 @@ namespace tracepoint_control
           Note that the session will allocate one buffer for each CPU.
         */
         constexpr
-        TracingSessionOptions(
-            TracingMode mode,
+        TracepointSessionOptions(
+            TracepointSessionMode mode,
             uint32_t bufferSize) noexcept
             : m_bufferSize(bufferSize)
             , m_mode(mode)
@@ -161,7 +161,7 @@ namespace tracepoint_control
         Note that you'll almost always want to include PERF_SAMPLE_RAW since that
         is the event's raw data (the event field values).
         */
-        constexpr TracingSessionOptions&
+        constexpr TracepointSessionOptions&
         SampleType(uint32_t sampleType) noexcept
         {
             m_sampleType = sampleType & SampleTypeSupported;
@@ -179,7 +179,7 @@ namespace tracepoint_control
         buffers each contain 32760 bytes of pending data, none of them would
         trigger a WakeupWatermark(32768) condition.
         */
-        constexpr TracingSessionOptions&
+        constexpr TracepointSessionOptions&
         WakeupWatermark(uint32_t wakeupWatermark) noexcept
         {
             m_wakeupUseWatermark = true;
@@ -189,12 +189,12 @@ namespace tracepoint_control
 
     private:
 
-        friend class TracingSession;
+        friend class TracepointSession;
 
     private:
 
         uint32_t const m_bufferSize;
-        TracingMode const m_mode;
+        TracepointSessionMode const m_mode;
         bool m_wakeupUseWatermark;
         uint32_t m_wakeupValue;
         uint32_t m_sampleType;
@@ -205,12 +205,12 @@ namespace tracepoint_control
 
     Basic usage:
 
-        TracingCache cache;
-        TracingSession session(
+        TracepointCache cache;
+        TracepointSession session(
             cache, // A metadata cache to use for this session.
-            TracingSessionOptions(TracingMode::RealTime, 65536) // Required settings
-                .SampleType(PERF_SAMPLE_TIME | PERF_SAMPLE_RAW) // Optional setting
-                .WakeupWatermark(32768)                         // Optional setting
+            TracepointSessionOptions(TracepointSessionMode::RealTime, 65536) // Required settings
+                .SampleType(PERF_SAMPLE_TIME | PERF_SAMPLE_RAW)              // Optional setting
+                .WakeupWatermark(32768)                                      // Optional setting
                 );
 
         error = session.EnableTracepoint("user_events", "MyFavoriteTracepoint");
@@ -235,18 +235,18 @@ namespace tracepoint_control
             // ... check for error.
         }
     */
-    class TracingSession
+    class TracepointSession
     {
     public:
 
-        TracingSession(TracingSession const&) = delete;
-        void operator=(TracingSession const&) = delete;
-        ~TracingSession();
+        TracepointSession(TracepointSession const&) = delete;
+        void operator=(TracepointSession const&) = delete;
+        ~TracepointSession();
 
         /*
         May throw std::bad_alloc.
 
-        - cache: The TracingCache that this session will use to locate metadata
+        - cache: The TracepointCache that this session will use to locate metadata
           (format) information about tracepoints. Multiple sessions may share a
           cache.
 
@@ -254,22 +254,22 @@ namespace tracepoint_control
 
         Example:
 
-            TracingCache cache;
-            TracingSession session(
+            TracepointCache cache;
+            TracepointSession session(
                 cache, // A metadata cache to use for this session.
-                TracingSessionOptions(TracingMode::RealTime, 65536) // Required settings
-                    .SampleType(PERF_SAMPLE_TIME | PERF_SAMPLE_RAW) // Optional setting
-                    .WakeupWatermark(32768)                         // Optional setting
+                TracepointSessionOptions(TracepointSessionMode::RealTime, 65536) // Required settings
+                    .SampleType(PERF_SAMPLE_TIME | PERF_SAMPLE_RAW)              // Optional setting
+                    .WakeupWatermark(32768)                                      // Optional setting
                     );
         */
-        TracingSession(
-            TracingCache& cache,
-            TracingSessionOptions const& options) noexcept(false);
+        TracepointSession(
+            TracepointCache& cache,
+            TracepointSessionOptions const& options) noexcept(false);
 
         /*
         Returns the mode that was specified at construction.
         */
-        TracingMode
+        TracepointSessionMode
         Mode() const noexcept;
 
         /*
@@ -755,7 +755,7 @@ namespace tracepoint_control
 
         class UnorderedEnumerator
         {
-            TracingSession& m_session;
+            TracepointSession& m_session;
             uint32_t const m_bufferIndex;
 
         public:
@@ -765,7 +765,7 @@ namespace tracepoint_control
             ~UnorderedEnumerator();
 
             UnorderedEnumerator(
-                TracingSession& session,
+                TracepointSession& session,
                 uint32_t bufferIndex) noexcept;
 
             bool
@@ -774,7 +774,7 @@ namespace tracepoint_control
 
         class OrderedEnumerator
         {
-            TracingSession& m_session;
+            TracepointSession& m_session;
             bool m_needsCleanup;
             size_t m_index;
 
@@ -785,7 +785,7 @@ namespace tracepoint_control
             ~OrderedEnumerator();
 
             explicit
-            OrderedEnumerator(TracingSession& session) noexcept;
+            OrderedEnumerator(TracepointSession& session) noexcept;
 
             _Success_(return == 0) int
             LoadAndSort() noexcept;
@@ -822,8 +822,8 @@ namespace tracepoint_control
 
     private:
 
-        TracingCache& m_cache;
-        TracingMode const m_mode;
+        TracepointCache& m_cache;
+        TracepointSessionMode const m_mode;
         bool const m_wakeupUseWatermark;
         uint32_t const m_wakeupValue;
         uint32_t const m_sampleType;
@@ -846,4 +846,4 @@ namespace tracepoint_control
 }
 // namespace tracepoint_control
 
-#endif // _included_TracingSession_h
+#endif // _included_TracepointSession_h

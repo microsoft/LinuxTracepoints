@@ -5,13 +5,13 @@
 Helpers for locating the "/sys/.../tracing" directory and loading "format"
 files from it.
 
-The TracingCache class uses these functions to locate and load format
+The TracepointCache class uses these functions to locate and load format
 information.
 */
 
 #pragma once
-#ifndef _included_TracingPath_h
-#define _included_TracingPath_h 1
+#ifndef _included_TracepointPath_h
+#define _included_TracepointPath_h 1
 
 #include <string_view>
 #include <vector>
@@ -75,4 +75,4 @@ namespace tracepoint_control
 }
 // namespace tracepoint_control
 
-#endif // _included_TracingPath_h
+#endif // _included_TracepointPath_h

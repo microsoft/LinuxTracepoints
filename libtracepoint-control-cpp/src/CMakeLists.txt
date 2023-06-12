@@ -1,8 +1,8 @@
 # tracepoint-control = libtracepoint-control, CONTROL_HEADERS
 add_library(tracepoint-control
-    "TracingCache.cpp"
-    "TracingPath.cpp"
-    "TracingSession.cpp"
+    "TracepointCache.cpp"
+    "TracepointPath.cpp"
+    "TracepointSession.cpp"
     "UniqueHandles.cpp")
 target_include_directories(tracepoint-control
     PUBLIC
@@ -11,9 +11,9 @@ target_include_directories(tracepoint-control
 target_link_libraries(tracepoint-control
     PUBLIC tracepoint-decode)
 set(CONTROL_HEADERS
-    "${PROJECT_SOURCE_DIR}/include/tracepoint/TracingCache.h"
-    "${PROJECT_SOURCE_DIR}/include/tracepoint/TracingPath.h"
-    "${PROJECT_SOURCE_DIR}/include/tracepoint/TracingSession.h")
+    "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointCache.h"
+    "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointPath.h"
+    "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointSession.h")
 set_target_properties(tracepoint-control PROPERTIES
     PUBLIC_HEADER "${CONTROL_HEADERS}")
 target_compile_features(tracepoint-control

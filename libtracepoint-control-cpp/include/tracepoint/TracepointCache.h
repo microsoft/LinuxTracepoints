@@ -2,16 +2,16 @@
 // Licensed under the MIT License.
 
 /*
-TracingCache: class that loads, parses, and caches the metadata (format)
+TracepointCache: class that loads, parses, and caches the metadata (format)
 information for tracepoints.
 
-The TracingSession class uses TracingCache to manage format information for
-its tracepoints.
+The TracepointSession class uses TracepointCache to manage format information
+for its tracepoints.
 */
 
 #pragma once
-#ifndef _included_TracingCache_h
-#define _included_TracingCache_h 1
+#ifndef _included_TracepointCache_h
+#define _included_TracepointCache_h 1
 
 #include <tracepoint/PerfEventMetadata.h>
 #include <unordered_map>
@@ -34,18 +34,18 @@ namespace tracepoint_control
     /*
     Loads, parses, and caches the metadata (format) information for tracepoints.
     */
-    class TracingCache
+    class TracepointCache
     {
     public:
 
-        TracingCache(TracingCache const&) = delete;
-        void operator=(TracingCache const&) = delete;
-        ~TracingCache();
+        TracepointCache(TracepointCache const&) = delete;
+        void operator=(TracepointCache const&) = delete;
+        ~TracepointCache();
 
         /*
         May throw std::bad_alloc.
         */
-        TracingCache() noexcept(false);
+        TracepointCache() noexcept(false);
 
         /*
         If no events are present in cache, returns -1.
@@ -56,7 +56,7 @@ namespace tracepoint_control
 
         /*
         If no events are present in cache, returns 0.
-        Otherwise, returns the size of the common_type field (1, 2, or 4, usually 2).
+        Otherwise, returns the size of the common_type field (1, 2, or 4; usually 2).
         */
         uint8_t
         CommonTypeSize() const noexcept;
@@ -167,4 +167,4 @@ namespace tracepoint_control
 }
 // namespace tracepoint_control
 
-#endif // _included_TracingCache_h
+#endif // _included_TracepointCache_h

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <tracepoint/TracingSession.h>
+#include <tracepoint/TracepointSession.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -27,13 +27,13 @@ main(int argc, char* argv[])
     }
 
     auto const mode = 0 == strcmp(argv[1], "0")
-        ? TracingMode::Circular
-        : TracingMode::RealTime;
+        ? TracepointSessionMode::Circular
+        : TracepointSessionMode::RealTime;
 
-    TracingCache cache;
-    TracingSession session(
+    TracepointCache cache;
+    TracepointSession session(
         cache,
-        TracingSessionOptions(mode, 0) // 0 should round up to a 1-page buffer.
+        TracepointSessionOptions(mode, 0) // 0 should round up to a 1-page buffer.
             .WakeupWatermark(100)); // WaitForWakeup waits for a buffer to have >= 100 bytes of data.
 
     fprintf(stderr, "Session: BC=%u BS=%x RT=%u MODE=%u\n",
@@ -67,7 +67,7 @@ main(int argc, char* argv[])
     {
         fprintf(stderr, "\n");
 
-        if (mode == TracingMode::Circular)
+        if (mode == TracepointSessionMode::Circular)
         {
             sleep(5);
         }

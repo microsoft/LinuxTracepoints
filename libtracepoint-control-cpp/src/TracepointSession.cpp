@@ -71,6 +71,15 @@ RoundUpBufferSize(uint32_t pageSize, size_t bufferSize) noexcept
 
 TracepointSession::TracepointSession(
     TracepointCache& cache,
+    TracepointSessionMode mode,
+    uint32_t bufferSize) noexcept(false)
+    : TracepointSession(cache, TracepointSessionOptions(mode, bufferSize))
+{
+    return;
+}
+
+TracepointSession::TracepointSession(
+    TracepointCache& cache,
     TracepointSessionOptions const& options) noexcept(false)
     : m_cache(cache)
     , m_mode(options.m_mode)

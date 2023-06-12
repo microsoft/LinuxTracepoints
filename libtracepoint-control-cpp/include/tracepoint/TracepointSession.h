@@ -241,6 +241,34 @@ namespace tracepoint_control
         ~TracepointSession();
 
         /*
+        Constructs a session using defaults for advanced options.
+        May throw std::bad_alloc.
+
+        - cache: The TracepointCache that this session will use to locate metadata
+          (format) information about tracepoints. Multiple sessions may share a
+          cache.
+
+        - mode: controls whether the buffer is managed as Circular or RealTime.
+
+        - bufferSize: specifies the size of each buffer in bytes. This value will be
+          rounded up to a power of 2 that is equal to or greater than the page size.
+          Note that the session will allocate one buffer for each CPU.
+
+        Example:
+
+            TracepointCache cache;
+            TracepointSession session(
+                cache, // The metadata cache to use for this session.
+                TracepointSessionMode::RealTime,
+                65536);
+        */
+        TracepointSession(
+            TracepointCache& cache,
+            TracepointSessionMode mode,
+            uint32_t bufferSize) noexcept(false);
+
+        /*
+        Constructs a session using TracepointSessionOptions to set advanced options.
         May throw std::bad_alloc.
 
         - cache: The TracepointCache that this session will use to locate metadata
@@ -256,8 +284,7 @@ namespace tracepoint_control
                 cache, // The metadata cache to use for this session.
                 TracepointSessionOptions(TracepointSessionMode::RealTime, 65536) // Required settings
                     .SampleType(PERF_SAMPLE_TIME | PERF_SAMPLE_RAW)              // Optional setting
-                    .WakeupWatermark(32768)                                      // Optional setting
-                    );
+                    .WakeupWatermark(32768));                                    // Optional setting
         */
         TracepointSession(
             TracepointCache& cache,

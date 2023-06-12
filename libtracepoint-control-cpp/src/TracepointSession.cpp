@@ -25,6 +25,16 @@ using namespace std::string_view_literals;
 using namespace tracepoint_control;
 using namespace tracepoint_decode;
 
+static bool
+NonSampleFnReturnFalse(
+    [[maybe_unused]] uint8_t const* bufferData,
+    [[maybe_unused]] uint16_t sampleDataSize,
+    [[maybe_unused]] uint32_t sampleDataBufferPos,
+    [[maybe_unused]] perf_event_header const& eventHeader) noexcept
+{
+    return false;
+}
+
 static long
 perf_event_open(
     struct perf_event_attr* pe,
@@ -146,23 +156,12 @@ TracepointSession::Clear() noexcept
 }
 
 _Success_(return == 0) int
-TracepointSession::DisableTracePoint(std::string_view tracepointPath) noexcept
-{
-    auto const splitPos = tracepointPath.find_first_of(":/"sv);
-    return splitPos == tracepointPath.npos
-        ? EINVAL
-        : DisableTracePoint(tracepointPath.substr(0, splitPos), tracepointPath.substr(splitPos + 1));
-}
-
-_Success_(return == 0) int
-TracepointSession::DisableTracePoint(
-    std::string_view systemName,
-    std::string_view eventName) noexcept
+TracepointSession::DisableTracePoint(TracepointName name) noexcept
 {
     int error;
 
     PerfEventMetadata const* metadata;
-    error = m_cache.FindOrAddFromSystem(systemName, eventName, &metadata);
+    error = m_cache.FindOrAddFromSystem(name, &metadata);
     if (error == 0)
     {
         auto const it = m_tracepointInfoById.find(metadata->Id());
@@ -180,24 +179,13 @@ TracepointSession::DisableTracePoint(
 }
 
 _Success_(return == 0) int
-TracepointSession::EnableTracePoint(std::string_view tracepointPath) noexcept
-{
-    auto const splitPos = tracepointPath.find_first_of(":/"sv);
-    return splitPos == tracepointPath.npos
-        ? EINVAL
-        : EnableTracePoint(tracepointPath.substr(0, splitPos), tracepointPath.substr(splitPos + 1));
-}
-
-_Success_(return == 0) int
-TracepointSession::EnableTracePoint(
-    std::string_view systemName,
-    std::string_view eventName) noexcept
+TracepointSession::EnableTracePoint(TracepointName name) noexcept
 {
     int error;
     try
     {
         PerfEventMetadata const* metadata;
-        error = m_cache.FindOrAddFromSystem(systemName, eventName, &metadata);
+        error = m_cache.FindOrAddFromSystem(name, &metadata);
         if (error != 0)
         {
             goto Done;
@@ -927,16 +915,6 @@ TracepointSession::UnorderedEnumerator::UnorderedEnumerator(
     , m_bufferIndex(bufferIndex)
 {
     m_session.EnumeratorBegin(bufferIndex);
-}
-
-static bool
-NonSampleFnReturnFalse(
-    [[maybe_unused]] uint8_t const* bufferData,
-    [[maybe_unused]] uint16_t sampleDataSize,
-    [[maybe_unused]] uint32_t sampleDataBufferPos,
-    [[maybe_unused]] perf_event_header const& eventHeader) noexcept
-{
-    return false;
 }
 
 bool

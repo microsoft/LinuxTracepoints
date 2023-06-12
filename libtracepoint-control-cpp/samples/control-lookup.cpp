@@ -14,23 +14,16 @@ main(int argc, char* argv[])
     for (int argi = 1; argi < argc; argi += 1)
     {
         int error;
-        std::string_view const arg = argv[argi];
-        auto const splitPos = arg.find_first_of(":/"sv);
-        auto const systemName = splitPos == arg.npos
-            ? "user_events"sv
-            : arg.substr(0, splitPos);
-        auto const eventName = splitPos == arg.npos
-            ? arg
-            : arg.substr(splitPos + 1);
+        auto const name = TracepointName(argv[argi]);
 
-        error = cache.AddFromSystem(systemName, eventName);
+        error = cache.AddFromSystem(name);
         fprintf(stdout, "AddFromSystem(%.*s:%.*s)=%u\n",
-            (unsigned)systemName.size(), systemName.data(),
-            (unsigned)eventName.size(), eventName.data(),
+            (unsigned)name.SystemName.size(), name.SystemName.data(),
+            (unsigned)name.EventName.size(), name.EventName.data(),
             error);
 
         unsigned id = 0;
-        if (auto const meta = cache.FindByName(systemName, eventName); meta)
+        if (auto const meta = cache.FindByName(name); meta)
         {
             fprintf(stdout, "- FindByName=%u\n", meta->Id());
             fprintf(stdout, "  Sys = %.*s\n", (unsigned)meta->SystemName().size(), meta->SystemName().data());

@@ -16,9 +16,6 @@ information.
 #include <string_view>
 #include <vector>
 
-#if _WIN32
-#include <sal.h>
-#else // _WIN32
 #ifndef _In_z_
 #define _In_z_
 #endif
@@ -28,7 +25,6 @@ information.
 #ifndef _Success_
 #define _Success_(condition)
 #endif
-#endif // _WIN32
 
 namespace tracepoint_control
 {

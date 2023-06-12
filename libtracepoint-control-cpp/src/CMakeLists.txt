@@ -12,6 +12,7 @@ target_link_libraries(tracepoint-control
     PUBLIC tracepoint-decode)
 set(CONTROL_HEADERS
     "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointCache.h"
+    "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointName.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointPath.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointSession.h")
 set_target_properties(tracepoint-control PROPERTIES

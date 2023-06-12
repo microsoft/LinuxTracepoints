@@ -13,21 +13,18 @@ for its tracepoints.
 #ifndef _included_TracepointCache_h
 #define _included_TracepointCache_h 1
 
+#include "TracepointName.h"
 #include <tracepoint/PerfEventMetadata.h>
 #include <unordered_map>
 #include <string_view>
 #include <vector>
 
-#if _WIN32
-#include <sal.h>
-#else // _WIN32
 #ifndef _Success_
 #define _Success_(condition)
 #endif
 #ifndef _Out_
 #define _Out_
 #endif
-#endif // _WIN32
 
 namespace tracepoint_control
 {
@@ -63,17 +60,18 @@ namespace tracepoint_control
 
         /*
         If metadata for an event with the specified ID is cached, return it.
-        Otherwise, return NULL.
+        Otherwise, return NULL. Note that ID is from the event's common_type field
+        and is not the PERF_SAMPLE_ID or PERF_SAMPLE_IDENTIFIER value.
         */
         tracepoint_decode::PerfEventMetadata const*
         FindById(uint32_t id) const noexcept;
 
         /*
-        If metadata for an event with the specified system and name is cached,
-        return it. Otherwise, return NULL.
+        If metadata for an event with the specified name is cached, return it.
+        Otherwise, return NULL.
         */
         tracepoint_decode::PerfEventMetadata const*
-        FindByName(std::string_view systemName, std::string_view eventName) const noexcept;
+        FindByName(TracepointName name) const noexcept;
 
         /*
         If metadata for an event with the specified data is cached,
@@ -83,7 +81,7 @@ namespace tracepoint_control
 
         - Assume that rawData is host-endian.
         - Use CommonTypeOffset() and CommonTypeSize() to extract the common_type
-          field value.
+          field value from the rawData.
         - Use FindById() to find the matching metadata.
         */
         tracepoint_decode::PerfEventMetadata const*
@@ -106,18 +104,15 @@ namespace tracepoint_control
         Otherwise, add the metadata to the cache.
         */
         _Success_(return == 0) int
-        AddFromSystem(
-            std::string_view systemName,
-            std::string_view eventName) noexcept;
+        AddFromSystem(TracepointName name) noexcept;
 
         /*
         If metadata for an event with the specified name is cached, return it.
-        Otherwise, return AddFromSystem(systemName, eventName).
+        Otherwise, return AddFromSystem(name).
         */
         _Success_(return == 0) int
         FindOrAddFromSystem(
-            std::string_view systemName,
-            std::string_view eventName,
+            TracepointName name,
             _Out_ tracepoint_decode::PerfEventMetadata const** ppMetadata) noexcept;
 
     private:
@@ -146,21 +141,14 @@ namespace tracepoint_control
                 tracepoint_decode::PerfEventMetadata&& metadata) noexcept;
         };
 
-        struct EventName
+        struct NameHashOps
         {
-            std::string_view System; // Points into SystemAndFormat
-            std::string_view Event; // Points into SystemAndFormat
-            EventName(std::string_view system, std::string_view event) noexcept;
-        };
-
-        struct EventNameHashOps
-        {
-            size_t operator()(EventName const&) const noexcept; // Hash
-            size_t operator()(EventName const&, EventName const&) const noexcept; // Equal
+            size_t operator()(TracepointName const&) const noexcept; // Hash
+            size_t operator()(TracepointName const&, TracepointName const&) const noexcept; // Equal
         };
 
         std::unordered_map<uint32_t, CacheVal> m_byId;
-        std::unordered_map<EventName, CacheVal const&, EventNameHashOps, EventNameHashOps> m_byName;
+        std::unordered_map<TracepointName, CacheVal const&, NameHashOps, NameHashOps> m_byName;
         int8_t m_commonTypeOffset; // -1 = unset
         uint8_t m_commonTypeSize; // 0 = unset
     };

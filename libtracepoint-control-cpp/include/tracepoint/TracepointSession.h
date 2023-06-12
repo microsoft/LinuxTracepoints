@@ -9,20 +9,17 @@ TracepointSession class that manages a tracepoint collection session.
 #ifndef _included_TracepointSession_h
 #define _included_TracepointSession_h
 
+#include "TracepointName.h"
 #include <tracepoint/PerfEventMetadata.h>
 #include <tracepoint/PerfEventInfo.h>
 #include <tracepoint/TracepointCache.h>
 
 #include <unordered_map>
-#include <string_view>
 #include <memory>
 #include <vector>
 
 #include <signal.h> // sigset_t
 
-#if _WIN32
-#include <sal.h>
-#else // _WIN32
 #ifndef _In_reads_
 #define _In_reads_(size)
 #endif
@@ -35,7 +32,6 @@ TracepointSession class that manages a tracepoint collection session.
 #ifndef _Out_writes_
 #define _Out_writes_(size)
 #endif
-#endif // _WIN32
 
 // Forward declarations:
 struct pollfd; // poll.h
@@ -47,20 +43,20 @@ namespace tracepoint_control
     Mode to use for a tracepoint collection session:
 
     - Circular: Used for "flight recorder" scenarios. Events are collected
-      into fixed-size buffers (one buffer per CPU). When buffer is full, new
+      into fixed-size buffers (one buffer per CPU). When a buffer is full, new
       events overwrite old events. At any point, you can pause collection,
-      enumerate the contents of the buffer, and resume collection. (Events
-      received while collection is paused will be lost.)
+      enumerate the contents of the buffer, and resume collection. Events
+      received while collection is paused will be lost.
 
-      For example, we can record information about what is happening on the
-      system into memory, and then if a program crashes, we save the data to
-      disk so we can discover what was happening on the system in the moments
+      For example, you can record information about what is happening on the
+      system into memory, and then if a program crashes, you save the data to
+      disk so you can discover what was happening on the system in the period
       leading up to the crash.
 
-    - RealTime: Used for logging scenarios. Events are collected into
-      fixed-size buffers (one buffer per CPU). When buffer is full, events will
-      be lost. At any point, we can enumerate events from the buffer, consuming
-      them to make room for new events (no pause required).
+    - RealTime: Used for logging/tracing scenarios. Events are collected into
+      fixed-size buffers (one buffer per CPU). When a buffer is full, events
+      will be lost. At any point, you can enumerate events from the buffer,
+      consuming them to make room for new events (no pause required).
     */
     enum class TracepointSessionMode : unsigned char
     {
@@ -71,6 +67,7 @@ namespace tracepoint_control
         - Natural event enumeration order is newest-to-oldest (per buffer).
         - Procedure for reading data: pause buffer, enumerate events, unpause.
           (Events arriving while buffer is paused will be lost.)
+        - Cannot be notified when data becomes available.
         */
         Circular,
 
@@ -205,34 +202,34 @@ namespace tracepoint_control
 
     Basic usage:
 
-        TracepointCache cache;
+        TracepointCache cache; // May be shared by multiple sessions.
         TracepointSession session(
-            cache, // A metadata cache to use for this session.
+            cache, // The metadata cache to use for this session.
             TracepointSessionOptions(TracepointSessionMode::RealTime, 65536) // Required settings
                 .SampleType(PERF_SAMPLE_TIME | PERF_SAMPLE_RAW)              // Optional setting
                 .WakeupWatermark(32768)                                      // Optional setting
                 );
 
-        error = session.EnableTracepoint("user_events", "MyFavoriteTracepoint");
-        // ... check for error.
+        error = session.EnableTracepoint(TracepointName("user_events", "MyFirstTracepoint"));
+        // ... handle error.
 
-        error = session.EnableTracepoint("user_events", "MySecondTracepoint");
-        // ... check for error.
+        error = session.EnableTracepoint(TracepointName("user_events:MySecondTracepoint"));
+        // ... handle error.
 
         for (;;)
         {
             // Wait until one or more of the buffers reaches 32768 bytes of event data.
             error = session.WaitForWakeup();
-            // ... check for error. Don't get into a busy loop if waiting fails!
+            // ... handle error. (Don't get into a busy loop if waiting fails!)
 
             error = session.EnumerateSampleEventsUnordered(
                 [](PerfSampleEventInfo const& event)
                 {
-                    // This will be called once for each SAMPLE event.
+                    // This code will run once for each SAMPLE event.
                     // It should record or process the event's data.
                     return 0; // If we return an error, enumeration will stop.
                 });
-            // ... check for error.
+            // ... handle error.
         }
     */
     class TracepointSession
@@ -256,7 +253,7 @@ namespace tracepoint_control
 
             TracepointCache cache;
             TracepointSession session(
-                cache, // A metadata cache to use for this session.
+                cache, // The metadata cache to use for this session.
                 TracepointSessionOptions(TracepointSessionMode::RealTime, 65536) // Required settings
                     .SampleType(PERF_SAMPLE_TIME | PERF_SAMPLE_RAW)              // Optional setting
                     .WakeupWatermark(32768)                                      // Optional setting
@@ -312,7 +309,7 @@ namespace tracepoint_control
         /*
         Returns the number of corrupt events that have been enumerated by this
         session. An event is detected as corrupt if the event's size is too
-        small (based on the event's SampleType).
+        small for the event's expected SampleType.
         */
         uint64_t
         CorruptEventCount() const noexcept;
@@ -336,16 +333,6 @@ namespace tracepoint_control
         /*
         Disables collection of the specified tracepoint.
 
-        tracepointPath is in the format "systemName:eventName" or
-        "systemName/eventName", e.g. "user_events:MyEvent" or
-         "ftrace/function".
-
-        - systemName is the name of a subdirectory of
-          "/sys/kernel/tracing/events" such as "user_events" or "ftrace".
-        - eventName is the name of a subdirectory of
-          "/sys/kernel/tracing/events/systemName", e.g. "MyEvent" or
-          "function".
-
         Returns 0 for success, errno for error.
         Errors include but are not limited to:
         - ENOENT: tracefs metadata not found (tracepoint may not be registered yet).
@@ -355,44 +342,11 @@ namespace tracepoint_control
         - ENOMEM: memory allocation failed.
         */
         _Success_(return == 0) int
-        DisableTracePoint(
-            std::string_view tracepointPath) noexcept;
-
-        /*
-        Disables collection of the specified tracepoint.
-
-        - systemName is the name of a subdirectory of
-          "/sys/kernel/tracing/events" such as "user_events" or "ftrace".
-        - eventName is the name of a subdirectory of
-          "/sys/kernel/tracing/events/systemName", e.g. "MyEvent" or
-          "function".
-
-        Returns 0 for success, errno for error.
-        Errors include but are not limited to:
-        - ENOENT: tracefs metadata not found (tracepoint may not be registered yet).
-        - ENOTSUP: unable to find tracefs mount point.
-        - EPERM: access denied to tracefs metadata.
-        - ENODATA: unable to parse tracefs metadata.
-        - ENOMEM: memory allocation failed.
-        */
-        _Success_(return == 0) int
-        DisableTracePoint(
-            std::string_view systemName,
-            std::string_view eventName) noexcept;
+        DisableTracePoint(TracepointName name) noexcept;
 
         /*
         Enables collection of the specified tracepoint.
 
-        tracepointPath is in the format "systemName:eventName" or
-        "systemName/eventName", e.g. "user_events:MyEvent" or
-         "ftrace/function".
-
-        - systemName is the name of a subdirectory of
-          "/sys/kernel/tracing/events" such as "user_events" or "ftrace".
-        - eventName is the name of a subdirectory of
-          "/sys/kernel/tracing/events/systemName", e.g. "MyEvent" or
-          "function".
-
         Returns 0 for success, errno for error.
         Errors include but are not limited to:
         - ENOENT: tracefs metadata not found (tracepoint may not be registered yet).
@@ -402,30 +356,7 @@ namespace tracepoint_control
         - ENOMEM: memory allocation failed.
         */
         _Success_(return == 0) int
-        EnableTracePoint(
-            std::string_view tracepointPath) noexcept;
-
-        /*
-        Enables collection of the specified tracepoint.
-
-        - systemName is the name of a subdirectory of
-          "/sys/kernel/tracing/events" such as "user_events" or "ftrace".
-        - eventName is the name of a subdirectory of
-          "/sys/kernel/tracing/events/systemName", e.g. "MyEvent" or
-          "function".
-
-        Returns 0 for success, errno for error.
-        Errors include but are not limited to:
-        - ENOENT: tracefs metadata not found (tracepoint may not be registered yet).
-        - ENOTSUP: unable to find tracefs mount point.
-        - EPERM: access denied to tracefs metadata.
-        - ENODATA: unable to parse tracefs metadata.
-        - ENOMEM: memory allocation failed.
-        */
-        _Success_(return == 0) int
-        EnableTracePoint(
-            std::string_view systemName,
-            std::string_view eventName) noexcept;
+        EnableTracePoint(TracepointName name) noexcept;
 
         /*
         For realtime sessions only: Waits for the wakeup condition using
@@ -492,26 +423,42 @@ namespace tracepoint_control
 
         Returns: int error code (errno), or 0 for success.
 
-        Events will be sorted based on timestamp (session's SampleType() must include
-        PERF_SAMPLE_TIME) before invoking the callback. If your callback does not
-        need events to be sorted based on timestamp, use EnumerateSampleEventsUnordered
-        to avoid the sorting overhead.
+        Requires:
+
+        - The session's SampleType() must include PERF_SAMPLE_TIME so that the events
+          can be sorted based on timestamp.
+
+        Examples:
+
+            // Use a callback function pointer and callback context:
+            error = session.EnumerateSampleEvents(functionPointer, functionContext);
+
+            // Use a lambda:
+            error = session.EnumerateSampleEvents(
+                [&](PerfSampleEventInfo const& event) -> int
+                {
+                    ...
+                    return 0;
+                });
+
+        Events will be sorted based on timestamp before invoking the callback. If your
+        callback does not need events to be sorted based on timestamp, use
+        EnumerateSampleEventsUnordered to avoid the sorting overhead.
 
         Note that the eventInfo provided to eventInfoCallback will contain pointers
-        into the trace buffers. The pointers will become invalidated after
-        eventInfoCallback returns. Any data that you need to use after that point
-        must be copied.
+        into the trace buffers. The pointers will become invalid after eventInfoCallback
+        returns. Any data that you need to use after that point must be copied.
 
         Note that this method does not throw any of its own exceptions, but it may
-        exit via exception if eventInfoCallback() throws an exception.
+        exit via exception if your eventInfoCallback(...) throws an exception.
 
         *** Circular session behavior ***
 
-        - Pause all CPU buffers.
+        - Pause collection into all buffers.
         - Scan all buffers to find events.
         - Sort the events based on timestamp.
-        - Invoke eventInfoCallback for each event.
-        - Unpause all CPU buffers.
+        - Invoke eventInfoCallback(...) for each event.
+        - Unpause all buffers.
 
         Note that events are lost if they arrive while the buffer is paused. The lost
         event count indicates how many events were lost during previous pauses that would
@@ -532,8 +479,8 @@ namespace tracepoint_control
         due to the buffer being full at the start of the current enumeration (those will
         show up after a subsequent enumeration).
 
-        Note that if eventInfoCallback throws or returns a nonzero value,
-        all events (FEEDBACK: should it be no events?) will be marked as consumed.
+        Note that if eventInfoCallback throws or returns a nonzero value, all events will
+        be marked as consumed.
         */
         template<class EventInfoCallbackTy, class... ArgTys>
         _Success_(return == 0) int
@@ -582,25 +529,38 @@ namespace tracepoint_control
 
         Returns: int error code (errno), or 0 for success.
 
-        For efficiency, events will be provided in a natural enumeration order.
-        This is usually not the same as event timestamp order, so you may need to
-        sort the events after receiving them.
+        Examples:
+
+            // Use a callback function pointer and callback context:
+            error = session.EnumerateSampleEventsUnordered(functionPointer, functionContext);
+
+            // Use a lambda:
+            error = session.EnumerateSampleEventsUnordered(
+                [&](PerfSampleEventInfo const& event) -> int
+                {
+                    ...
+                    return 0;
+                });
+
+        For efficiency, events will be provided in a natural enumeration order. This
+        is usually not the same as event timestamp order, so you need to be able to
+        accept the events out-of-order. If you need the events to be provided in
+        timestamp order, use EnumerateSampleEvents.
 
         Note that the eventInfo provided to eventInfoCallback will contain pointers
-        into the trace buffers. The pointers will become invalidated after
-        eventInfoCallback returns. Any data that you need to use after that point
-        must be copied.
+        into the trace buffers. The pointers will become invalid after eventInfoCallback
+        returns. Any data that you need to use after that point must be copied.
 
         Note that this method does not throw any of its own exceptions, but it may
-        exit via exception if eventInfoCallback() throws an exception.
+        exit via exception if your eventInfoCallback(...) throws an exception.
 
         *** Circular session behavior ***
 
-        For each CPU:
+        For each buffer (usually one per CPU):
 
-        - Pause the CPU's buffer.
-        - Enumerate the buffer's events newest-to-oldest.
-        - Unpause the CPU's buffer.
+        - Pause collection into the buffer.
+        - Invoke eventInfoCallback(...) for each of the buffer's events, newest-to-oldest.
+        - Unpause the buffer.
 
         Note that events are lost if they arrive while the buffer is paused. The lost
         event count indicates how many events were lost during previous pauses that would
@@ -610,9 +570,9 @@ namespace tracepoint_control
 
         *** Realtime session behavior ***
 
-        For each CPU:
+        For each buffer (usually one per CPU):
 
-        - Enumerate the buffer's events oldest-to-newest.
+        - Invoke eventInfoCallback(...) for each of the buffer's events, oldest-to-newest.
         - Mark the enumerated events as consumed, making room for subsequent events.
 
         Note that events are lost if they arrive while the buffer is full. The lost
@@ -622,8 +582,8 @@ namespace tracepoint_control
         show up after a subsequent enumeration).
 
         Note that if eventInfoCallback throws or returns a nonzero value, events will be
-        marked consumed up to but not including the event for which eventInfoCallback
-        returned an error.
+        marked consumed up to and including the event for which eventInfoCallback returned
+        an error.
         */
         template<class EventInfoCallbackTy, class... ArgTys>
         _Success_(return == 0) int

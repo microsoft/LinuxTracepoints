@@ -43,7 +43,7 @@ main(int argc, char* argv[])
 
     for (int argi = 2; argi < argc; argi += 1)
     {
-        error = session.EnableTracePoint(argv[argi]);
+        error = session.EnableTracePoint(TracepointName(argv[argi]));
         fprintf(stderr, "EnableTracePoint(%s) = %u\n", argv[argi], error);
     }
 
@@ -51,7 +51,7 @@ main(int argc, char* argv[])
 
     for (int argi = 2; argi < argc; argi += 1)
     {
-        error = session.DisableTracePoint(argv[argi]);
+        error = session.DisableTracePoint(TracepointName(argv[argi]));
         fprintf(stderr, "DisableTracePoint(%s) = %u\n", argv[argi], error);
     }
 
@@ -59,7 +59,7 @@ main(int argc, char* argv[])
 
     for (int argi = 2; argi < argc; argi += 1)
     {
-        error = session.EnableTracePoint(argv[argi]);
+        error = session.EnableTracePoint(TracepointName(argv[argi]));
         fprintf(stderr, "EnableTracePoint(%s) = %u\n", argv[argi], error);
     }
 
@@ -83,7 +83,7 @@ main(int argc, char* argv[])
         }
 
         error = session.EnumerateSampleEventsUnordered(
-            [](PerfSampleEventInfo const& event)
+            [](PerfSampleEventInfo const& event) -> int
             {
                 fprintf(stdout, "CPU%u: tid=%x time=0x%llx raw=0x%lx n=%s\n",
                     event.cpu,

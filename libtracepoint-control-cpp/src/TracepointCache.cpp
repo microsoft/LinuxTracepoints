@@ -29,28 +29,19 @@ TracepointCache::CacheVal::CacheVal(
 }
 
 size_t
-TracepointCache::EventNameHashOps::operator()(
-    EventName const& a) const noexcept
+TracepointCache::NameHashOps::operator()(
+    TracepointName const& a) const noexcept
 {
     std::hash<std::string_view> const hasher;
-    return hasher(a.Event) ^ hasher(a.System);
+    return hasher(a.EventName) ^ hasher(a.SystemName);
 }
 
 size_t
-TracepointCache::EventNameHashOps::operator()(
-    EventName const& a,
-    EventName const& b) const noexcept
+TracepointCache::NameHashOps::operator()(
+    TracepointName const& a,
+    TracepointName const& b) const noexcept
 {
-    return a.Event == b.Event && a.System == b.System;
-}
-
-TracepointCache::EventName::EventName(
-    std::string_view system,
-    std::string_view event) noexcept
-    : System(system)
-    , Event(event)
-{
-    return;
+    return a.EventName == b.EventName && a.SystemName == b.SystemName;
 }
 
 TracepointCache::~TracepointCache() noexcept
@@ -89,11 +80,9 @@ TracepointCache::FindById(uint32_t id) const noexcept
 }
 
 PerfEventMetadata const*
-TracepointCache::FindByName(
-    std::string_view systemName,
-    std::string_view eventName) const noexcept
+TracepointCache::FindByName(TracepointName name) const noexcept
 {
-    auto it = m_byName.find(EventName(systemName, eventName));
+    auto it = m_byName.find(name);
     return it == m_byName.end()
         ? nullptr
         : &it->second.Metadata;
@@ -161,22 +150,20 @@ TracepointCache::AddFromFormat(
 }
 
 _Success_(return == 0) int
-TracepointCache::AddFromSystem(
-    std::string_view systemName,
-    std::string_view eventName) noexcept
+TracepointCache::AddFromSystem(TracepointName name) noexcept
 {
     int error;
 
     try
     {
         std::vector<char> systemAndFormat;
-        systemAndFormat.reserve(systemName.size() + 512); // may throw
-        systemAndFormat.assign(systemName.begin(), systemName.end());
+        systemAndFormat.reserve(name.SystemName.size() + 512); // may throw
+        systemAndFormat.assign(name.SystemName.begin(), name.SystemName.end());
         systemAndFormat.push_back('\n'); // For readability when debugging.
-        error = AppendTracingFormatFile(systemAndFormat, systemName, eventName);
+        error = AppendTracingFormatFile(systemAndFormat, name.SystemName, name.EventName);
         if (error == 0)
         {
-            error = Add(std::move(systemAndFormat), systemName.size(), sizeof(long) == 8);
+            error = Add(std::move(systemAndFormat), name.SystemName.size(), sizeof(long) == 8);
         }
     }
     catch (...)
@@ -189,14 +176,13 @@ TracepointCache::AddFromSystem(
 
 _Success_(return == 0) int
 TracepointCache::FindOrAddFromSystem(
-    std::string_view systemName,
-    std::string_view eventName,
+    TracepointName name,
     _Out_ PerfEventMetadata const** ppMetadata) noexcept
 {
     int error;
     PerfEventMetadata const* metadata;
 
-    if (auto it = m_byName.find(EventName(systemName, eventName));
+    if (auto it = m_byName.find(name);
         it != m_byName.end())
     {
         error = 0;
@@ -204,10 +190,8 @@ TracepointCache::FindOrAddFromSystem(
     }
     else
     {
-        error = AddFromSystem(systemName, eventName);
-        metadata = error
-            ? nullptr
-            : FindByName(systemName, eventName);
+        error = AddFromSystem(name);
+        metadata = error ? nullptr : FindByName(name);
     }
 
     *ppMetadata = metadata;
@@ -239,7 +223,7 @@ TracepointCache::Add(
         }
         else if (
             m_byId.end() != m_byId.find(metadata.Id()) ||
-            m_byName.end() != m_byName.find(EventName(metadata.SystemName(), metadata.Name())))
+            m_byName.end() != m_byName.find(TracepointName(metadata.SystemName(), metadata.Name())))
         {
             error = EEXIST;
         }
@@ -292,7 +276,7 @@ TracepointCache::Add(
                 idAdded = er.second;
 
                 auto const& newMeta = er.first->second.Metadata;
-                m_byName.try_emplace(EventName(newMeta.SystemName(), newMeta.Name()), er.first->second);
+                m_byName.try_emplace(TracepointName(newMeta.SystemName(), newMeta.Name()), er.first->second);
 
                 error = 0;
             }

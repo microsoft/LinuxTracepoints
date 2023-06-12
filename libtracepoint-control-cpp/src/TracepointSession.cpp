@@ -849,10 +849,6 @@ TracepointSession::EnumeratorMoveNext(
                 auto const newEventsLost64 = *reinterpret_cast<uint64_t const*>(
                     bufferData + ((eventHeaderBufferPos + sizeof(perf_event_header) + sizeof(uint64_t)) & (m_bufferSize - 1)));
                 m_lostEventCount += newEventsLost64;
-                if (m_lostEventCount < newEventsLost64)
-                {
-                    m_lostEventCount = UINT64_MAX;
-                }
             }
 
             if (nonSampleFn(bufferData, dataSize, dataPos, eventHeader))

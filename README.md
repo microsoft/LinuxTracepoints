@@ -1,19 +1,37 @@
 # Libraries for Linux Tracepoints and user_events
 
-This repository contains libraries for using the
-[user_events](https://docs.kernel.org/trace/user_events.html) facility to
-generate Linux Tracepoints from user mode.
+This repository contains libraries for collecting and decoding
+[Linux Tracepoint](https://www.kernel.org/doc/html/latest/trace/tracepoints.html)
+events and for generating Tracepoint events from user mode using the
+[user_events](https://docs.kernel.org/trace/user_events.html) facility.
 
 ## Overview
 
 - [libtracepoint](libtracepoint) -
   low-level C/C++ tracing interface. Designed to support replacement at
-  link-time if a different implementation is needed.
+  link-time if a different implementation is needed (e.g. for testing).
   - [Default implementation](libtracepoint/src/tracepoint.c)
     writes directly to the Linux `user_events` facility.
   - [tracepoint-provider.h](libtracepoint/include/tracepoint/tracepoint-provider.h) -
     a developer-friendly C/C++ API for writing tracepoint events to any
     implementation of the tracepoint interface.
+- [libtracepoint-control-cpp](libtracepoint-control-cpp) -
+  C++ library for controlling a tracepoint event collection session.
+  - `TracingSession.h` implements an event collection session that can
+    collect tracepoint events and enumerate the events that the session has
+    collected.
+  - `TracingPath.h` has functions for finding the `/sys/kernel/tracing`
+    mount point and reading `format` files.
+  - `TracingCache.h` implements a cache for tracking parsed `format` files
+    based on system+name or by `common_type` id.
+- [libtracepoint-decode-cpp](libtracepoint-decode-cpp) -
+  C++ library for decoding tracepoints. Works on both Linux and Windows.
+  - `PerfDataFile.h` defines the `PerfDataFile` class that decodes
+    `perf.data` files.
+  - `PerfEventInfo.h` defines the `PerfSampleEventInfo` and
+    `PerfNonSampleEventInfo` structures for raw event information.
+  - `PerfEventMetadata.h` defines classes for parsing ftrace event metadata
+    information.
 - [libeventheader-tracepoint](libeventheader-tracepoint) -
   `eventheader` envelope that supports extended attributes including severity
   level and optional field type information.
@@ -24,23 +42,6 @@ generate Linux Tracepoints from user mode.
     C++ API for writing runtime-defined `eventheader`-encapsulated events,
     intended for use as an implementation layer for a higher-level API like
     OpenTelemetry.
-- [libtracepoint-control-cpp](libtracepoint-control-cpp) -
-  C++ library for controlling a tracepoint collection session.
-  - `TracingPath.h` has functions for finding the `/sys/kernel/tracing`
-    mount point and reading `format` files.
-  - `TracingCache.h` implements a cache for tracking parsed `format` files
-    based on system+name or by `common_type` id.
-  - `TracingSession.h` implements session control (add/remove tracepoints
-    from a session) and data collection (enumerate the events that the
-    session has collected).
-- [libtracepoint-decode-cpp](libtracepoint-decode-cpp) -
-  C++ library for decoding tracepoints. Works on both Linux and Windows.
-  - `PerfEventInfo.h` defines the `PerfSampleEventInfo` and
-    `PerfNonSampleEventInfo` structures for raw event information.
-  - `PerfDataFile.h` defines the `PerfDataFile` class that decodes
-    `perf.data` files.
-  - `PerfEventMetadata.h` defines classes for parsing ftrace event metadata
-    information.
 - [libeventheader-decode-cpp](libeventheader-decode-cpp) -
   C++ library for decoding events that use the `eventheader` envelope.
   - `EventEnumerator` class parses an event into fields.

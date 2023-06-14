@@ -80,14 +80,18 @@ events and for generating Tracepoint events from user mode using the
     [EventHeaderDynamic.h](libeventheader-tracepoint/include/eventheader/EventHeaderDynamic.h)
     to generate eventheader-enabled Tracepoint events that are runtime-dynamic.
     (Link with `libtracepoint` and `libeventheader-tracepoint`.)
-  - Rust middle-layer APIs (e.g. an OpenTelemetry exporter) can use the
-    [eventheader_dynamic](rust/eventheader_dynamic/README.md) crate
-    to generate eventheader-enabled Tracepoint events that are defined at
-    compile-time.
-- Running as a privileged user, use the Linux
+  - Rust programs can use the [eventheader](rust/eventheader/README.md) or
+    [eventheader_dynamic](rust/eventheader_dynamic/README.md) crates
+    to generate eventheader-enabled Tracepoint events.
+- To collect events in a C++ program, use the
+  [libtracepoint-control-cpp](libtracepoint-control-cpp). Note that your
+  program must run as a privileged user because access to the event collection
+  system is restricted by default.
+- To collect events without writing C++ code, use the Linux
   [`perf`](https://www.man7.org/linux/man-pages/man1/perf.1.html) tool
   to collect events to a `perf.data` file, e.g.
-  `perf record -e user_events:MyEvent1,user_events:MyEvent2`.
+  `perf record -e user_events:MyEvent1,user_events:MyEvent2`. Note that you
+  must run the `perf` tool as a privileged user to collect events.
   - The `perf` tool binary is typically available as part of the `linux-perf`
     package (e.g. can be installed by `apt install linux-perf`). However, this
     package installs a `perf_VERSION` binary rather than a `perf` binary, so
@@ -113,9 +117,14 @@ events and for generating Tracepoint events from user mode using the
   - For eventheader-enabled Tracepoint events, you can also use the
     [`eventheader-register`](libeventheader-tracepoint/tools/eventheader-register.cpp)
     tool to pre-register an event based on its tracepoint name so you can start
-    collecting it before starting the program that generates it.
+    collecting it before starting the program that generates it. If writing
+    your own event collection tool that collects eventheader-enabled events,
+    you might do something similar in your own tool to pre-register the events
+    that you need to collect.
 - Use the [`decode-perf`](libeventheader-decode-cpp/tools/decode-perf.cpp)
-  tool to decode the `perf.data` file to JSON text.
+  tool to decode the `perf.data` file to JSON text, or write your own decoding
+  tool using [libtracepoint-decode-cpp](libtracepoint-decode-cpp) and
+  [libeventheader-decode-cpp](libeventheader-decode-cpp).
 
 ## Contributing
 

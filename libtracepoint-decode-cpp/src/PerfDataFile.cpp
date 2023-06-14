@@ -697,6 +697,7 @@ PerfDataFile::GetSampleEventInfo(
 
         if (infoSampleTypes & PERF_SAMPLE_READ)
         {
+            IF_EQUAL_GOTO_ERROR(iArray, cArray);
             infoReadValues = &pArray[iArray];
 
             auto const SupportedReadFormats = 0
@@ -747,11 +748,6 @@ PerfDataFile::GetSampleEventInfo(
 
                 iArray += cItems;
             }
-
-
-            IF_EQUAL_GOTO_ERROR(iArray, cArray);
-            infoReadValues = &pArray[iArray];
-            iArray += 1; // TODO
         }
 
         if (infoSampleTypes & PERF_SAMPLE_CALLCHAIN)

@@ -6,4 +6,4 @@
 - `TracingPath.h` has functions for finding the `/sys/kernel/tracing`
   mount point and reading `format` files.
 - `TracingCache.h` implements a cache for tracking parsed `format` files
-  based on system+name or by `common_type` id.
+  and locating cached data by system+name or by `common_type` id.

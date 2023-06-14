@@ -83,7 +83,7 @@ events and for generating Tracepoint events from user mode using the
   - Rust programs can use the [eventheader](rust/eventheader/README.md) or
     [eventheader_dynamic](rust/eventheader_dynamic/README.md) crates
     to generate eventheader-enabled Tracepoint events.
-- To collect events in a C++ program, use the
+- To collect events in a C++ program, use
   [libtracepoint-control-cpp](libtracepoint-control-cpp). Note that your
   program must run as a privileged user because access to the event collection
   system is restricted by default.
@@ -124,7 +124,7 @@ events and for generating Tracepoint events from user mode using the
 - Use the [`decode-perf`](libeventheader-decode-cpp/tools/decode-perf.cpp)
   tool to decode the `perf.data` file to JSON text, or write your own decoding
   tool using [libtracepoint-decode-cpp](libtracepoint-decode-cpp) and
-  [libeventheader-decode-cpp](libeventheader-decode-cpp).
+  `libeventheader-decode-cpp`.
 
 ## Contributing
 

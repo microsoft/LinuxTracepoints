@@ -30,7 +30,7 @@ NonSampleFnReturnFalse(
     [[maybe_unused]] uint8_t const* bufferData,
     [[maybe_unused]] uint16_t sampleDataSize,
     [[maybe_unused]] uint32_t sampleDataBufferPos,
-    [[maybe_unused]] perf_event_header const& eventHeader) noexcept
+    [[maybe_unused]] perf_event_header eventHeader) noexcept
 {
     return false;
 }
@@ -69,6 +69,11 @@ RoundUpBufferSize(uint32_t pageSize, size_t bufferSize) noexcept
     return BufferSizeMax;
 }
 
+TracepointSession::~TracepointSession()
+{
+    return;
+}
+
 TracepointSession::TracepointSession(
     TracepointCache& cache,
     TracepointSessionMode mode,
@@ -92,7 +97,7 @@ TracepointSession::TracepointSession(
     , m_buffers(std::make_unique<BufferInfo[]>(m_bufferCount)) // may throw bad_alloc.
     , m_tracepointInfoById() // may throw bad_alloc (but probably doesn't).
     , m_eventDataBuffer()
-    , m_enumSort()
+    , m_enumeratorBookmarks()
     , m_pollfd(nullptr)
     , m_bufferLeaderFiles(nullptr)
     , m_sampleEventCount(0)
@@ -417,6 +422,8 @@ TracepointSession::ParseSample(
 {
     assert(0 == (sampleDataSize & 7));
     assert(0 == (sampleDataBufferPos & 7));
+    assert(sampleDataSize <= m_bufferSize);
+    assert(sampleDataBufferPos < m_bufferSize);
 
     uint8_t const* p;
 
@@ -439,17 +446,12 @@ TracepointSession::ParseSample(
             catch (...)
             {
                 m_lostEventCount += 1;
-                if (m_lostEventCount == 0)
-                {
-                    m_lostEventCount -= 1;
-                }
-
                 return false; // out of memory
             }
         }
 
         auto const afterWrap = unmaskedDataPosEnd - m_bufferSize;
-        auto const beforeWrap = sampleDataSize - afterWrap;
+        auto const beforeWrap = m_bufferSize - sampleDataBufferPos;
         auto const buffer = m_eventDataBuffer.data();
         memcpy(buffer, bufferData + sampleDataBufferPos, beforeWrap);
         memcpy(buffer + beforeWrap, bufferData, afterWrap);
@@ -457,8 +459,8 @@ TracepointSession::ParseSample(
     }
 
     auto const pEnd = p + sampleDataSize;
-    uint64_t infoId = -1;
     auto const infoSampleTypes = m_sampleType;
+    uint64_t infoId = -1;
     PerfEventMetadata const* infoRawMeta = nullptr;
     char const* infoRawData = nullptr;
     uint32_t infoRawDataSize = 0;
@@ -494,7 +496,7 @@ TracepointSession::ParseSample(
     // Fast path for default sample type.
     if (infoSampleTypes == SampleTypeDefault)
     {
-        if (static_cast<size_t>(pEnd - p) <
+        if (sampleDataSize <
             sizeof(uint64_t) + // PERF_SAMPLE_TID
             sizeof(uint64_t) + // PERF_SAMPLE_TIME
             sizeof(uint64_t) + // PERF_SAMPLE_CPU
@@ -716,10 +718,11 @@ TracepointSession::EnumeratorEnd(uint32_t bufferIndex) const noexcept
 
         assert(buffer.DataHead64 - newTail64 <= m_bufferSize);
 
-        auto const bufferHeader = static_cast<perf_event_mmap_page*>(
-            buffer.Mmap.get());
+        auto const bufferHeader = static_cast<perf_event_mmap_page*>(buffer.Mmap.get());
 
         // ATOMIC_RELEASE: perf_events.h recommends smp_mb() here.
+        // For future consideration: Ordered enumerator could probably merge barriers.
+        // For future consideration: This probably just needs a compiler barrier.
         __atomic_store_n(&bufferHeader->data_tail, newTail64, __ATOMIC_RELEASE);
     }
 }
@@ -741,6 +744,7 @@ TracepointSession::EnumeratorBegin(uint32_t bufferIndex) noexcept
     auto const bufferHeader = static_cast<perf_event_mmap_page const*>(buffer.Mmap.get());
 
     // ATOMIC_ACQUIRE: perf_events.h recommends smp_rmb() here.
+    // For future consideration: Ordered enumerator could probably merge barriers.
     buffer.DataHead64 = __atomic_load_n(&bufferHeader->data_head, __ATOMIC_ACQUIRE);
 
     if (0 != (buffer.DataHead64 & 7) ||
@@ -810,11 +814,11 @@ TracepointSession::EnumeratorMoveNext(
             eventHeader.size > remaining)
         {
             // - Circular: this is probably not a real problem - it's probably
-            //   unused buffer space or partially-overwritten event.
+            //   unused buffer space or a partially-overwritten event.
             // - Realtime: The buffer is corrupt.
             m_corruptBufferCount += IsRealtime();
 
-            // In either case, mark the buffer's events as consumed.
+            // In either case, buffer is done. Mark the buffer's events as consumed.
             buffer.DataPos = static_cast<size_t>(buffer.DataHead64);
             break;
         }
@@ -825,7 +829,7 @@ TracepointSession::EnumeratorMoveNext(
             DEBUG_PRINTF("CPU%u unaligned eventHeader.Size at pos %lx: %u\n",
                 bufferIndex, (unsigned long)buffer.DataPos, eventHeader.size);
 
-            // The event is corrupt. Mark the buffer's events as consumed.
+            // The event is corrupt, can't parse beyond it. Mark the buffer's events as consumed.
             m_corruptBufferCount += 1;
             buffer.DataPos = static_cast<size_t>(buffer.DataHead64);
             break;
@@ -899,11 +903,6 @@ TracepointSession::TracepointBookmark::TracepointBookmark(
     , BufferIndex(bufferIndex)
     , DataSize(dataSize)
     , DataPos(dataPos)
-{
-    return;
-}
-
-TracepointSession::~TracepointSession()
 {
     return;
 }
@@ -984,13 +983,13 @@ TracepointSession::OrderedEnumerator::LoadAndSort() noexcept
         // Realtime: If we throw an exception, we don't update tail pointers during cleanup.
         m_needsCleanup = !session.IsRealtime();
 
-        session.m_enumSort.clear();
+        session.m_enumeratorBookmarks.clear();
         for (uint32_t bufferIndex = 0; bufferIndex != session.m_bufferCount; bufferIndex += 1)
         {
-            auto const startSize = session.m_enumSort.size();
+            auto const startSize = session.m_enumeratorBookmarks.size();
 
-            // Only need to call EnumeratorMoveNext once - it will loop until a callback
-            // returns true or it reaches end of buffer.
+            // Only need to call EnumeratorMoveNext once per buffer - it will loop until a callback
+            // returns true or it reaches end of buffer, and our callback never returns true.
             session.EnumeratorMoveNext(
                 bufferIndex,
                 [bufferIndex, bytesBeforeTime, &session](
@@ -1009,11 +1008,11 @@ TracepointSession::OrderedEnumerator::LoadAndSort() noexcept
 
                     auto const timePos = (sampleDataBufferPos + bytesBeforeTime) & (session.m_bufferSize - 1);
                     auto const timestamp = *reinterpret_cast<uint64_t const*>(bufferData + timePos);
-                    session.m_enumSort.push_back(TracepointBookmark( // May throw bad_alloc.
+                    session.m_enumeratorBookmarks.emplace_back( // May throw bad_alloc.
                         timestamp,
                         bufferIndex,
                         sampleDataSize,
-                        sampleDataBufferPos));
+                        sampleDataBufferPos);
                     return false; // Keep going.
                 },
                 NonSampleFnReturnFalse);
@@ -1021,16 +1020,16 @@ TracepointSession::OrderedEnumerator::LoadAndSort() noexcept
             if (!session.IsRealtime())
             {
                 // Circular buffers enumerate in reverse order. Fix that.
-                auto const endSize = session.m_enumSort.size();
-                auto const enumSortData = session.m_enumSort.data();
-                std::reverse(enumSortData + startSize, enumSortData + endSize);
+                auto const endSize = session.m_enumeratorBookmarks.size();
+                auto const bookmarksData = session.m_enumeratorBookmarks.data();
+                std::reverse(bookmarksData + startSize, bookmarksData + endSize);
             }
         }
 
-        auto const enumSortData = session.m_enumSort.data();
+        auto const bookmarksData = session.m_enumeratorBookmarks.data();
         std::stable_sort(
-            enumSortData,
-            enumSortData + session.m_enumSort.size(),
+            bookmarksData,
+            bookmarksData + session.m_enumeratorBookmarks.size(),
             [](TracepointBookmark const& a, TracepointBookmark const& b) noexcept
             {
                 return a.Timestamp < b.Timestamp;
@@ -1052,14 +1051,17 @@ bool
 TracepointSession::OrderedEnumerator::MoveNext() noexcept
 {
     auto& session = m_session;
-    auto const& enumSort = session.m_enumSort;
-    while (m_index < enumSort.size())
+    auto const buffers = session.m_buffers.get();
+    auto const pageSize = session.m_pageSize;
+    auto const enumeratorBookmarksData = session.m_enumeratorBookmarks.data();
+    auto const enumeratorBookmarksSize = session.m_enumeratorBookmarks.size();
+    while (m_index < enumeratorBookmarksSize)
     {
-        auto const& item = enumSort[m_index];
+        auto const& item = enumeratorBookmarksData[m_index];
         m_index += 1;
 
         if (session.ParseSample(
-            static_cast<uint8_t const*>(session.m_buffers[item.BufferIndex].Mmap.get()) + session.m_pageSize,
+            static_cast<uint8_t const*>(buffers[item.BufferIndex].Mmap.get()) + pageSize,
             item.DataSize,
             item.DataPos))
         {

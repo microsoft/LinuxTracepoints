@@ -4,6 +4,8 @@
 [default implementation](src/tracepoint.c)
 writes data to the Linux
 [user_events](https://docs.kernel.org/trace/user_events.html) facility.
+The implementation of this interface can be replaced at link time to support
+alternative scenarios, e.g. testing with a mock tracing implementation.
 
 - [samples/tracepoint-sample.c](samples/tracepoint-sample.c) -
   demonstrates basic usage of the interface.
@@ -21,7 +23,8 @@ writes data to the Linux
 to use a higher-level library implemented on top of this interface, such as
 `tracepoint-provider.h`.
 
-Alternative implementations of this interface are expected. A developer would
+Alternative implementations of this interface are expected, e.g. a mock
+tracing implementation could be used for testing. A developer would
 select the alternative implementation by linking against a different
 library.
 

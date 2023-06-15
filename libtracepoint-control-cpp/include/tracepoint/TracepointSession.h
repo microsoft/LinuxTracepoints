@@ -95,8 +95,7 @@ namespace tracepoint_control
         TracepointSession session(
             cache,
             TracepointSessionOptions(TracepointSessionMode::RealTime, 65536) // Required
-                .WakeupWatermark(32768)                                      // Optional
-                );
+                .WakeupWatermark(32768));                                    // Optional
     */
     class TracepointSessionOptions
     {
@@ -204,23 +203,21 @@ namespace tracepoint_control
 
         TracepointCache cache; // May be shared by multiple sessions.
         TracepointSession session(
-            cache, // The metadata cache to use for this session.
-            TracepointSessionOptions(TracepointSessionMode::RealTime, 65536) // Required settings
-                .SampleType(PERF_SAMPLE_TIME | PERF_SAMPLE_RAW)              // Optional setting
-                .WakeupWatermark(32768)                                      // Optional setting
-                );
+            cache,                           // The metadata cache to use for this session.
+            TracepointSessionMode::RealTime, // Collection mode: RealTime or Circular.
+            65536);                          // Size of each buffer (one buffer per CPU).
 
         error = session.EnableTracepoint(TracepointName("user_events", "MyFirstTracepoint"));
-        // ... handle error.
+        if (error != 0) abort(); // TODO: handle error.
 
         error = session.EnableTracepoint(TracepointName("user_events:MySecondTracepoint"));
-        // ... handle error.
+        if (error != 0) abort(); // TODO: handle error.
 
         for (;;)
         {
             // Wait until one or more of the buffers reaches 32768 bytes of event data.
             error = session.WaitForWakeup();
-            // ... handle error. (Don't get into a busy loop if waiting fails!)
+            if (error != 0) abort(); // TODO: handle error. (Don't get into a busy loop if waiting fails!)
 
             error = session.EnumerateSampleEventsUnordered(
                 [](PerfSampleEventInfo const& event)
@@ -229,7 +226,7 @@ namespace tracepoint_control
                     // It should record or process the event's data.
                     return 0; // If we return an error, enumeration will stop.
                 });
-            // ... handle error.
+            if (error != 0) abort(); // TODO: handle error.
         }
     */
     class TracepointSession
@@ -258,9 +255,9 @@ namespace tracepoint_control
 
             TracepointCache cache;
             TracepointSession session(
-                cache, // The metadata cache to use for this session.
-                TracepointSessionMode::RealTime,
-                65536);
+                cache,                           // The metadata cache to use for this session.
+                TracepointSessionMode::RealTime, // Collection mode: RealTime or Circular.
+                65536);                          // Size of each buffer (one buffer per CPU).
         */
         TracepointSession(
             TracepointCache& cache,
@@ -820,7 +817,7 @@ namespace tracepoint_control
         std::unique_ptr<BufferInfo[]> const m_buffers; // size is m_bufferCount
         std::unordered_map<unsigned, TracepointInfo> m_tracepointInfoById;
         std::vector<uint8_t> m_eventDataBuffer; // Double-buffer for events that wrap.
-        std::vector<TracepointBookmark> m_enumSort;
+        std::vector<TracepointBookmark> m_enumeratorBookmarks;
         std::unique_ptr<pollfd[]> m_pollfd;
         unique_fd const* m_bufferLeaderFiles; // == m_tracepointInfoById[N].BufferFiles.get() for some N, size is m_bufferCount
         uint64_t m_sampleEventCount;

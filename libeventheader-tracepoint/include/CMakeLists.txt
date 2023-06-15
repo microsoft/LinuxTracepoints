@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(eventheader-tracepoint-headers
-    VERSION 1.0.0
+    VERSION 1.1.0
     DESCRIPTION "EventHeader-encoded Linux tracepoints for C/C++ (headers)"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES C CXX)

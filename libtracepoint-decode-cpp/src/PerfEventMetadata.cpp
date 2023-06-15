@@ -702,7 +702,8 @@ PerfEventMetadata::PerfEventMetadata() noexcept
     , m_fields()
     , m_id()
     , m_commonFieldCount()
-    , m_hasEventHeader()
+    , m_commonFieldsSize()
+    , m_kind()
 {
     return;
 }
@@ -716,7 +717,8 @@ PerfEventMetadata::Clear() noexcept
     m_fields = {};
     m_id = {};
     m_commonFieldCount = {};
-    m_hasEventHeader = {};
+    m_commonFieldsSize = {};
+    m_kind = {};
 }
 
 bool
@@ -869,8 +871,20 @@ PerfEventMetadata::Parse(
 
 Done:
 
-    m_hasEventHeader =
+    if (m_commonFieldCount == 0)
+    {
+        m_commonFieldsSize = 0;
+    }
+    else
+    {
+        auto const& lastCommonField = m_fields[m_commonFieldCount - 1];
+        m_commonFieldsSize = lastCommonField.Offset() + lastCommonField.Size();
+    }
+
+    m_kind =
         m_fields.size() > m_commonFieldCount &&
-        m_fields[m_commonFieldCount].Name() == "eventheader_flags"sv;
+        m_fields[m_commonFieldCount].Name() == "eventheader_flags"sv
+        ? PerfEventKind::EventHeader
+        : PerfEventKind::Normal;
     return !m_name.empty() && foundId;
 }

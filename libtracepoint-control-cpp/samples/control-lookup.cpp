@@ -32,7 +32,7 @@ main(int argc, char* argv[])
             fprintf(stdout, "  Flds= %u\n", (unsigned)meta->Fields().size());
             fprintf(stdout, "  Id  = %u\n", (unsigned)meta->Id());
             fprintf(stdout, "  CmnC= %u\n", (unsigned)meta->CommonFieldCount());
-            fprintf(stdout, "  EH  = %u\n", (unsigned)meta->HasEventHeader());
+            fprintf(stdout, "  Kind= %u\n", (unsigned)meta->Kind());
             id = meta->Id();
         }
 

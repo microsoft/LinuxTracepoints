@@ -1872,7 +1872,8 @@ EventFormatter::AppendSampleAsJson(
     char const* sampleEventName;
     size_t sampleProviderNameLength;
 
-    if (sampleEventInfo.raw_meta && sampleEventInfo.raw_meta->HasEventHeader())
+    if (sampleEventInfo.raw_meta &&
+        sampleEventInfo.raw_meta->Kind() == PerfEventKind::EventHeader)
     {
         // eventheader metadata.
 

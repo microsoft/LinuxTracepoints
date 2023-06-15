@@ -155,6 +155,12 @@ namespace tracepoint_decode
             bool fileBigEndian) const noexcept;
     };
 
+    enum class PerfEventKind : uint8_t
+    {
+        Normal,         // No special handling detected.
+        EventHeader,    // First user field is named "eventheader_flags".
+    };
+
     class PerfEventMetadata
     {
         std::string_view m_systemName;
@@ -163,7 +169,8 @@ namespace tracepoint_decode
         std::vector<PerfFieldMetadata> m_fields;
         uint32_t m_id; // From common_type; not the same as the perf_event_attr::id or PerfSampleEventInfo::id.
         uint16_t m_commonFieldCount; // fields[common_field_count] is the first user field.
-        bool m_hasEventHeader; // true if first user field is named "eventheader_flags".
+        uint16_t m_commonFieldsSize; // Offset of the end of the last common field
+        PerfEventKind m_kind;
 
     public:
 
@@ -198,9 +205,14 @@ namespace tracepoint_decode
         constexpr uint16_t
         CommonFieldCount() const noexcept { return m_commonFieldCount; }
 
-        // Returns true if the first user field is named "eventheader_flags".
-        constexpr bool
-        HasEventHeader() const noexcept { return m_hasEventHeader; }
+        // Returns the offset of the end of the last "common_*" field.
+        // This is the start of the first user field.
+        constexpr uint16_t
+        CommonFieldsSize() const noexcept { return m_commonFieldsSize; }
+
+        // Returns the detected event decoding system - Normal or EventHeader.
+        constexpr PerfEventKind
+        Kind() const noexcept { return m_kind; }
 
         // Sets all properties of this object to {} values.
         void

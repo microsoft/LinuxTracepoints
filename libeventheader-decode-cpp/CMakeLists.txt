@@ -10,11 +10,11 @@ set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
 set(BUILD_TOOLS ON CACHE BOOL "Build tool code")
 
 if(NOT TARGET tracepoint-decode)
-    find_package(tracepoint-decode 1.0 REQUIRED)
+    find_package(tracepoint-decode 1.1 REQUIRED)
 endif()
 
 if(NOT TARGET eventheader-headers)
-    find_package(eventheader-headers 1.0 REQUIRED)
+    find_package(eventheader-headers 1.1 REQUIRED)
 endif()
 
 if(WIN32)

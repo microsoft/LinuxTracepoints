@@ -11,7 +11,7 @@ set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
 if(NOT WIN32)
 
     if(NOT TARGET tracepoint-decode)
-        find_package(tracepoint-decode 1.0 REQUIRED)
+        find_package(tracepoint-decode 1.1 REQUIRED)
     endif()
 
     add_compile_options(

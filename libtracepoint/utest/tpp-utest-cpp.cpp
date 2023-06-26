@@ -3,8 +3,6 @@
 
 #include <stdio.h>
 
-static_assert(EBADF == 9, "EBADF != 9");
-
 int TestCpp(void)
 {
     int err = TPP_REGISTER_PROVIDER(TestProvider);
@@ -15,3 +13,6 @@ int TestCpp(void)
     TPP_UNREGISTER_PROVIDER(TestProvider);
     return ok != 0 && err == 0;
 }
+
+#include <errno.h>
+static_assert(EBADF == 9, "EBADF != 9");

@@ -202,7 +202,7 @@ tracepoint_write(
 
     if (!TRACEPOINT_ENABLED(eventState))
     {
-        return 0;
+        return EBADF;
     }
 
     size_t size = 0;
@@ -218,7 +218,7 @@ tracepoint_write(
     auto const providerState = __atomic_load_n(&eventState->provider_state, __ATOMIC_RELAXED);
     if (providerState == NULL)
     {
-        return 0;
+        return EBADF;
     }
 
     auto lock = std::shared_lock(s_eventsMutex);

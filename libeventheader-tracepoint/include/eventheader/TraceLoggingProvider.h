@@ -2134,7 +2134,7 @@ _tlgApplyArgsN(macro, n, (handler, ...)) --> macro##handler(n, ...)
     static eventheader_tracepoint const* const _tlgEvtPtr \
         __attribute__((section("_tlgEventPtrs_" _tlg_STRINGIZE(providerSymbol)), used)) \
         = &_tlgEvt; \
-    int _tlgWriteErr = 0; \
+    int _tlgWriteErr = 9 /*EBADF*/; \
     if (TRACEPOINT_ENABLED(&_tlgEvtState)) { \
         struct iovec _tlgVecs[EVENTHEADER_PREFIX_DATAVEC_COUNT _tlg_FOREACH(_tlgDataDescCount, __VA_ARGS__)]; \
         unsigned _tlgIdx = EVENTHEADER_PREFIX_DATAVEC_COUNT; \

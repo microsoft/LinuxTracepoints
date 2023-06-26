@@ -1,6 +1,8 @@
 #include <eventheader/EventHeaderDynamic.h>
 #include <stdio.h>
 
+static_assert(EBADF == 9, "EBADF != 9");
+
 static char const guid1[16] = "123456789abcdef";
 static char const* const CharStrings[2] = {
     "abc", "123"

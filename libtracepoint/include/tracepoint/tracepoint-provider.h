@@ -252,8 +252,8 @@ Supports up to 99 field parameters (subject to compiler and tracepoint system
 limitations). Each field parameter must be a field macro such as TPP_UINT8,
 TPP_STRING, etc.
 
-Returns 0 if the tracepoint is unregistered or disabled, 0 if the tracepoint
-is successfully emitted, errno otherwise. Result is primarily for
+Returns 0 if the tracepoint is written, EBADF if the tracepoint is unregistered
+or disabled, or other errno for an error. Result is primarily for
 debugging/diagnostics and is usually ignored for production code.
 */
 #define TPP_WRITE(ProviderSymbol, TracepointNameString, ...) \
@@ -299,8 +299,8 @@ limitations). Each field parameter must be a field macro such as TPP_UINT8,
 TPP_STRING, etc.
 
 The generated func_name(field values...) function returns 0 if the tracepoint
-is unregistered or disabled, 0 if the tracepoint is successfully emitted,
-errno otherwise. Result is primarily for debugging/diagnostics and is usually
+is written, EBADF if the tracepoint is unregistered or disabled, or other errno
+for an error. Result is primarily for debugging/diagnostics and is usually
 ignored for production code.
 */
 #define TPP_FUNCTION(ProviderSymbol, TracepointNameString, FunctionName, ...) \
@@ -805,7 +805,7 @@ _tppApplyArgsN(macro, n, (handler, ...)) --> macro##handler(n, ...)
     static tracepoint_definition const* _tppEvtPtr \
         __attribute__((section("_tppEventPtrs_" _tpp_STRINGIZE(ProviderSymbol)), used)) \
         = &_tppEvt; \
-    int _tppWriteErr = 0; \
+    int _tppWriteErr = 9 /*EBADF*/; \
     if (TRACEPOINT_ENABLED(&TracepointState)) { \
         struct iovec _tppVecs[1 _tpp_FOREACH(_tppDataDescCount, __VA_ARGS__)]; \
         _tppVecs[0].iov_len = 0; \

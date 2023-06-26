@@ -55,7 +55,7 @@ static void
 verify_tp_disconnected(unsigned line, tracepoint_state const& e)
 {
     iovec emptyVec = {};
-    CHECK(tracepoint_write(&e, 1, &emptyVec));
+    tracepoint_write(&e, 1, &emptyVec);
 
     verify_cond(line, 0 == e.status_word,
         "Disconnected event status_word: expected 0, actual %u", e.status_word);
@@ -73,7 +73,7 @@ static void
 verify_tp_closed(unsigned line, tracepoint_state const& e, tracepoint_provider_state const& p)
 {
     iovec emptyVec = {};
-    CHECK(tracepoint_write(&e, 1, &emptyVec));
+    tracepoint_write(&e, 1, &emptyVec);
 
     verify_cond(line, &p == e.provider_state,
         "Closed event provider_state: expected %p, actual %p", &p, e.provider_state);
@@ -86,7 +86,7 @@ static void
 verify_tp_open(unsigned line, tracepoint_state const& e, tracepoint_provider_state const& p)
 {
     iovec emptyVec = {};
-    CHECK(tracepoint_write(&e, 1, &emptyVec));
+    tracepoint_write(&e, 1, &emptyVec);
 
     verify_cond(line, &p == e.provider_state,
         "Open event provider_state: expected %p, actual %p", &p, e.provider_state);

@@ -142,8 +142,9 @@ extern "C" {
     /*
     Writes an event. Safe no-op if event is disabled.
 
-    - Returns 0 for success, errno for error. Result is primarily for
-      debugging/diagnostics and is usually ignored for production code.
+    - Returns 0 for success, EBADF if event is disabled, errno for error.
+      Result is primarily for debugging/diagnostics and is usually ignored
+      for production code.
     - If pActivityId is not NULL, event will have an activity_id extension.
     - If pEvent->metadata is not NULL, event will have a extension with the
       data from pEvent->metadata.

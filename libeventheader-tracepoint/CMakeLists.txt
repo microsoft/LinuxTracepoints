@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(eventheader-tracepoint
-    VERSION 1.1.0
+    VERSION 1.2.0
     DESCRIPTION "EventHeader-encoded Linux tracepoints for C/C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES C CXX)
@@ -30,11 +30,11 @@ add_subdirectory(include)
 if(NOT WIN32)
 
     if(NOT TARGET tracepoint-headers)
-        find_package(tracepoint-headers 1.1 REQUIRED)
+        find_package(tracepoint-headers 1.2 REQUIRED)
     endif()
 
     if(NOT TARGET tracepoint)
-        find_package(tracepoint 1.1 REQUIRED)
+        find_package(tracepoint 1.2 REQUIRED)
     endif()
 
     add_subdirectory(src)

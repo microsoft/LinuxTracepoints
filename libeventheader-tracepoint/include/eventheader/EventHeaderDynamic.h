@@ -761,9 +761,9 @@ namespace ehd
 
         Returns 0 for success. Returns a nonzero errno value for failure. The return
         value is for diagnostic/debugging purposes only and should generally be ignored
-        in retail builds. Returns ENOMEM (12) if out of memory. Returns ERANGE (34) if the
-        event (headers + metadata + data) is greater than 64KB. Returns other errors as
-        reported by writev.
+        in retail builds. Returns EBADF (9) if tracepoint is unregistered or disabled.
+        Returns ENOMEM (12) if out of memory. Returns ERANGE (34) if the event (headers +
+        metadata + data) is greater than 64KB. Returns other errors as reported by writev.
         */
         int
         Write(

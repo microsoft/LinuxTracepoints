@@ -28,7 +28,7 @@ int main()
     err = TRACEPOINT_ENABLED(&unopened_tracepoint);
     printf("TRACEPOINT_ENABLED with unopened tracepoint: %d\n", err); // Expect 0.
     err = tracepoint_write(&unopened_tracepoint, 1, &(struct iovec){}); // No-op.
-    printf("tracepoint_write with unopened tracepoint: %d\n", err); // Expect 0.
+    printf("tracepoint_write with unopened tracepoint: %d\n", err); // Expect EBADF.
 
     // The provider is inert before it is opened.
     tracepoint_close_provider(&provider); // No-op.

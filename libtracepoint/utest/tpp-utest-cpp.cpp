@@ -3,6 +3,8 @@
 
 #include <stdio.h>
 
+static_assert(EBADF == 9, "EBADF != 9");
+
 int TestCpp(void)
 {
     int err = TPP_REGISTER_PROVIDER(TestProvider);

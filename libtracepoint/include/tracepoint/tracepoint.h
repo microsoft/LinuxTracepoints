@@ -117,10 +117,17 @@ extern "C" {
         char const* tp_name_args);
 
     /*
-    Writes the specified tracepoint. Returns 0 for success or if nobody is
-    listening, errno for failure. Calling tracepoint_write on a disconnected
-    tracepoint is a safe no-op. Calling tracepoint_write on a tracepoint that
-    is connected to a closed provider is a safe no-op.
+    Writes the specified tracepoint.
+
+    Returns:
+    - 0 for success.
+    - EBADF if the tracepoint is disconnected or if nobody is listening for
+      this tracepoint.
+    - Other errno value for failure.
+
+    Calling tracepoint_write on a disconnected tracepoint is a safe no-op.
+    Calling tracepoint_write on a tracepoint that is connected to a closed
+    provider is a safe no-op.
 
     For optimal performance, only call this function if
     TRACEPOINT_ENABLED(tp_state) returns non-zero.

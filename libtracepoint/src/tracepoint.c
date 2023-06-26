@@ -449,13 +449,13 @@ extern "C" {
 
         if (!TRACEPOINT_ENABLED(tp_state))
         {
-            return 0;
+            return EBADF;
         }
 
         tracepoint_provider_state const* provider_state = __atomic_load_n(&tp_state->provider_state, __ATOMIC_RELAXED);
         if (provider_state == NULL)
         {
-            return 0;
+            return EBADF;
         }
 
         // Workaround: Events don't show up correctly with 0 bytes of data.

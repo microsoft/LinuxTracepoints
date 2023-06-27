@@ -4,6 +4,8 @@
 #include <tracepoint/TracepointSession.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
+
 #include <unistd.h>
 
 #include <tracepoint/PerfEventAbi.h>
@@ -40,6 +42,23 @@ main(int argc, char* argv[])
         session.BufferCount(), session.BufferSize(), session.IsRealtime(), (unsigned)session.Mode());
 
     fprintf(stderr, "\n");
+
+    for (int argi = 2; argi < argc; argi += 1)
+    {
+        TracepointName name(argv[argi]);
+        error = cache.AddFromSystem(name);
+        if (error != ENOENT || name.SystemName != "user_events")
+        {
+            fprintf(stderr, "AddFromSystem(%s) = %u\n", argv[argi], error);
+        }
+        else
+        {
+            // User-specified event is not registered. If it's an EventHeader event, we can
+            // pre-register it and try to collect it anyway.
+            error = cache.PreregisterEventHeaderTracepoint(name.EventName);
+            fprintf(stderr, "PreregisterEventHeaderTracepoint(%s) = %u\n", argv[argi], error);
+        }
+    }
 
     for (int argi = 2; argi < argc; argi += 1)
     {

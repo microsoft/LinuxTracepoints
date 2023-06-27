@@ -42,6 +42,20 @@ namespace tracepoint_control
     GetTracingDirectory() noexcept;
 
     /*
+    Returns a file descriptor for the user_events_data file. Result will be
+    non-negative on success or negative (-errno) on error.
+
+    Do not close the returned descriptor. Use it only for ioctl and writev.
+
+    Implementation: The first time this is called, it calls GetTracingDirectory()
+    to find the tracefs or debugfs mount point, then opens
+    "TracingDirectory/user_events_data" and caches the result. Subsequent calls
+    return the cached result. This function is thread-safe.
+    */
+    _Success_(return >= 0) int
+    GetUserEventsDataFile() noexcept;
+
+    /*
     Given full path to a file, appends the file's contents to the specified
     dest string.
 

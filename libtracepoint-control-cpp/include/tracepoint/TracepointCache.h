@@ -17,10 +17,14 @@ for its tracepoints.
 #include <tracepoint/PerfEventMetadata.h>
 #include <unordered_map>
 #include <string_view>
+#include <memory>
 #include <vector>
 
 #ifndef _Success_
 #define _Success_(condition)
+#endif
+#ifndef _In_z_
+#define _In_z_
 #endif
 #ifndef _Out_
 #define _Out_
@@ -115,22 +119,65 @@ namespace tracepoint_control
             TracepointName name,
             _Out_ tracepoint_decode::PerfEventMetadata const** ppMetadata) noexcept;
 
-    private:
-
         /*
-        systemAndFormat = "SystemName\nFormatFileContents".
+        Given the eventName for a user_events EventHeader tracepoint, pre-register and
+        cache the specified event.
+
+        Example eventName: "MyProvider_L1Kff"
+
+        Details:
+
+        - If the specified eventName is not a valid EventHeader event name, return EINVAL.
+        - If metadata for "user_events:eventName" is already cached, return EEXIST.
+        - Try to register a tracepoint using the standard EventHeader command string. If
+          this fails, return the error.
+        - Return AddFromSystem("user_events:eventName").
+
+        If this operation succeeds, the event will remain registered as long as this cache
+        object exists.
         */
         _Success_(return == 0) int
-        Add(std::vector<char>&& systemAndFormat,
-            size_t systemNameSize,
-            bool longSize64) noexcept;
+        PreregisterEventHeaderTracepoint(std::string_view eventName) noexcept;
+
+        /*
+        Given the registration command for a user_events tracepoint, pre-register and
+        cache the specified event.
+
+        Example registerCommand: "MyEventName __rel_loc u8[] MyField1;int MyField2"
+
+        Details:
+
+        - Parse the command to determine the eventName. If unable to parse, return EINVAL.
+        - If metadata for "user_events:eventName" is already cached, return EEXIST.
+        - Try to register a user_events tracepoint using the specified command string. If
+          this fails, return the error.
+        - Return AddFromSystem("user_events:eventName").
+
+        If this operation succeeds, the event will remain registered as long as this cache
+        object exists.
+        */
+        _Success_(return == 0) int
+        PreregisterTracepoint(_In_z_ char const* registerCommand) noexcept;
 
     private:
+
+        struct TracepointRegistration
+        {
+            int DataFile;
+            int WriteIndex;
+            unsigned StatusWord;
+
+            TracepointRegistration(TracepointRegistration const&) = delete;
+            void operator=(TracepointRegistration const&) = delete;
+            ~TracepointRegistration();
+            TracepointRegistration() noexcept;
+        };
 
         struct CacheVal
         {
             std::vector<char> SystemAndFormat; // = "SystemName\nFormatFileContents"
             tracepoint_decode::PerfEventMetadata Metadata; // Points into SystemAndFormat
+            std::unique_ptr<TracepointRegistration> Registration;
 
             CacheVal(CacheVal const&) = delete;
             void operator=(CacheVal const&) = delete;
@@ -138,7 +185,8 @@ namespace tracepoint_control
 
             CacheVal(
                 std::vector<char>&& systemAndFormat,
-                tracepoint_decode::PerfEventMetadata&& metadata) noexcept;
+                tracepoint_decode::PerfEventMetadata&& metadata,
+                std::unique_ptr<TracepointRegistration> registration) noexcept;
         };
 
         struct NameHashOps
@@ -146,6 +194,15 @@ namespace tracepoint_control
             size_t operator()(TracepointName const&) const noexcept; // Hash
             size_t operator()(TracepointName const&, TracepointName const&) const noexcept; // Equal
         };
+
+        /*
+        systemAndFormat = "SystemName\nFormatFileContents".
+        */
+        _Success_(return == 0) int
+        Add(std::vector<char>&& systemAndFormat,
+            size_t systemNameSize,
+            bool longSize64,
+            std::unique_ptr<TracepointRegistration> registration) noexcept;
 
         std::unordered_map<uint32_t, CacheVal> m_byId;
         std::unordered_map<TracepointName, CacheVal const&, NameHashOps, NameHashOps> m_byName;

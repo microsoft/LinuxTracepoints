@@ -7,8 +7,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
+#include <fcntl.h>
 #include <pthread.h>
+#include <unistd.h>
 
 using namespace std::string_view_literals;
 
@@ -24,6 +27,19 @@ static int
 IsNonSpaceChar(char ch)
 {
     return ch != '\0' && !IsSpaceChar(ch);
+}
+
+static int
+GetFailureErrno(void)
+{
+    int err = errno;
+    assert(err > 0);
+    if (err <= 0)
+    {
+        err = ENOENT;
+    }
+
+    return err;
 }
 
 static _Ret_z_ char const*
@@ -145,6 +161,73 @@ tracepoint_control::GetTracingDirectory() noexcept
     }
 
     return tracingDir;
+}
+
+static _Success_(return >= 0) int
+UpdateUserEventsDataFile(int* pStaticFile) noexcept
+{
+    int newFileOrError;
+
+    if (auto const tracingDir = tracepoint_control::GetTracingDirectory();
+        tracingDir[0] == 0)
+    {
+        // Unable to find the "/.../tracing" directory.
+        newFileOrError = -ENOTSUP;
+    }
+    else
+    {
+#define USER_EVENTS_DATA "/user_events_data"
+        char fileName[TRACING_DIR_MAX + sizeof(USER_EVENTS_DATA)];
+        auto const cchTracingDir = strlen(tracingDir);
+        assert(cchTracingDir <= TRACING_DIR_MAX);
+        memcpy(fileName, tracingDir, cchTracingDir);
+        memcpy(fileName + cchTracingDir, USER_EVENTS_DATA, sizeof(USER_EVENTS_DATA));
+
+        newFileOrError = open(fileName, O_RDWR);
+        if (0 > newFileOrError)
+        {
+            newFileOrError = -GetFailureErrno();
+        }
+    }
+
+    int oldFileOrError = -EAGAIN;
+    for (;;)
+    {
+        if (__atomic_compare_exchange_n(
+            pStaticFile,
+            &oldFileOrError,
+            newFileOrError,
+            0,
+            __ATOMIC_RELAXED,
+            __ATOMIC_RELAXED))
+        {
+            // The cmpxchg set *pStaticFile = newFileOrError.
+            return newFileOrError;
+        }
+
+        // The cmpxchg set oldFileOrError = *pStaticFile.
+
+        if (oldFileOrError >= 0 || newFileOrError < 0)
+        {
+            // Prefer the existing contents of pStaticFile.
+            if (newFileOrError >= 0)
+            {
+                close(newFileOrError);
+            }
+
+            return oldFileOrError;
+        }
+    }
+}
+
+_Success_(return >= 0) int
+tracepoint_control::GetUserEventsDataFile() noexcept
+{
+    static int staticFileOrError = -EAGAIN; // Intentionally leaked.
+    int fileOrError = __atomic_load_n(&staticFileOrError, __ATOMIC_RELAXED);
+    return fileOrError != -EAGAIN
+        ? fileOrError
+        : UpdateUserEventsDataFile(&staticFileOrError);
 }
 
 _Success_(return == 0) int

@@ -75,7 +75,7 @@ namespace tracepoint_control
         Otherwise, return NULL.
         */
         tracepoint_decode::PerfEventMetadata const*
-        FindByName(TracepointName name) const noexcept;
+        FindByName(TracepointName const& name) const noexcept;
 
         /*
         If metadata for an event with the specified data is cached,
@@ -92,7 +92,8 @@ namespace tracepoint_control
         FindByRawData(std::string_view rawData) const noexcept;
 
         /*
-        Parse the formatFileContents to get the metadata. If metadata for an
+        Parse the formatFileContents to get the metadata. If systemName or
+        formatFileContents is invalid, return EINVAL. If metadata for an
         event with the same name or ID is already cached, return EEXIST.
         Otherwise, add the metadata to the cache.
         */
@@ -103,12 +104,13 @@ namespace tracepoint_control
             bool longSize64 = sizeof(long) == 8) noexcept;
 
         /*
-        Load and parse the "/sys/.../tracing/events/systemName/eventName/format" file.
-        If metadata for an event with the same name or ID is cached, return EEXIST.
+        Load and parse the "/sys/.../tracing/events/systemName/eventName/format"
+        file. If name or the format data is invalid, return EINVAL. If metadata
+        for an event with the same name or ID is already cached, return EEXIST.
         Otherwise, add the metadata to the cache.
         */
         _Success_(return == 0) int
-        AddFromSystem(TracepointName name) noexcept;
+        AddFromSystem(TracepointName const& name) noexcept;
 
         /*
         If metadata for an event with the specified name is cached, return it.
@@ -116,20 +118,20 @@ namespace tracepoint_control
         */
         _Success_(return == 0) int
         FindOrAddFromSystem(
-            TracepointName name,
+            TracepointName const& name,
             _Out_ tracepoint_decode::PerfEventMetadata const** ppMetadata) noexcept;
 
         /*
-        Given the eventName for a user_events EventHeader tracepoint, pre-register and
+        Given the name of a user_events EventHeader tracepoint, pre-register and
         cache the specified event.
 
-        Example eventName: "MyProvider_L1Kff"
+        Example eventName: "user_events:MyProvider_L1Kff"
 
         Details:
 
-        - If the specified eventName is not a valid EventHeader event name, return EINVAL.
+        - If the specified name is not a valid user_events EventHeader name, return EINVAL.
         - If metadata for "user_events:eventName" is already cached, return EEXIST.
-        - Try to register a tracepoint using the standard EventHeader command string. If
+        - Try to register an EventHeader tracepoint with the given tracepoint name. If
           this fails, return the error.
         - Return AddFromSystem("user_events:eventName").
 
@@ -137,7 +139,7 @@ namespace tracepoint_control
         object exists.
         */
         _Success_(return == 0) int
-        PreregisterEventHeaderTracepoint(std::string_view eventName) noexcept;
+        PreregisterEventHeaderTracepoint(TracepointName const& name) noexcept;
 
         /*
         Given the registration command for a user_events tracepoint, pre-register and
@@ -147,7 +149,7 @@ namespace tracepoint_control
 
         Details:
 
-        - Parse the command to determine the eventName. If unable to parse, return EINVAL.
+        - Parse the command to determine the eventName. If invalid, return EINVAL.
         - If metadata for "user_events:eventName" is already cached, return EEXIST.
         - Try to register a user_events tracepoint using the specified command string. If
           this fails, return the error.

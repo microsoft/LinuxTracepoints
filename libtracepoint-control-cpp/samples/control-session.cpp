@@ -47,39 +47,33 @@ main(int argc, char* argv[])
     {
         TracepointName name(argv[argi]);
         error = cache.AddFromSystem(name);
-        if (error != ENOENT || name.SystemName != "user_events")
+        if (error != ENOENT || name.SystemName != UserEventsSystemName ||
+            !name.IsValidEventHeader())
         {
             fprintf(stderr, "AddFromSystem(%s) = %u\n", argv[argi], error);
         }
         else
         {
-            // User-specified event is not registered. If it's an EventHeader event, we can
-            // pre-register it and try to collect it anyway.
-            error = cache.PreregisterEventHeaderTracepoint(name.EventName);
+            // User-specified EventHeader event is not registered.
+            // Pre-register it and try to collect it anyway.
+            error = cache.PreregisterEventHeaderTracepoint(name);
             fprintf(stderr, "PreregisterEventHeaderTracepoint(%s) = %u\n", argv[argi], error);
         }
     }
 
+    fprintf(stderr, "\n");
+
+    unsigned enabled = 0;
     for (int argi = 2; argi < argc; argi += 1)
     {
         error = session.EnableTracePoint(TracepointName(argv[argi]));
         fprintf(stderr, "EnableTracePoint(%s) = %u\n", argv[argi], error);
+        enabled += error == 0;
     }
 
-    fprintf(stderr, "\n");
-
-    for (int argi = 2; argi < argc; argi += 1)
+    if (enabled == 0)
     {
-        error = session.DisableTracePoint(TracepointName(argv[argi]));
-        fprintf(stderr, "DisableTracePoint(%s) = %u\n", argv[argi], error);
-    }
-
-    fprintf(stderr, "\n");
-
-    for (int argi = 2; argi < argc; argi += 1)
-    {
-        error = session.EnableTracePoint(TracepointName(argv[argi]));
-        fprintf(stderr, "EnableTracePoint(%s) = %u\n", argv[argi], error);
+        return error;
     }
 
     for (;;)

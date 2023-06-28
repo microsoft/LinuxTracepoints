@@ -79,12 +79,6 @@ using namespace tracepoint_decode;
 static constexpr int8_t CommonTypeOffsetInit = -1;
 static constexpr uint8_t CommonTypeSizeInit = 0;
 
-static bool
-IsLowercaseHex(char ch)
-{
-    return ('0' <= ch && ch <= '9') || ('a' <= ch && ch <= 'f');
-}
-
 TracepointCache::TracepointRegistration::~TracepointRegistration()
 {
     if (WriteIndex >= 0)
@@ -173,7 +167,7 @@ TracepointCache::FindById(uint32_t id) const noexcept
 }
 
 PerfEventMetadata const*
-TracepointCache::FindByName(TracepointName name) const noexcept
+TracepointCache::FindByName(TracepointName const& name) const noexcept
 {
     auto it = m_byName.find(name);
     return it == m_byName.end()
@@ -243,11 +237,15 @@ TracepointCache::AddFromFormat(
 }
 
 _Success_(return == 0) int
-TracepointCache::AddFromSystem(TracepointName name) noexcept
+TracepointCache::AddFromSystem(TracepointName const& name) noexcept
 {
     int error;
 
-    try
+    if (!name.IsValid())
+    {
+        error = EINVAL;
+    }
+    else try
     {
         std::vector<char> systemAndFormat;
         systemAndFormat.reserve(name.SystemName.size() + 512); // may throw
@@ -269,7 +267,7 @@ TracepointCache::AddFromSystem(TracepointName name) noexcept
 
 _Success_(return == 0) int
 TracepointCache::FindOrAddFromSystem(
-    TracepointName name,
+    TracepointName const& name,
     _Out_ PerfEventMetadata const** ppMetadata) noexcept
 {
     int error;
@@ -292,59 +290,16 @@ TracepointCache::FindOrAddFromSystem(
 }
 
 _Success_(return == 0) int
-TracepointCache::PreregisterEventHeaderTracepoint(std::string_view eventName) noexcept
+TracepointCache::PreregisterEventHeaderTracepoint(TracepointName const& name) noexcept
 {
-    if (eventName.size() >= EVENTHEADER_NAME_MAX ||
-        eventName.size() <= 5 || // "_L1K1"
-        eventName.find(' ') != eventName.npos ||
-        eventName.find(':') != eventName.npos)
+    if (name.SystemName != UserEventsSystemName || !EventHeaderEventNameIsValid(name.EventName))
     {
-        // Too long, or too short, or contains space, or contains colon.
         return EINVAL;
-    }
-
-    auto i = eventName.rfind('_');
-    if (i > eventName.size() - 5 ||
-        eventName[i + 1] != 'L' ||
-        !IsLowercaseHex(eventName[i + 2]))
-    {
-        // Does not end with "_Ln...".
-        return EINVAL;
-    }
-
-    i += 3; // Skip "_Ln".
-    while (i != eventName.size() && IsLowercaseHex(eventName[i]))
-    {
-        // Skip additional digits of level.
-        i += 1;
-    }
-
-    if (i >= eventName.size() - 1 ||
-        eventName[i] != 'K' ||
-        !IsLowercaseHex(eventName[i + 1]))
-    {
-        // Does not end with "_LnKn..."
-        return EINVAL;
-    }
-
-    i += 2; // Skip "Kn"
-
-    // Skip additional digits of Keyword and additional attributes.
-    for (; i != eventName.size(); i += 1)
-    {
-        auto const ch = eventName[i];
-        if ((ch < '0' || '9' < ch) &&
-            (ch < 'A' || 'Z' < ch) &&
-            (ch < 'a' || 'z' < ch))
-        {
-            // Invalid attribute character.
-            return EINVAL;
-        }
     }
 
     char nameArgs[EVENTHEADER_COMMAND_MAX];
     snprintf(nameArgs, sizeof(nameArgs), "%.*s " EVENTHEADER_COMMAND_TYPES,
-        (unsigned)eventName.size(), eventName.data());
+        (unsigned)name.EventName.size(), name.EventName.data());
     return PreregisterTracepoint(nameArgs);
 }
 
@@ -363,9 +318,8 @@ TracepointCache::PreregisterTracepoint(_In_z_ char const* registerCommand) noexc
         }
     }
 
-    TracepointName name("user_events"sv, std::string_view(registerCommand, nameEnd));
-
-    if (nameEnd == 0 || nameEnd >= EVENTHEADER_NAME_MAX)
+    TracepointName const name(UserEventsSystemName, std::string_view(registerCommand, nameEnd));
+    if (!EventNameIsValid(name.EventName))
     {
         error = EINVAL;
         goto Done;
@@ -395,7 +349,7 @@ TracepointCache::PreregisterTracepoint(_In_z_ char const* registerCommand) noexc
         reg.enable_addr = (uintptr_t)&registration->StatusWord;
         reg.name_args = (uintptr_t)registerCommand;
 
-        if (0 > ioctl(registration->DataFile, DIAG_IOCSREG, &reg))
+        if (0 > ioctl(dataFile, DIAG_IOCSREG, &reg))
         {
             error = errno;
             goto Done;
@@ -453,9 +407,14 @@ TracepointCache::Add(
         {
             error = EINVAL;
         }
+        else if (auto name = TracepointName(metadata.SystemName(), metadata.Name());
+            !name.IsValid())
+        {
+            error = EINVAL;
+        }
         else if (
             m_byId.end() != m_byId.find(metadata.Id()) ||
-            m_byName.end() != m_byName.find(TracepointName(metadata.SystemName(), metadata.Name())))
+            m_byName.end() != m_byName.find(name))
         {
             error = EEXIST;
         }
@@ -510,9 +469,7 @@ TracepointCache::Add(
                     std::move(registration));
                 assert(er.second);
                 idAdded = er.second;
-
-                auto const& newMeta = er.first->second.Metadata;
-                m_byName.try_emplace(TracepointName(newMeta.SystemName(), newMeta.Name()), er.first->second);
+                m_byName.try_emplace(name, er.first->second);
 
                 error = 0;
             }

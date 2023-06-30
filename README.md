@@ -49,8 +49,6 @@ events and for generating Tracepoint events from user mode using the
   - `decode-perf` tool that decodes `perf.data` files to JSON.
 - [libeventheader-decode-dotnet](libeventheader-decode-dotnet) -
   .NET library for decoding events that use the `eventheader` envelope.
-- [Rust](rust) - support for generating `eventheader`-encapsulated events from
-  Rust.
 
 ## General Usage
 
@@ -80,8 +78,8 @@ events and for generating Tracepoint events from user mode using the
     [EventHeaderDynamic.h](libeventheader-tracepoint/include/eventheader/EventHeaderDynamic.h)
     to generate eventheader-enabled Tracepoint events that are runtime-dynamic.
     (Link with `libtracepoint` and `libeventheader-tracepoint`.)
-  - Rust programs can use the [eventheader](rust/eventheader/README.md) or
-    [eventheader_dynamic](rust/eventheader_dynamic/README.md) crates
+  - Rust programs can use
+    [LinuxTracepoints-Rust](https://github.com/microsoft/LinuxTracepoints-Rust)
     to generate eventheader-enabled Tracepoint events.
 - To collect events in a C++ program, use
   [libtracepoint-control-cpp](libtracepoint-control-cpp). Note that your

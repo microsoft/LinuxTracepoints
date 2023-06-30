@@ -16,7 +16,8 @@
   This is intended for use as an implementation layer for a higher-level API
   like OpenTelemetry. Developers instrumenting their own C/C++ code would
   normally use `TraceLoggingProvider.h` instead of `EventHeaderDynamic.h`.
-- [Similar APIs](../rust) are available for Rust.
+- [Similar APIs](https://github.com/microsoft/LinuxTracepoints-Rust)
+  are available for Rust.
 
 ## EventHeader
 

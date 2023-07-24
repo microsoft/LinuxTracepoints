@@ -1,5 +1,10 @@
 # LinuxTracepoints Change Log
 
+## v1.2.1 (2023-07-24)
+
+- Prefer `user_events_data` from `tracefs` over `user_events_data` from
+  `debugfs`.
+
 ## v1.2 (2023-06-27)
 
 - Added "Preregister" methods to the `TracepointCache` class so that a

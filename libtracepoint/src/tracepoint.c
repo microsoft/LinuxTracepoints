@@ -203,7 +203,8 @@ user_events_data_update(int* staticFileOrError)
                 path_suffix_len = sizeof("/user_events_data"); // includes NUL
                 keepLooking = 0; // prefer "tracefs" over "debugfs".
             }
-            else if (fs_len == cchDebugfs && 0 == memcmp(line + fs_begin, pchDebugfs, cchDebugfs))
+            else if (path[0] == 0 &&
+                fs_len == cchDebugfs && 0 == memcmp(line + fs_begin, pchDebugfs, cchDebugfs))
             {
                 // "debugfsMountPoint/tracing/user_events_data"
                 path_suffix = "/tracing/user_events_data";

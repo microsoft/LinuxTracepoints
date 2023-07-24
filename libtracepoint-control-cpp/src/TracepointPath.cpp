@@ -117,7 +117,8 @@ UpdateTracingDirectory(char const** pStaticTracingDir) noexcept
                     pathSuffix = ""sv;
                     keepLooking = false; // prefer "tracefs" over "debugfs".
                 }
-                else if (fileSystem == "debugfs"sv)
+                else if (staticTracingDirBuffer[0] == 0 &&
+                    fileSystem == "debugfs"sv)
                 {
                     // "debugfsMountPoint/tracing"
                     pathSuffix = "/tracing"sv;

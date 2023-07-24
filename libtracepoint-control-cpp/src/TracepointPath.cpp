@@ -110,15 +110,18 @@ UpdateTracingDirectory(char const** pStaticTracingDir) noexcept
 
                 std::string_view const fileSystem(line + fileSystemBegin, fileSystemEnd - fileSystemBegin);
                 std::string_view pathSuffix;
+                bool keepLooking;
                 if (fileSystem == "tracefs"sv)
                 {
                     // "tracefsMountPoint"
                     pathSuffix = ""sv;
+                    keepLooking = false; // prefer "tracefs" over "debugfs".
                 }
                 else if (fileSystem == "debugfs"sv)
                 {
                     // "debugfsMountPoint/tracing"
                     pathSuffix = "/tracing"sv;
+                    keepLooking = true; // prefer "tracefs" over "debugfs".
                 }
                 else
                 {
@@ -127,7 +130,7 @@ UpdateTracingDirectory(char const** pStaticTracingDir) noexcept
 
                 auto const mountPointLen = mountPointEnd - mountPointBegin;
                 auto const pathLen = mountPointLen + pathSuffix.size() + 1; // includes NUL
-                if (pathLen > sizeof(line))
+                if (pathLen > sizeof(staticTracingDirBuffer))
                 {
                     continue;
                 }
@@ -135,7 +138,11 @@ UpdateTracingDirectory(char const** pStaticTracingDir) noexcept
                 // path = mountpoint + suffix, e.g. "/sys/kernel/tracing\0"
                 memcpy(staticTracingDirBuffer, line + mountPointBegin, mountPointLen);
                 memcpy(staticTracingDirBuffer + mountPointLen, pathSuffix.data(), pathSuffix.size() + 1); // includes NUL
-                break;
+
+                if (!keepLooking)
+                {
+                    break;
+                }
             }
 
             fclose(mountsFile);

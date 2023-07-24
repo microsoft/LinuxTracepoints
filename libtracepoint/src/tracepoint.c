@@ -129,12 +129,14 @@ user_events_data_update(int* staticFileOrError)
     }
     else
     {
+        char path[274]; // 256 + sizeof("/user_events_data")
+        path[0] = 0;
+
         for (;;)
         {
             char line[4097];
             if (!fgets(line, sizeof(line), mountsFile))
             {
-                newFileOrError = -ENOTSUP;
                 break;
             }
 
@@ -186,6 +188,7 @@ user_events_data_update(int* staticFileOrError)
 
             char const* path_suffix;
             size_t path_suffix_len; // includes NUL
+            char keepLooking;
 
             const char* const pchTracefs = "tracefs";
             size_t const cchTracefs = sizeof("tracefs") - 1;
@@ -198,12 +201,14 @@ user_events_data_update(int* staticFileOrError)
                 // "tracefsMountPoint/user_events_data"
                 path_suffix = "/user_events_data";
                 path_suffix_len = sizeof("/user_events_data"); // includes NUL
+                keepLooking = 0; // prefer "tracefs" over "debugfs".
             }
             else if (fs_len == cchDebugfs && 0 == memcmp(line + fs_begin, pchDebugfs, cchDebugfs))
             {
                 // "debugfsMountPoint/tracing/user_events_data"
                 path_suffix = "/tracing/user_events_data";
                 path_suffix_len = sizeof("/tracing/user_events_data"); // includes NUL
+                keepLooking = 1; // prefer "tracefs" over "debugfs".
             }
             else
             {
@@ -212,26 +217,38 @@ user_events_data_update(int* staticFileOrError)
 
             size_t const mount_len = mount_end - mount_begin;
             size_t const path_len = mount_len + path_suffix_len; // includes NUL
-            if (path_len > sizeof(line))
+            if (path_len > sizeof(path))
             {
                 continue;
             }
 
             // path = mountpoint + suffix
-            memmove(line, line + mount_begin, mount_len);
-            memcpy(line + mount_len, path_suffix, path_suffix_len); // includes NUL
+            memcpy(path, line + mount_begin, mount_len);
+            memcpy(path + mount_len, path_suffix, path_suffix_len); // includes NUL
 
-            // line is now something like "/sys/kernel/tracing/user_events_data\0" or
+            if (!keepLooking)
+            {
+                break;
+            }
+        }
+
+        fclose(mountsFile);
+
+        if (path[0] == 0)
+        {
+            // No "tracefs" or "debugfs" mount point found.
+            newFileOrError = -ENOTSUP;
+        }
+        else
+        {
+            // path is now something like "/sys/kernel/tracing/user_events_data\0" or
             // "/sys/kernel/debug/tracing/user_events_data\0".
-            newFileOrError = open(line, O_RDWR);
+            newFileOrError = open(path, O_RDWR);
             if (0 > newFileOrError)
             {
                 newFileOrError = -get_failure_errno();
             }
-            break;
         }
-
-        fclose(mountsFile);
     }
 
     int oldFileOrError = -EAGAIN;

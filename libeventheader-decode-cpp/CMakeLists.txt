@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(eventheader-decode-cpp
-    VERSION 1.2.0
+    VERSION 1.2.1
     DESCRIPTION "EventHeader tracepoint decoding for C/C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES CXX)

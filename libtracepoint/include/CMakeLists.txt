@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(tracepoint-headers
-    VERSION 1.2.0
+    VERSION 1.2.1
     DESCRIPTION "Linux tracepoints interface for C/C++ (headers)"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES C CXX)

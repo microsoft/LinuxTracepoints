@@ -9,7 +9,7 @@ target_include_directories(tracepoint-control
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 target_link_libraries(tracepoint-control
-    PUBLIC tracepoint-decode)
+    PUBLIC tracepoint-decode atomic)
 set(CONTROL_HEADERS
     "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointCache.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointName.h"

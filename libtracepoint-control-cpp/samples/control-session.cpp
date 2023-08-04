@@ -17,7 +17,7 @@ using namespace tracepoint_decode;
 int
 main(int argc, char* argv[])
 {
-    int error;
+    int error = 0;
 
     if (argc < 2 ||
         (0 != strcmp(argv[1], "0") && 0 != strcmp(argv[1], "1")))
@@ -102,7 +102,7 @@ main(int argc, char* argv[])
                     event.cpu,
                     event.tid,
                     (long long unsigned)event.time,
-                    event.raw_data_size,
+                    (long unsigned)event.raw_data_size,
                     event.name);
                 return 0;
             });

@@ -11,7 +11,7 @@ Prerequisites:
 - Kernel must be built with tracefs and UserEvents (CONFIG_USER_EVENTS=y).
 - tracefs mounted (e.g. /sys/kernel/tracing or /sys/kernel/debug/tracing).
 - Caller must have appropriate permissions: x on tracefs mount point,
-  rw on tracefs/user_events_data, r on tracefs/user_events_status.
+  rw on tracefs/user_events_data.
 
 Quick start:
 
@@ -20,7 +20,7 @@ Quick start:
 TRACELOGGING_DEFINE_PROVIDER( // defines the MyProvider symbol
     MyProvider, // Name of the provider symbol to define
     "MyCompany_MyComponent_MyProvider", // Human-readable provider name, no ' ' or ':' chars.
-    // {d5b90669-1aad-5db8-16c9-6286a7fcfe33} // Provider guid (ignored on Linux)
+    // {d5b90669-1aad-5db8-16c9-6286a7fcfe33} // Provider guid (not used on Linux)
     (0xd5b90669,0x1aad,0x5db8,0x16,0xc9,0x62,0x86,0xa7,0xfc,0xfe,0x33));
 
 int main(int argc, char* argv[])
@@ -59,10 +59,6 @@ TraceLoggingProvider.h for Linux UserEvents behaves differently from the ETW
   TraceLoggingOptionGroupName.
 - TraceLoggingRegisterEx is not provided. No support for notification
   callbacks.
-- TraceLoggingProviderEnabled requires that the specified level and keyword
-  parameters match the level and keywords of some event in the provider. It
-  will assert and return false if there are no events in the provider with
-  the specified level+keyword combination.
 - TraceLoggingProviderId is not provided. Instead, use
   TraceLoggingProviderName.
 - TraceLoggingSetInformation is not provided.

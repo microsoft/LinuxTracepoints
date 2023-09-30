@@ -191,20 +191,18 @@ namespace eventheader_decode
     Flags controlling the metadata to be included in the "meta" suffix of a JSON
     event string.
 
-    Note that the "n" field is for the convenience if human readers of the JSON file.
-    It contains the provider and event metadata and appears at the start of the event
-    rather than in the metadata section even though it is technically metadata.
+    Note that the "n" field is for the convenience of human readers of the JSON file.
+    It contains the provider and event names and appears at the start of the event
+    rather than in the "meta" section even though it is technically metadata.
 
     Note that the format of the "time" field depends on the clock information that was
-    available from the session (use "perf record -k monotonic ..." to include
-    clock information into a perf trace):
+    provided by the session:
 
     - If clock information is available: "yyyy-mm-ddThh:mm:ss.nnnnnnnnnZ"
-    - Else, we output timestamp converted to seconds: 123.123456789
-      (Clock frequency may not be available, in which case we assume 1GHz.)
+    - Else, timestamp is seconds relative to an unknown epoch: 123.123456789
 
     For consistent behavior, always include clock information in the trace,
-    e.g. "perf record -k monotonic ...".
+    e.g. "perf record -k monotonic -e ...".
     */
     enum EventFormatterMetaFlags : unsigned
     {

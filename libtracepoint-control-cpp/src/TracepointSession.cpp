@@ -119,7 +119,8 @@ TracepointSession::TracepointSession(
         0 == clock_gettime(CLOCK_REALTIME, &realtime))
     {
         uint64_t monotonicNS, realtimeNS;
-        if (monotonic.tv_sec < realtime.tv_sec)
+        if (monotonic.tv_sec < realtime.tv_sec ||
+            (monotonic.tv_sec == realtime.tv_sec && monotonic.tv_nsec < realtime.tv_nsec))
         {
             monotonicNS = 0;
             realtimeNS = static_cast<uint64_t>(realtime.tv_sec - monotonic.tv_sec) * Billion

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(eventheader-decode-cpp
-    VERSION 1.2.1
+    VERSION 1.3.0
     DESCRIPTION "EventHeader tracepoint decoding for C/C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES CXX)
@@ -10,7 +10,7 @@ set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
 set(BUILD_TOOLS ON CACHE BOOL "Build tool code")
 
 if(NOT TARGET tracepoint-decode)
-    find_package(tracepoint-decode 1.2 REQUIRED)
+    find_package(tracepoint-decode 1.3 REQUIRED)
 endif()
 
 if(NOT TARGET eventheader-headers)

@@ -55,7 +55,7 @@ Notes:
   event set will correspond to a tracepont named
   "user_events:MyCompany_MyComponent_L5K1f".
 - Collect events to a file using a tool such as "perf", e.g.
-  "perf record -e user_events:MyCompany_MyComponent_L5K1f".
+  "perf record -k monotonic -e user_events:MyCompany_MyComponent_L5K1f".
 - Decode events using a tool such as "decode-perf" (from the tools in the
   libeventheader-decode-cpp library).
 */

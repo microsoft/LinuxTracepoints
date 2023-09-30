@@ -22,6 +22,9 @@ struct perf_event_attr;
 
 namespace tracepoint_decode
 {
+    // Forward declaration from PerfEventSessionInfo.h:
+    class PerfEventSessionInfo;
+
     // Forward declaration from PerfEventMetadata.h:
     class PerfEventMetadata;
 
@@ -29,6 +32,7 @@ namespace tracepoint_decode
     {
         uint64_t id;                            // Always valid if GetSampleEventInfo succeeded.
         perf_event_attr const* attr;            // Always valid if GetSampleEventInfo succeeded.
+        PerfEventSessionInfo const* session;    // Always valid if GetSampleEventInfo succeeded.
         _Field_z_ char const* name;             // e.g. "system:tracepoint", or "" if no name available.
         uint64_t sample_type;                   // Bit set if corresponding info present in event.
         uint32_t pid, tid;                      // Valid if sample_type & PERF_SAMPLE_TID.
@@ -42,13 +46,14 @@ namespace tracepoint_decode
         uint64_t const* callchain;              // Valid if sample_type & PERF_SAMPLE_CALLCHAIN. Points into event.
         PerfEventMetadata const* raw_meta;      // Valid if sample_type & PERF_SAMPLE_RAW. NULL if event unknown.
         _Field_size_bytes_(raw_data_size) void const* raw_data; // Valid if sample_type & PERF_SAMPLE_RAW. Points into event.
-        uintptr_t raw_data_size;                   // Valid if sample_type & PERF_SAMPLE_RAW. Size of raw_data.
+        uintptr_t raw_data_size;                // Valid if sample_type & PERF_SAMPLE_RAW. Size of raw_data.
     };
 
     struct PerfNonSampleEventInfo
     {
         uint64_t id;                            // Always valid if GetNonSampleEventInfo succeeded.
         perf_event_attr const* attr;            // Always valid if GetNonSampleEventInfo succeeded.
+        PerfEventSessionInfo const* session;    // Always valid if GetNonSampleEventInfo succeeded.
         _Field_z_ char const* name;             // e.g. "system:tracepoint", or "" if no name available.
         uint64_t sample_type;                   // Bit set if corresponding info present in event.
         uint32_t pid, tid;                      // Valid if sample_type & PERF_SAMPLE_TID.

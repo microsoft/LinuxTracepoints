@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <string.h>
+#include <time.h>
 
 #include <unistd.h>
 #include <poll.h>
@@ -104,9 +105,37 @@ TracepointSession::TracepointSession(
     , m_lostEventCount(0)
     , m_corruptEventCount(0)
     , m_corruptBufferCount(0)
+    , m_sessionInfo()
     , m_enumEventInfo()
 {
+    static const auto Billion = 1000000000u;
+
     assert(options.m_mode <= TracepointSessionMode::RealTime);
+    m_sessionInfo.SetClockid(CLOCK_MONOTONIC_RAW);
+
+    timespec monotonic;
+    timespec realtime;
+    if (0 == clock_gettime(CLOCK_MONOTONIC_RAW, &monotonic) &&
+        0 == clock_gettime(CLOCK_REALTIME, &realtime))
+    {
+        uint64_t monotonicNS, realtimeNS;
+        if (monotonic.tv_sec < realtime.tv_sec ||
+            (monotonic.tv_sec == realtime.tv_sec && monotonic.tv_nsec < realtime.tv_nsec))
+        {
+            monotonicNS = 0;
+            realtimeNS = static_cast<uint64_t>(realtime.tv_sec - monotonic.tv_sec) * Billion
+                + realtime.tv_nsec - monotonic.tv_nsec;
+        }
+        else
+        {
+            realtimeNS = 0;
+            monotonicNS = static_cast<uint64_t>(monotonic.tv_sec - realtime.tv_sec) * Billion
+                + monotonic.tv_nsec - realtime.tv_nsec;
+        }
+
+        m_sessionInfo.SetClockData(CLOCK_MONOTONIC_RAW, realtimeNS, monotonicNS);
+    }
+
     return;
 }
 
@@ -654,6 +683,7 @@ TracepointSession::ParseSample(
 
     enumEventInfo.id = infoId;
     enumEventInfo.attr = nullptr;
+    enumEventInfo.session = &m_sessionInfo;
     enumEventInfo.name = m_enumNameBuffer;
     enumEventInfo.sample_type = infoSampleTypes;
     enumEventInfo.raw_meta = infoRawMeta;
@@ -669,6 +699,7 @@ Error:
 
     enumEventInfo.id = {};
     enumEventInfo.attr = {};
+    enumEventInfo.session = {};
     enumEventInfo.name = {};
     enumEventInfo.sample_type = {};
     enumEventInfo.raw_meta = {};

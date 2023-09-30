@@ -11,6 +11,7 @@
 
 #include <eventheader/EventFormatter.h>
 #include <tracepoint/PerfEventMetadata.h>
+#include <tracepoint/PerfEventSessionInfo.h>
 #include <tracepoint/PerfEventInfo.h>
 #include <tracepoint/PerfByteReader.h>
 #include <tracepoint/PerfEventAbi.h>
@@ -395,7 +396,7 @@ public:
     // Requires: there is room for 26 chars.
     // Writes 19..26 chars, e.g. [2022-01-01T01:01:01] or [TIME(18000000000000000000)].
     void
-    WriteTime(int64_t val) noexcept
+    WriteDateTime(int64_t val) noexcept
     {
         auto const DestWriteMax = 26u;
         WriteBegin(DestWriteMax);
@@ -1235,7 +1236,7 @@ AppendValueImpl(
             case event_field_format_time:
                 // ["TIME(18000000000000000000)"] = 28
                 sb.WriteQuoteIf(json);
-                sb.WriteTime(static_cast<int32_t>(needsByteSwap ? bswap_32(val) : val));
+                sb.WriteDateTime(static_cast<int32_t>(needsByteSwap ? bswap_32(val) : val));
                 sb.WriteQuoteIf(json);
                 break;
             case event_field_format_boolean:
@@ -1309,7 +1310,7 @@ AppendValueImpl(
             case event_field_format_time:
                 // ["TIME(18000000000000000000)"] = 28
                 sb.WriteQuoteIf(json);
-                sb.WriteTime(static_cast<int64_t>(needsByteSwap ? bswap_64(val) : val));
+                sb.WriteDateTime(static_cast<int64_t>(needsByteSwap ? bswap_64(val) : val));
                 sb.WriteQuoteIf(json);
                 break;
             case event_field_format_float:
@@ -1997,10 +1998,20 @@ EventFormatter::AppendSampleAsJson(
 
         if ((metaFlags & EventFormatterMetaFlags_time) && (sampleEventInfo.sample_type & PERF_SAMPLE_TIME))
         {
-            AppendJsonMemberBegin(sb, 0, "time"sv, 22);
-            sb.WritePrintf(22, "%" PRIu64 ".%09u",
-                sampleEventInfo.time / 1000000000,
-                static_cast<unsigned>(sampleEventInfo.time % 1000000000));
+            AppendJsonMemberBegin(sb, 0, "time"sv, 39); // "DATETIME.nnnnnnnnnZ" = 1 + 26 + 12
+            if (sampleEventInfo.session->ClockOffsetKnown())
+            {
+                auto timeSpec = sampleEventInfo.session->TimeToRealTime(sampleEventInfo.time);
+                sb.WriteUtf8Byte('\"');
+                sb.WriteDateTime(timeSpec.tv_sec);
+                sb.WritePrintf(12, ".%09uZ\"", timeSpec.tv_nsec);
+            }
+            else
+            {
+                sb.WritePrintf(22, "%" PRIu64 ".%09u",
+                    sampleEventInfo.time / 1000000000,
+                    static_cast<unsigned>(sampleEventInfo.time % 1000000000));
+            }
         }
 
         if ((metaFlags & EventFormatterMetaFlags_cpu) && (sampleEventInfo.sample_type & PERF_SAMPLE_CPU))

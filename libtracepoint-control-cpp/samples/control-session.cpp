@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <time.h>
 
 #include <unistd.h>
 
@@ -98,10 +99,14 @@ main(int argc, char* argv[])
         error = session.EnumerateSampleEventsUnordered(
             [](PerfSampleEventInfo const& event) -> int
             {
-                fprintf(stdout, "CPU%u: tid=%x time=0x%llx raw=0x%lx n=%s\n",
+                auto ts = event.session->TimeToRealTime(event.time);
+                time_t const secs = (time_t)ts.tv_sec;
+                tm t = {};
+                gmtime_r(&secs, &t);
+                fprintf(stdout, "CPU%u: tid=%x time=%04u-%02u-%02uT%02u:%02u:%02u.%09uZ raw=0x%lx n=%s\n",
                     event.cpu,
                     event.tid,
-                    (long long unsigned)event.time,
+                    1900 + t.tm_year, 1 + t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, ts.tv_nsec,
                     (long unsigned)event.raw_data_size,
                     event.name);
                 return 0;

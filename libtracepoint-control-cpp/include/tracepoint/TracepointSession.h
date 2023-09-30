@@ -12,6 +12,7 @@ TracepointSession class that manages a tracepoint collection session.
 #include "TracepointName.h"
 #include <tracepoint/PerfEventMetadata.h>
 #include <tracepoint/PerfEventInfo.h>
+#include <tracepoint/PerfEventSessionInfo.h>
 #include <tracepoint/TracepointCache.h>
 
 #include <unordered_map>
@@ -824,6 +825,7 @@ namespace tracepoint_control
         uint64_t m_lostEventCount;
         uint64_t m_corruptEventCount;
         uint64_t m_corruptBufferCount;
+        tracepoint_decode::PerfEventSessionInfo m_sessionInfo;
         tracepoint_decode::PerfSampleEventInfo m_enumEventInfo;
         char m_enumNameBuffer[512];
     };

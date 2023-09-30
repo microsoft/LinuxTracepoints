@@ -3,7 +3,8 @@ add_library(tracepoint-decode
     PerfByteReader.cpp
     PerfDataFile.cpp
     PerfEventAbi.cpp
-    PerfEventMetadata.cpp)
+    PerfEventMetadata.cpp
+    PerfEventSessionInfo.cpp)
 target_include_directories(tracepoint-decode
     PUBLIC
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/>"
@@ -13,7 +14,8 @@ set(DECODE_HEADERS
     "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfDataFile.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfEventAbi.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfEventInfo.h"
-    "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfEventMetadata.h")
+    "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfEventMetadata.h"
+    "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfEventSessionInfo.h")
 set_target_properties(tracepoint-decode PROPERTIES
     PUBLIC_HEADER "${DECODE_HEADERS}")
 target_compile_features(tracepoint-decode

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(tracepoint-decode-cpp
-    VERSION 1.2.1
+    VERSION 1.3.0
     DESCRIPTION "Tracepoint decoding for C/C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES CXX)

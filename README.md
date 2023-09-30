@@ -19,7 +19,7 @@ events and for generating Tracepoint events from user mode using the
   C++ library for controlling a tracepoint event collection session.
   - `TracingSession.h` implements an event collection session that can
     collect tracepoint events and enumerate the events that the session has
-    collected.
+    collected. Supports real-time and circular-buffer modes.
   - `TracingPath.h` has functions for finding the `/sys/kernel/tracing`
     mount point and reading `format` files.
   - `TracingCache.h` implements a cache for tracking parsed `format` files
@@ -88,8 +88,8 @@ events and for generating Tracepoint events from user mode using the
 - To collect events without writing C++ code, use the Linux
   [`perf`](https://www.man7.org/linux/man-pages/man1/perf.1.html) tool
   to collect events to a `perf.data` file, e.g.
-  `perf record -e user_events:MyEvent1,user_events:MyEvent2`. Note that you
-  must run the `perf` tool as a privileged user to collect events.
+  `perf record -k monotonic -e user_events:MyEvent1,user_events:MyEvent2`. Note
+  that you must run the `perf` tool as a privileged user to collect events.
   - The `perf` tool binary is typically available as part of the `linux-perf`
     package (e.g. can be installed by `apt install linux-perf`). However, this
     package installs a `perf_VERSION` binary rather than a `perf` binary, so

@@ -1,5 +1,15 @@
 # LinuxTracepoints Change Log
 
+## v1.3.0 (TBD)
+
+- `PerfEventInfo.h` adds a field with session information to the metadata of
+  each event. The session information includes clock information.
+- `PerfDataFile.h` decodes clock information from perf.data files if present.
+- `TracepointSession.h` records clock information from the session.
+- `EventFormatter.h` formats timestamps as date-time if clock information is
+  available in the event metadata. If clock information is not present, it
+  continues to format timestamps as seconds.
+
 ## v1.2.1 (2023-07-24)
 
 - Prefer `user_events_data` from `tracefs` over `user_events_data` from

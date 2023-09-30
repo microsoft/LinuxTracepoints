@@ -6,6 +6,7 @@
 #define _included_PerfDataFile_h
 
 #include "PerfByteReader.h"
+#include "PerfEventSessionInfo.h"
 #include <stdint.h>
 #include <stdio.h> // FILE
 #include <map>
@@ -117,6 +118,7 @@ namespace tracepoint_decode
         std::vector<char> m_headers[32]; // Stored file-endian.
         std::vector<std::unique_ptr<perf_event_attr>> m_attrsList; // Stored host-endian.
         std::map<uint64_t, PerfEventDesc> m_eventDescById; // Points into m_attrsList and/or m_headers.
+        PerfEventSessionInfo m_sessionInfo;
         PerfByteReader m_byteReader;
         int8_t m_sampleIdOffset; // -1 = unset, -2 = no id.
         int8_t m_nonSampleIdOffset; // -1 = unset, -2 = no id.
@@ -255,6 +257,12 @@ namespace tracepoint_decode
 
         void
         ParseTracingData() noexcept;
+
+        void
+        ParseHeaderClockid() noexcept;
+
+        void
+        ParseHeaderClockData() noexcept;
 
         void
         ParseHeaderEventDesc() noexcept;

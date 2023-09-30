@@ -125,6 +125,7 @@ PerfDataFile::PerfDataFile() noexcept
     , m_dataBeginFilePos(0)
     , m_dataEndFilePos(0)
     , m_file(0)
+    , m_sessionInfo()
     , m_byteReader()
     , m_sampleIdOffset(-1)
     , m_nonSampleIdOffset(-1)
@@ -317,6 +318,8 @@ PerfDataFile::Open(_In_z_ char const* filePath) noexcept
                 assert(m_filePos == header.data.offset);
                 m_dataBeginFilePos = header.data.offset;
                 m_dataEndFilePos = header.data.offset + header.data.size;
+                ParseHeaderClockid();
+                ParseHeaderClockData();
                 ParseHeaderEventDesc();
                 ParseTracingData();
                 error = 0;
@@ -552,11 +555,19 @@ PerfDataFile::ReadEvent(_Outptr_result_maybenull_ perf_event_header const** ppEv
                         header.data(),
                         pbEventData + sizeof(uint64_t),
                         cbEventData - sizeof(uint64_t));
-                }
 
-                if (bit == PERF_HEADER_LAST_FEATURE && !m_parsedHeaderEventDesc)
-                {
-                    ParseHeaderEventDesc();
+                    switch (bit)
+                    {
+                    case PERF_HEADER_CLOCKID:
+                        ParseHeaderClockid();
+                        break;
+                    case PERF_HEADER_CLOCK_DATA:
+                        ParseHeaderClockData();
+                        break;
+                    case PERF_HEADER_LAST_FEATURE:
+                        ParseHeaderEventDesc();
+                        break;
+                    }
                 }
             }
             break;
@@ -794,6 +805,7 @@ PerfDataFile::GetSampleEventInfo(
         assert(iArray <= cArray);
         pInfo->id = id;
         pInfo->attr = eventDesc.attr;
+        pInfo->session = &m_sessionInfo;
         pInfo->name = eventDesc.name;
         pInfo->sample_type = infoSampleTypes;
         pInfo->read_values = infoReadValues;
@@ -808,6 +820,7 @@ Error:
 
     pInfo->id = {};
     pInfo->attr = {};
+    pInfo->session = {};
     pInfo->name = {};
     pInfo->sample_type = {};
     pInfo->read_values = {};
@@ -899,6 +912,7 @@ PerfDataFile::GetNonSampleEventInfo(
         assert(iArray < 0x10000 / sizeof(uint64_t));
         pInfo->id = id;
         pInfo->attr = eventDesc.attr;
+        pInfo->session = &m_sessionInfo;
         pInfo->name = eventDesc.name;
         pInfo->sample_type = infoSampleTypes;
         return 0;
@@ -906,9 +920,10 @@ PerfDataFile::GetNonSampleEventInfo(
 
 Error:
 
-    pInfo->id = 0;
-    pInfo->attr = nullptr;
-    pInfo->name = nullptr;
+    pInfo->id = {};
+    pInfo->attr = {};
+    pInfo->session = {};
+    pInfo->name = {};
     pInfo->sample_type = {};
     return error;
 }
@@ -1322,8 +1337,54 @@ PerfDataFile::ParseTracingData() noexcept
 }
 
 void
+PerfDataFile::ParseHeaderClockid() noexcept
+{
+    struct Clockid
+    {
+        uint64_t clockid;
+    };
+
+    auto const& data = m_headers[PERF_HEADER_CLOCKID];
+    if (data.size() >= sizeof(Clockid))
+    {
+        auto const pClockid = reinterpret_cast<Clockid const*>(data.data());
+        m_sessionInfo.SetClockid(static_cast<uint32_t>(m_byteReader.Read(&pClockid->clockid)));
+    }
+}
+
+void
+PerfDataFile::ParseHeaderClockData() noexcept
+{
+    struct ClockData
+    {
+        uint32_t version;
+        uint32_t clockid;
+        uint64_t wall_clock_ns;
+        uint64_t clockid_time_ns;
+    };
+
+    auto const& data = m_headers[PERF_HEADER_CLOCK_DATA];
+    if (data.size() >= sizeof(ClockData))
+    {
+        auto const pClockData = reinterpret_cast<ClockData const*>(data.data());
+        if (1 <= m_byteReader.Read(&pClockData->version))
+        {
+            m_sessionInfo.SetClockData(
+                m_byteReader.Read(&pClockData->clockid),
+                m_byteReader.Read(&pClockData->wall_clock_ns),
+                m_byteReader.Read(&pClockData->clockid_time_ns));
+        }
+    }
+}
+
+void
 PerfDataFile::ParseHeaderEventDesc() noexcept
 {
+    if (m_parsedHeaderEventDesc)
+    {
+        return;
+    }
+
     try
     {
         auto const& eventDesc = m_headers[PERF_HEADER_EVENT_DESC];

@@ -119,11 +119,30 @@ static int
 user_events_data_update(int* staticFileOrError)
 {
     int newFileOrError;
+    FILE* mountsFile;
 
     // Find the mount path for tracefs:
 
-    FILE* mountsFile = fopen("/proc/mounts", "r");
-    if (mountsFile == NULL)
+    /*
+    Goals:
+    - Minimal external dependencies.
+    - Efficient (minimal impact to startup time).
+    - Works correctly if the system is properly configured.
+    - System administrator can control how this ends up behaving (i.e. by
+      setting permissions on the user_events_data file).
+    - Can be made to work in a container.
+    */
+
+    // Start by probing the most likely absolute paths.
+    // This improves performance and also makes it simpler to set up a container:
+    // The container creator will have to project the user_events_data file but
+    // won't need to make a dummy /proc/mounts file for us to parse.
+    if (0 <= (newFileOrError = open("/sys/kernel/tracing/user_events_data", O_RDWR)) ||
+        0 <= (newFileOrError = open("/sys/kernel/debug/tracing/user_events_data", O_RDWR)))
+    {
+        // Success.
+    }
+    else if (NULL == (mountsFile = fopen("/proc/mounts", "r")))
     {
         newFileOrError = -get_failure_errno();
     }

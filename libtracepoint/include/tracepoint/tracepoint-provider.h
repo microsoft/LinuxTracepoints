@@ -7,9 +7,9 @@ Macros for generating Linux user_events tracepoints via libtracepoint.
 Prerequisites (if not met, register/write/unregister will be no-ops):
 
 - Kernel built with tracefs and UserEvents (CONFIG_USER_EVENTS=y).
-- tracefs mounted (e.g. /sys/kernel/tracing or /sys/kernel/debug/tracing).
+- tracefs mounted (e.g. /sys/kernel/tracing).
 - Caller must have appropriate permissions: x on tracefs mount point,
-  rw on tracefs/user_events_data.
+  rw on tracing/user_events_data.
 
 Quick start:
 

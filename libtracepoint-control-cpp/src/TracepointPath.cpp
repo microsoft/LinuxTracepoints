@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 using namespace std::string_view_literals;
 
@@ -53,100 +54,90 @@ UpdateTracingDirectory(char const** pStaticTracingDir) noexcept
     {
         static char staticTracingDirBuffer[TRACING_DIR_MAX + 1];
 
-        auto const mountsFile = fopen("/proc/mounts", "r");
-        if (mountsFile != nullptr)
+#define SYS_KERNEL_TRACING "/sys/kernel/tracing"
+
+        struct stat tracingStat = {};
+        if (!stat(SYS_KERNEL_TRACING, &tracingStat) && S_ISDIR(tracingStat.st_mode))
         {
-            for (;;)
+            memcpy(staticTracingDirBuffer, SYS_KERNEL_TRACING, sizeof(SYS_KERNEL_TRACING));
+        }
+        else
+        {
+            auto const mountsFile = fopen("/proc/mounts", "r");
+            if (mountsFile != nullptr)
             {
-                char line[4097];
-                if (!fgets(line, sizeof(line), mountsFile))
+                for (;;)
                 {
+                    char line[4097];
+                    if (!fgets(line, sizeof(line), mountsFile))
+                    {
+                        break;
+                    }
+
+                    // line is "deviceName mountPoint fileSystem otherStuff..."
+
+                    size_t linePos = 0;
+
+                    // deviceName
+                    while (IsNonSpaceChar(line[linePos]))
+                    {
+                        linePos += 1;
+                    }
+
+                    // whitespace
+                    while (IsSpaceChar(line[linePos]))
+                    {
+                        linePos += 1;
+                    }
+
+                    // mountPoint
+                    auto const mountPointBegin = linePos;
+                    while (IsNonSpaceChar(line[linePos]))
+                    {
+                        linePos += 1;
+                    }
+                    auto const mountPointEnd = linePos;
+
+                    // whitespace
+                    while (IsSpaceChar(line[linePos]))
+                    {
+                        linePos += 1;
+                    }
+
+                    // fileSystem
+                    auto const fileSystemBegin = linePos;
+                    while (IsNonSpaceChar(line[linePos]))
+                    {
+                        linePos += 1;
+                    }
+                    auto const fileSystemEnd = linePos;
+
+                    if (!IsSpaceChar(line[linePos]))
+                    {
+                        // Ignore line if no whitespace after fileSystem.
+                        continue;
+                    }
+
+                    std::string_view const fileSystem(line + fileSystemBegin, fileSystemEnd - fileSystemBegin);
+                    if (fileSystem != "tracefs"sv)
+                    {
+                        continue;
+                    }
+
+                    auto const mountPointLen = mountPointEnd - mountPointBegin;
+                    if (mountPointLen >= sizeof(staticTracingDirBuffer))
+                    {
+                        continue;
+                    }
+
+                    memcpy(staticTracingDirBuffer, line + mountPointBegin, mountPointLen);
+                    staticTracingDirBuffer[mountPointLen] = 0;
+
                     break;
                 }
 
-                // line is "deviceName mountPoint fileSystem otherStuff..."
-
-                size_t linePos = 0;
-
-                // deviceName
-                while (IsNonSpaceChar(line[linePos]))
-                {
-                    linePos += 1;
-                }
-
-                // whitespace
-                while (IsSpaceChar(line[linePos]))
-                {
-                    linePos += 1;
-                }
-
-                // mountPoint
-                auto const mountPointBegin = linePos;
-                while (IsNonSpaceChar(line[linePos]))
-                {
-                    linePos += 1;
-                }
-                auto const mountPointEnd = linePos;
-
-                // whitespace
-                while (IsSpaceChar(line[linePos]))
-                {
-                    linePos += 1;
-                }
-
-                // fileSystem
-                auto const fileSystemBegin = linePos;
-                while (IsNonSpaceChar(line[linePos]))
-                {
-                    linePos += 1;
-                }
-                auto const fileSystemEnd = linePos;
-
-                if (!IsSpaceChar(line[linePos]))
-                {
-                    // Ignore line if no whitespace after fileSystem.
-                    continue;
-                }
-
-                std::string_view const fileSystem(line + fileSystemBegin, fileSystemEnd - fileSystemBegin);
-                std::string_view pathSuffix;
-                bool keepLooking;
-                if (fileSystem == "tracefs"sv)
-                {
-                    // "tracefsMountPoint"
-                    pathSuffix = ""sv;
-                    keepLooking = false; // prefer "tracefs" over "debugfs".
-                }
-                else if (staticTracingDirBuffer[0] == 0 &&
-                    fileSystem == "debugfs"sv)
-                {
-                    // "debugfsMountPoint/tracing"
-                    pathSuffix = "/tracing"sv;
-                    keepLooking = true; // prefer "tracefs" over "debugfs".
-                }
-                else
-                {
-                    continue;
-                }
-
-                auto const mountPointLen = mountPointEnd - mountPointBegin;
-                auto const pathLen = mountPointLen + pathSuffix.size() + 1; // includes NUL
-                if (pathLen > sizeof(staticTracingDirBuffer))
-                {
-                    continue;
-                }
-
-                // path = mountpoint + suffix, e.g. "/sys/kernel/tracing\0"
-                memcpy(staticTracingDirBuffer, line + mountPointBegin, mountPointLen);
-                memcpy(staticTracingDirBuffer + mountPointLen, pathSuffix.data(), pathSuffix.size() + 1); // includes NUL
-
-                if (!keepLooking)
-                {
-                    break;
-                }
+                fclose(mountsFile);
             }
-
-            fclose(mountsFile);
         }
 
         tracingDir = staticTracingDirBuffer;

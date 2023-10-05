@@ -9,7 +9,7 @@ Prerequisites:
 
 - If prerequisites are not met then register/write/unregister will be no-ops.
 - Kernel must be built with tracefs and UserEvents (CONFIG_USER_EVENTS=y).
-- tracefs mounted (e.g. /sys/kernel/tracing or /sys/kernel/debug/tracing).
+- tracefs mounted (e.g. /sys/kernel/tracing).
 - Caller must have appropriate permissions: x on tracefs mount point,
   rw on tracefs/user_events_data.
 

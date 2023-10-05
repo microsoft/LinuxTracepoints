@@ -9,6 +9,16 @@
 - `EventFormatter.h` formats timestamps as date-time if clock information is
   available in the event metadata. If clock information is not present, it
   continues to format timestamps as seconds.
+- Changed procedure for locating the `user_events_data` file.
+  - Old: parse `/proc/mounts` to determine the `tracefs` or `debugfs` mount
+    point, then use that as the root for the `user_events_data` path.
+  - New: try `/sys/kernel/tracing/user_events_data`, then parse `/proc/mounts`
+    to find the tracefs mount point (i.e. only parse `/proc/mounts` if the
+    absolute path doesn't exist, and only look for tracefs, not debugfs).
+  - Rationale: If `debugfs` is mounted then `tracefs` is always also mounted,
+    so we don't ever need to look for `debugfs`. Probe the absolute path so
+    that containers don't have to create a fake `/proc/mounts` and for startup
+    efficiency.
 
 ## v1.2.1 (2023-07-24)
 

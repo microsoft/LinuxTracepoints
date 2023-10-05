@@ -29,14 +29,16 @@ information.
 namespace tracepoint_control
 {
     /*
-    Returns the path to the "/sys/.../tracing" directory, usually either
-    "/sys/kernel/tracing" or "/sys/kernel/debug/tracing".
+    Returns the path to the "/sys/.../tracing" directory, usually
+    "/sys/kernel/tracing".
 
     Returns "" if no tracing directory could be found (e.g. tracefs not mounted).
 
-    Implementation: The first time this is called, it parses "/proc/mounts" to
-    find the tracefs or debugfs mount point. Subsequent calls return the cached
-    result. This function is thread-safe.
+    Implementation: The first time this is called, it checks for the existence
+    of "/sys/kernel/tracing" and uses that if it is a directory; otherwise, it
+    parses "/proc/mounts" to find the tracefs mount point ands uses that if
+    present; on failure returns "". Subsequent calls return the cached result.
+    This function is thread-safe.
     */
     _Ret_z_ char const*
     GetTracingDirectory() noexcept;
@@ -48,7 +50,7 @@ namespace tracepoint_control
     Do not close the returned descriptor. Use it only for ioctl and writev.
 
     Implementation: The first time this is called, it calls GetTracingDirectory()
-    to find the tracefs or debugfs mount point, then opens
+    to find the tracefs mount point, then opens
     "TracingDirectory/user_events_data" and caches the result. Subsequent calls
     return the cached result. This function is thread-safe.
     */

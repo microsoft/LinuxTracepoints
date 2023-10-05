@@ -137,7 +137,8 @@ user_events_data_update(int* staticFileOrError)
     // This improves performance and also makes it simpler to set up a container:
     // The container creator will have to project the user_events_data file but
     // won't need to make a dummy /proc/mounts file for us to parse.
-    if (0 <= (newFileOrError = open("/sys/kernel/tracing/user_events_data", O_RDWR)))
+    newFileOrError = open("/sys/kernel/tracing/user_events_data", O_RDWR);
+    if (0 <= newFileOrError)
     {
         // Success.
     }
@@ -204,14 +205,32 @@ user_events_data_update(int* staticFileOrError)
                 continue;
             }
 
-            char const* const path_suffix = "/user_events_data";
-            size_t const path_suffix_len = sizeof("/user_events_data"); // includes NUL
+            char const* path_suffix;
+            size_t path_suffix_len; // includes NUL
+            char keepLooking;
 
             const char* const pchTracefs = "tracefs";
             size_t const cchTracefs = sizeof("tracefs") - 1;
+            const char* const pchDebugfs = "debugfs";
+            size_t const cchDebugfs = sizeof("debugfs") - 1;
 
             size_t const fs_len = fs_end - fs_begin;
-            if (fs_len != cchTracefs || 0 != memcmp(line + fs_begin, pchTracefs, cchTracefs))
+            if (fs_len == cchTracefs && 0 == memcmp(line + fs_begin, pchTracefs, cchTracefs))
+            {
+                // "tracefsMountPoint/user_events_data"
+                path_suffix = "/user_events_data";
+                path_suffix_len = sizeof("/user_events_data"); // includes NUL
+                keepLooking = 0; // prefer "tracefs" over "debugfs".
+            }
+            else if (path[0] == 0 &&
+                fs_len == cchDebugfs && 0 == memcmp(line + fs_begin, pchDebugfs, cchDebugfs))
+            {
+                // "debugfsMountPoint/tracing/user_events_data"
+                path_suffix = "/tracing/user_events_data";
+                path_suffix_len = sizeof("/tracing/user_events_data"); // includes NUL
+                keepLooking = 1; // prefer "tracefs" over "debugfs".
+            }
+            else
             {
                 continue;
             }
@@ -227,19 +246,23 @@ user_events_data_update(int* staticFileOrError)
             memcpy(path, line + mount_begin, mount_len);
             memcpy(path + mount_len, path_suffix, path_suffix_len); // includes NUL
 
-            break;
+            if (!keepLooking)
+            {
+                break;
+            }
         }
 
         fclose(mountsFile);
 
         if (path[0] == 0)
         {
-            // No "tracefs" mount point found.
+            // No "tracefs" or "debugfs" mount point found.
             newFileOrError = -ENOTSUP;
         }
         else
         {
-            // path is now something like "/sys/kernel/tracing/user_events_data\0".
+            // path is now something like "/sys/kernel/tracing/user_events_data\0" or
+            // "/sys/kernel/debug/tracing/user_events_data\0".
             newFileOrError = open(path, O_RDWR);
             if (0 > newFileOrError)
             {

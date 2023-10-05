@@ -56,8 +56,8 @@ UpdateTracingDirectory(char const** pStaticTracingDir) noexcept
 
 #define SYS_KERNEL_TRACING "/sys/kernel/tracing"
 
-        struct stat tracingStat = {};
-        if (!stat(SYS_KERNEL_TRACING, &tracingStat) && S_ISDIR(tracingStat.st_mode))
+        struct stat eventsStat = {};
+        if (!stat(SYS_KERNEL_TRACING "/events", &eventsStat) && S_ISDIR(eventsStat.st_mode))
         {
             memcpy(staticTracingDirBuffer, SYS_KERNEL_TRACING, sizeof(SYS_KERNEL_TRACING));
         }
@@ -119,21 +119,41 @@ UpdateTracingDirectory(char const** pStaticTracingDir) noexcept
                     }
 
                     std::string_view const fileSystem(line + fileSystemBegin, fileSystemEnd - fileSystemBegin);
-                    if (fileSystem != "tracefs"sv)
+                    std::string_view pathSuffix;
+                    bool keepLooking;
+                    if (fileSystem == "tracefs"sv)
+                    {
+                        // "tracefsMountPoint"
+                        pathSuffix = ""sv;
+                        keepLooking = false; // prefer "tracefs" over "debugfs".
+                    }
+                    else if (staticTracingDirBuffer[0] == 0 &&
+                        fileSystem == "debugfs"sv)
+                    {
+                        // "debugfsMountPoint/tracing"
+                        pathSuffix = "/tracing"sv;
+                        keepLooking = true; // prefer "tracefs" over "debugfs".
+                    }
+                    else
                     {
                         continue;
                     }
 
                     auto const mountPointLen = mountPointEnd - mountPointBegin;
-                    if (mountPointLen >= sizeof(staticTracingDirBuffer))
+                    auto const pathLen = mountPointLen + pathSuffix.size() + 1; // includes NUL
+                    if (pathLen > sizeof(staticTracingDirBuffer))
                     {
                         continue;
                     }
 
+                    // path = mountpoint + suffix, e.g. "/sys/kernel/tracing\0"
                     memcpy(staticTracingDirBuffer, line + mountPointBegin, mountPointLen);
-                    staticTracingDirBuffer[mountPointLen] = 0;
+                    memcpy(staticTracingDirBuffer + mountPointLen, pathSuffix.data(), pathSuffix.size() + 1); // includes NUL
 
-                    break;
+                    if (!keepLooking)
+                    {
+                        break;
+                    }
                 }
 
                 fclose(mountsFile);

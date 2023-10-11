@@ -117,6 +117,18 @@ main(int argc, char* argv[])
             (long long unsigned)session.LostEventCount(),
             (long long unsigned)session.CorruptEventCount(),
             (long long unsigned)session.CorruptBufferCount());
+        for (auto& info : session.TracepointInfoRange())
+        {
+            auto& metadata = info.Metadata();
+            auto name = metadata.Name();
+            uint64_t count = 0;
+            error = info.GetEventCount(&count);
+            fprintf(stderr, "      %.*s EnableState=%u Count=%llu Err=%u\n",
+                (int)name.size(), name.data(),
+                (int)info.EnableState(),
+                (long long unsigned)count,
+                error);
+        }
     }
 
     return 0;

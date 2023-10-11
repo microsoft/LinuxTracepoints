@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/*
+PerfDataFile class - Reads perf.data files.
+*/
+
 #pragma once
 #ifndef _included_PerfDataFile_h
 #define _included_PerfDataFile_h
@@ -103,6 +107,9 @@ namespace tracepoint_decode
         _Field_z_ char const* name;     // "" if no name available.
     };
 
+    /*
+    PerfDataFile class - Reads perf.data files.
+    */
     class PerfDataFile
     {
         struct perf_file_section;

@@ -222,6 +222,13 @@ namespace tracepoint_control
     */
     class TracepointInfo
     {
+        // Note: Implemented as a pimpl.
+        // - I want the constructor to be private on the type that the user sees.
+        // - Constructor on concrete type needs to be public so that it can be
+        //   constructed by a container's emplace method.
+        // - Therefore the concrete type needs to be a private type with a public
+        //   constructor.
+
         friend class TracepointSession;
 
         ~TracepointInfo();

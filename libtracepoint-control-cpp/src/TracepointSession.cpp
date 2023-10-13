@@ -26,6 +26,8 @@ using namespace std::string_view_literals;
 using namespace tracepoint_control;
 using namespace tracepoint_decode;
 
+// Helpers
+
 static bool
 NonSampleFnReturnFalse(
     [[maybe_unused]] uint8_t const* bufferData,
@@ -69,6 +71,359 @@ RoundUpBufferSize(uint32_t pageSize, size_t bufferSize) noexcept
 
     return BufferSizeMax;
 }
+
+// TracepointInfo
+
+TracepointInfo::~TracepointInfo()
+{
+    return;
+}
+
+TracepointInfo::TracepointInfo() noexcept
+{
+    return;
+}
+
+tracepoint_decode::PerfEventMetadata const&
+TracepointInfo::Metadata() const noexcept
+{
+    auto& self = *static_cast<TracepointSession::TracepointInfoImpl const*>(this);
+    return self.m_metadata;
+}
+
+TracepointEnableState
+TracepointInfo::EnableState() const noexcept
+{
+    auto& self = *static_cast<TracepointSession::TracepointInfoImpl const*>(this);
+    return self.m_enableState;
+}
+
+_Success_(return == 0) int
+TracepointInfo::GetEventCount(_Out_ uint64_t* value) const noexcept
+{
+    int err = 0;
+    uint64_t total = 0;
+    
+    auto& self = *static_cast<TracepointSession::TracepointInfoImpl const*>(this);
+    for (unsigned i = 0; i != self.m_bufferFilesCount; i += 1)
+    {
+        uint64_t data = 0;
+        auto size = read(self.m_bufferFiles[i].get(), &data, sizeof(data));
+        if (size != sizeof(data))
+        {
+            if (size < 0)
+            {
+                err = errno;
+            }
+            else
+            {
+                err = EPIPE;
+            }
+            total = 0;
+            break;
+        }
+
+        total += data;
+    }
+
+    *value = total;
+    return err;
+}
+
+// TracepointInfoImpl
+
+TracepointSession::TracepointInfoImpl::~TracepointInfoImpl()
+{
+    return;
+}
+
+TracepointSession::TracepointInfoImpl::TracepointInfoImpl(
+    tracepoint_decode::PerfEventMetadata const& metadata,
+    std::unique_ptr<unique_fd[]> bufferFiles,
+    unsigned bufferFilesCount
+) noexcept
+    : m_metadata(metadata)
+    , m_bufferFiles(std::move(bufferFiles))
+    , m_bufferFilesCount(bufferFilesCount)
+    , m_enableState(TracepointEnableState::Unknown)
+{
+    return;
+}
+
+// BufferInfo
+
+TracepointSession::BufferInfo::~BufferInfo()
+{
+    return;
+}
+
+TracepointSession::BufferInfo::BufferInfo() noexcept
+    : Mmap()
+    , DataPos()
+    , DataTail()
+    , DataHead64()
+{
+    return;
+}
+
+// TracepointBookmark
+
+TracepointSession::TracepointBookmark::TracepointBookmark(
+    uint64_t timestamp,
+    uint16_t bufferIndex,
+    uint16_t dataSize,
+    uint32_t dataPos) noexcept
+    : Timestamp(timestamp)
+    , BufferIndex(bufferIndex)
+    , DataSize(dataSize)
+    , DataPos(dataPos)
+{
+    return;
+}
+
+// UnorderedEnumerator
+
+TracepointSession::UnorderedEnumerator::~UnorderedEnumerator()
+{
+    m_session.EnumeratorEnd(m_bufferIndex);
+}
+
+TracepointSession::UnorderedEnumerator::UnorderedEnumerator(
+    TracepointSession& session,
+    uint32_t bufferIndex) noexcept
+    : m_session(session)
+    , m_bufferIndex(bufferIndex)
+{
+    m_session.EnumeratorBegin(bufferIndex);
+}
+
+bool
+TracepointSession::UnorderedEnumerator::MoveNext() noexcept
+{
+    auto& session = m_session;
+    return session.EnumeratorMoveNext(
+        m_bufferIndex,
+        [&session](
+            uint8_t const* bufferData,
+            uint16_t sampleDataSize,
+            uint32_t sampleDataBufferPos)
+        {
+            return session.ParseSample(bufferData, sampleDataSize, sampleDataBufferPos);
+        },
+        NonSampleFnReturnFalse);
+}
+
+//  OrderedEnumerator
+
+TracepointSession::OrderedEnumerator::~OrderedEnumerator()
+{
+    if (m_needsCleanup)
+    {
+        for (unsigned bufferIndex = 0; bufferIndex != m_session.m_bufferCount; bufferIndex += 1)
+        {
+            m_session.EnumeratorEnd(bufferIndex);
+        }
+    }
+}
+
+TracepointSession::OrderedEnumerator::OrderedEnumerator(TracepointSession& session) noexcept
+    : m_session(session)
+    , m_needsCleanup(false)
+    , m_index(0)
+{
+    return;
+}
+
+_Success_(return == 0) int
+TracepointSession::OrderedEnumerator::LoadAndSort() noexcept
+{
+    int error;
+    auto& session = m_session;
+
+    if (0 == (session.m_sampleType & PERF_SAMPLE_TIME))
+    {
+        error = EPERM;
+    }
+    else try
+    {
+        auto const sampleType = session.m_sampleType;
+        unsigned const bytesBeforeTime = sizeof(uint64_t) * (0 +
+            (0 != (sampleType & PERF_SAMPLE_IDENTIFIER)) +
+            (0 != (sampleType & PERF_SAMPLE_IP)) +
+            (0 != (sampleType & PERF_SAMPLE_TID)));
+
+        for (uint32_t bufferIndex = 0; bufferIndex != session.m_bufferCount; bufferIndex += 1)
+        {
+            session.EnumeratorBegin(bufferIndex);
+        }
+
+        // Circular: If we throw an exception, we need to unpause during cleanup.
+        // Realtime: If we throw an exception, we don't update tail pointers during cleanup.
+        m_needsCleanup = !session.IsRealtime();
+
+        session.m_enumeratorBookmarks.clear();
+        for (uint32_t bufferIndex = 0; bufferIndex != session.m_bufferCount; bufferIndex += 1)
+        {
+            auto const startSize = session.m_enumeratorBookmarks.size();
+
+            // Only need to call EnumeratorMoveNext once per buffer - it will loop until a callback
+            // returns true or it reaches end of buffer, and our callback never returns true.
+            session.EnumeratorMoveNext(
+                bufferIndex,
+                [bufferIndex, bytesBeforeTime, &session](
+                    uint8_t const* bufferData,
+                    uint16_t sampleDataSize,
+                    uint32_t sampleDataBufferPos)
+                {
+                    assert(0 == (sampleDataSize & 7));
+                    assert(0 == (sampleDataBufferPos & 7));
+
+                    if (sampleDataSize <= bytesBeforeTime)
+                    {
+                        session.m_corruptEventCount += 1;
+                        return false;
+                    }
+
+                    auto const timePos = (sampleDataBufferPos + bytesBeforeTime) & (session.m_bufferSize - 1);
+                    auto const timestamp = *reinterpret_cast<uint64_t const*>(bufferData + timePos);
+                    session.m_enumeratorBookmarks.emplace_back( // May throw bad_alloc.
+                        timestamp,
+                        bufferIndex,
+                        sampleDataSize,
+                        sampleDataBufferPos);
+                    return false; // Keep going.
+                },
+                NonSampleFnReturnFalse);
+
+            if (!session.IsRealtime())
+            {
+                // Circular buffers enumerate in reverse order. Fix that.
+                auto const endSize = session.m_enumeratorBookmarks.size();
+                auto const bookmarksData = session.m_enumeratorBookmarks.data();
+                std::reverse(bookmarksData + startSize, bookmarksData + endSize);
+            }
+        }
+
+        auto const bookmarksData = session.m_enumeratorBookmarks.data();
+        std::stable_sort(
+            bookmarksData,
+            bookmarksData + session.m_enumeratorBookmarks.size(),
+            [](TracepointBookmark const& a, TracepointBookmark const& b) noexcept
+            {
+                return a.Timestamp < b.Timestamp;
+            });
+
+        // From here on, do full cleanup.
+        m_needsCleanup = true;
+        error = 0;
+    }
+    catch (...)
+    {
+        error = ENOMEM;
+    }
+
+    return error;
+}
+
+bool
+TracepointSession::OrderedEnumerator::MoveNext() noexcept
+{
+    auto& session = m_session;
+    auto const buffers = session.m_buffers.get();
+    auto const pageSize = session.m_pageSize;
+    auto const enumeratorBookmarksData = session.m_enumeratorBookmarks.data();
+    auto const enumeratorBookmarksSize = session.m_enumeratorBookmarks.size();
+    while (m_index < enumeratorBookmarksSize)
+    {
+        auto const& item = enumeratorBookmarksData[m_index];
+        m_index += 1;
+
+        if (session.ParseSample(
+            static_cast<uint8_t const*>(buffers[item.BufferIndex].Mmap.get()) + pageSize,
+            item.DataSize,
+            item.DataPos))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// TracepointInfoIterator
+
+TracepointInfoIterator::TracepointInfoIterator(InnerItTy it) noexcept
+    : m_it(it)
+{
+    return;
+}
+
+TracepointInfoIterator::TracepointInfoIterator() noexcept
+    : m_it()
+{
+    return;
+}
+
+TracepointInfoIterator&
+TracepointInfoIterator::operator++() noexcept
+{
+    ++m_it;
+    return *this;
+}
+
+TracepointInfoIterator
+TracepointInfoIterator::operator++(int) noexcept
+{
+    TracepointInfoIterator old(m_it);
+    ++m_it;
+    return old;
+}
+
+TracepointInfoIterator::pointer
+TracepointInfoIterator::operator->() const noexcept
+{
+    return &m_it->second;
+}
+
+TracepointInfoIterator::reference
+TracepointInfoIterator::operator*() const noexcept
+{
+    return m_it->second;
+}
+
+bool
+TracepointInfoIterator::operator==(TracepointInfoIterator other) const noexcept
+{
+    return m_it == other.m_it;
+}
+
+bool
+TracepointInfoIterator::operator!=(TracepointInfoIterator other) const noexcept
+{
+    return m_it != other.m_it;
+}
+
+// TracepointInfoRange
+
+TracepointInfoRange::TracepointInfoRange(RangeTy const& range) noexcept
+    : m_range(range)
+{
+    return;
+}
+
+TracepointInfoIterator
+TracepointInfoRange::begin() const noexcept
+{
+    return TracepointInfoIterator(m_range.begin());
+}
+
+TracepointInfoIterator
+TracepointInfoRange::end() const noexcept
+{
+    return TracepointInfoIterator(m_range.end());
+}
+
+// TracepointSession
 
 TracepointSession::~TracepointSession()
 {
@@ -139,6 +494,12 @@ TracepointSession::TracepointSession(
     return;
 }
 
+TracepointCache&
+TracepointSession::Cache() const noexcept
+{
+    return m_cache;
+}
+
 TracepointSessionMode
 TracepointSession::Mode() const noexcept
 {
@@ -199,6 +560,17 @@ TracepointSession::Clear() noexcept
 }
 
 _Success_(return == 0) int
+TracepointSession::DisableTracePoint(unsigned id) noexcept
+{
+    auto const metadata = m_cache.FindById(id);
+    auto const error = metadata == nullptr
+        ? ENOENT
+        : DisableTracePointImpl(*metadata);
+
+    return error;
+}
+
+_Success_(return == 0) int
 TracepointSession::DisableTracePoint(TracepointName name) noexcept
 {
     int error;
@@ -207,16 +579,19 @@ TracepointSession::DisableTracePoint(TracepointName name) noexcept
     error = m_cache.FindOrAddFromSystem(name, &metadata);
     if (error == 0)
     {
-        auto const it = m_tracepointInfoById.find(metadata->Id());
-        if (it != m_tracepointInfoById.end() &&
-            it->second.EnableState != TracepointEnableState::Disabled)
-        {
-            error = IoctlForEachFile(it->second.BufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_DISABLE, nullptr);
-            it->second.EnableState = error
-                ? TracepointEnableState::Unknown
-                : TracepointEnableState::Disabled;
-        }
+        error = DisableTracePointImpl(*metadata);
     }
+
+    return error;
+}
+
+_Success_(return == 0) int
+TracepointSession::EnableTracePoint(unsigned id) noexcept
+{
+    auto const metadata = m_cache.FindById(id);
+    auto const error = metadata == nullptr
+        ? ENOENT
+        : EnableTracePointImpl(*metadata);
 
     return error;
 }
@@ -225,122 +600,48 @@ _Success_(return == 0) int
 TracepointSession::EnableTracePoint(TracepointName name) noexcept
 {
     int error;
-    try
+
+    PerfEventMetadata const* metadata;
+    error = m_cache.FindOrAddFromSystem(name, &metadata);
+    if (error == 0)
     {
-        PerfEventMetadata const* metadata;
-        error = m_cache.FindOrAddFromSystem(name, &metadata);
-        if (error != 0)
-        {
-            goto Done;
-        }
-
-        // Create a new tpi if not already there.
-        // May throw bad_alloc.
-        auto er = m_tracepointInfoById.try_emplace(metadata->Id(),
-            std::make_unique<unique_fd[]>(m_bufferCount),
-            *metadata);
-        auto& tpi = er.first->second;
-        if (!er.second)
-        {
-            // Event already in list. Make sure it's enabled.
-            if (tpi.EnableState != TracepointEnableState::Enabled)
-            {
-                error = IoctlForEachFile(tpi.BufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_ENABLE, nullptr);
-                tpi.EnableState = error
-                    ? TracepointEnableState::Unknown
-                    : TracepointEnableState::Enabled;
-            }
-
-            goto Done;
-        }
-
-        // Starting from here, if there is an error then we must erase(metadata.Id).
-
-        perf_event_attr eventAttribs = {};
-        eventAttribs.type = PERF_TYPE_TRACEPOINT;
-        eventAttribs.size = sizeof(perf_event_attr);
-        eventAttribs.config = metadata->Id();
-        eventAttribs.sample_period = 1;
-        eventAttribs.sample_type = m_sampleType;
-        eventAttribs.watermark = m_wakeupUseWatermark;
-        eventAttribs.use_clockid = 1;
-        eventAttribs.write_backward = !IsRealtime();
-        eventAttribs.wakeup_events = m_wakeupValue;
-        eventAttribs.clockid = CLOCK_MONOTONIC_RAW;
-
-        for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
-        {
-            errno = 0;
-            tpi.BufferFiles[bufferIndex].reset(perf_event_open(&eventAttribs, -1, bufferIndex, -1, PERF_FLAG_FD_CLOEXEC));
-            if (!tpi.BufferFiles[bufferIndex])
-            {
-                error = errno;
-                if (error == 0)
-                {
-                    error = ENODEV;
-                }
-
-                m_tracepointInfoById.erase(metadata->Id());
-                goto Done;
-            }
-        }
-
-        if (m_bufferLeaderFiles)
-        {
-            // Leader already exists. Add this event to the leader's mmaps.
-            error = IoctlForEachFile(tpi.BufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_SET_OUTPUT, m_bufferLeaderFiles);
-            if (error)
-            {
-                m_tracepointInfoById.erase(metadata->Id());
-                goto Done;
-            }
-        }
-        else
-        {
-            auto const mmapSize = m_pageSize + m_bufferSize;
-            auto const prot = IsRealtime()
-                ? PROT_READ | PROT_WRITE
-                : PROT_READ;
-
-            // This is the first event. Make it the "leader".
-            for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
-            {
-                errno = 0;
-                auto cpuMap = mmap(nullptr, mmapSize, prot, MAP_SHARED, tpi.BufferFiles[bufferIndex].get(), 0);
-                if (MAP_FAILED == cpuMap)
-                {
-                    error = errno;
-                    if (error == 0)
-                    {
-                        error = ENODEV;
-                    }
-
-                    // Clean up any mmaps that we opened.
-                    for (uint32_t bufferIndex2 = 0; bufferIndex2 != bufferIndex; bufferIndex2 += 1)
-                    {
-                        m_buffers[bufferIndex2].Mmap.reset();
-                    }
-
-                    m_tracepointInfoById.erase(metadata->Id());
-                    goto Done;
-                }
-
-                m_buffers[bufferIndex].Mmap.reset(cpuMap, mmapSize);
-            }
-
-            m_bufferLeaderFiles = tpi.BufferFiles.get(); // Commit this event as the leader.
-        }
-
-        tpi.EnableState = TracepointEnableState::Enabled;
+        error = EnableTracePointImpl(*metadata);
     }
-    catch (...)
-    {
-        error = ENOMEM;
-    }
-
-Done:
 
     return error;
+}
+
+TracepointInfoRange
+TracepointSession::TracepointInfos() const noexcept
+{
+    return TracepointInfoRange(m_tracepointInfoById);
+}
+
+TracepointInfoIterator
+TracepointSession::TracepointInfosBegin() const noexcept
+{
+    return TracepointInfoIterator(m_tracepointInfoById.begin());
+}
+
+TracepointInfoIterator
+TracepointSession::TracepointInfosEnd() const noexcept
+{
+    return TracepointInfoIterator(m_tracepointInfoById.end());
+}
+
+TracepointInfoIterator
+TracepointSession::FindTracepointInfo(unsigned id) const noexcept
+{
+    return TracepointInfoIterator(m_tracepointInfoById.find(id));
+}
+
+TracepointInfoIterator
+TracepointSession::FindTracepointInfo(TracepointName name) const noexcept
+{
+    auto metadata = m_cache.FindByName(name);
+    return TracepointInfoIterator(metadata
+        ? m_tracepointInfoById.find(metadata->Id())
+        : m_tracepointInfoById.end());
 }
 
 _Success_(return == 0) int
@@ -418,6 +719,153 @@ TracepointSession::GetBufferFiles(
 }
 
 _Success_(return == 0) int
+TracepointSession::DisableTracePointImpl(PerfEventMetadata const& metadata) noexcept
+{
+    int error;
+
+    auto const it = m_tracepointInfoById.find(metadata.Id());
+    if (it == m_tracepointInfoById.end())
+    {
+        error = ENOENT;
+    }
+    else if (it->second.m_enableState == TracepointEnableState::Disabled)
+    {
+        error = 0;
+    }
+    else
+    {
+        error = IoctlForEachFile(it->second.m_bufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_DISABLE, nullptr);
+        it->second.m_enableState = error
+            ? TracepointEnableState::Unknown
+            : TracepointEnableState::Disabled;
+    }
+
+    return error;
+}
+
+_Success_(return == 0) int
+TracepointSession::EnableTracePointImpl(PerfEventMetadata const& metadata) noexcept
+{
+    int error;
+
+    try
+    {
+        // Create a new tpi if not already there.
+        // May throw bad_alloc.
+        auto er = m_tracepointInfoById.try_emplace(metadata.Id(),
+            metadata,
+            std::make_unique<unique_fd[]>(m_bufferCount),
+            m_bufferCount);
+        auto& tpi = er.first->second;
+        if (!er.second)
+        {
+            // Event already in list. Make sure it's enabled.
+            if (tpi.m_enableState == TracepointEnableState::Enabled)
+            {
+                error = 0;
+            }
+            else
+            {
+                error = IoctlForEachFile(tpi.m_bufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_ENABLE, nullptr);
+                tpi.m_enableState = error
+                    ? TracepointEnableState::Unknown
+                    : TracepointEnableState::Enabled;
+            }
+
+            goto Done;
+        }
+
+        // Starting from here, if there is an error then we must erase(metadata.Id).
+
+        perf_event_attr eventAttribs = {};
+        eventAttribs.type = PERF_TYPE_TRACEPOINT;
+        eventAttribs.size = sizeof(perf_event_attr);
+        eventAttribs.config = metadata.Id();
+        eventAttribs.sample_period = 1;
+        eventAttribs.sample_type = m_sampleType;
+        eventAttribs.watermark = m_wakeupUseWatermark;
+        eventAttribs.use_clockid = 1;
+        eventAttribs.write_backward = !IsRealtime();
+        eventAttribs.wakeup_events = m_wakeupValue;
+        eventAttribs.clockid = CLOCK_MONOTONIC_RAW;
+
+        for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
+        {
+            errno = 0;
+            tpi.m_bufferFiles[bufferIndex].reset(perf_event_open(&eventAttribs, -1, bufferIndex, -1, PERF_FLAG_FD_CLOEXEC));
+            if (!tpi.m_bufferFiles[bufferIndex])
+            {
+                error = errno;
+                if (error == 0)
+                {
+                    error = ENODEV;
+                }
+
+                m_tracepointInfoById.erase(metadata.Id());
+                goto Done;
+            }
+        }
+
+        if (m_bufferLeaderFiles)
+        {
+            // Leader already exists. Add this event to the leader's mmaps.
+            error = IoctlForEachFile(tpi.m_bufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_SET_OUTPUT, m_bufferLeaderFiles);
+            if (error)
+            {
+                m_tracepointInfoById.erase(metadata.Id());
+                goto Done;
+            }
+        }
+        else
+        {
+            auto const mmapSize = m_pageSize + m_bufferSize;
+            auto const prot = IsRealtime()
+                ? PROT_READ | PROT_WRITE
+                : PROT_READ;
+
+            // This is the first event. Make it the "leader".
+            for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
+            {
+                errno = 0;
+                auto cpuMap = mmap(nullptr, mmapSize, prot, MAP_SHARED, tpi.m_bufferFiles[bufferIndex].get(), 0);
+                if (MAP_FAILED == cpuMap)
+                {
+                    error = errno;
+                    if (error == 0)
+                    {
+                        error = ENODEV;
+                    }
+
+                    // Clean up any mmaps that we opened.
+                    for (uint32_t bufferIndex2 = 0; bufferIndex2 != bufferIndex; bufferIndex2 += 1)
+                    {
+                        m_buffers[bufferIndex2].Mmap.reset();
+                    }
+
+                    m_tracepointInfoById.erase(metadata.Id());
+                    goto Done;
+                }
+
+                m_buffers[bufferIndex].Mmap.reset(cpuMap, mmapSize);
+            }
+
+            m_bufferLeaderFiles = tpi.m_bufferFiles.get(); // Commit this event as the leader.
+        }
+
+        tpi.m_enableState = TracepointEnableState::Enabled;
+        error = 0;
+    }
+    catch (...)
+    {
+        error = ENOMEM;
+    }
+
+Done:
+
+    return error;
+}
+
+_Success_(return == 0) int
 TracepointSession::IoctlForEachFile(
     _In_reads_(filesCount) unique_fd const* files,
     unsigned filesCount,
@@ -456,8 +904,8 @@ TracepointSession::ParseSample(
 
     uint8_t const* p;
 
-    if (auto const unmaskedDataPosEnd = sampleDataBufferPos + sampleDataSize;
-        unmaskedDataPosEnd <= m_bufferSize)
+    auto const unmaskedDataPosEnd = sampleDataBufferPos + sampleDataSize;
+    if (unmaskedDataPosEnd <= m_bufferSize)
     {
         // Event does not wrap.
         p = bufferData + sampleDataBufferPos;
@@ -890,213 +1338,6 @@ TracepointSession::EnumeratorMoveNext(
             {
                 return true;
             }
-        }
-    }
-
-    return false;
-}
-
-TracepointSession::BufferInfo::~BufferInfo()
-{
-    return;
-}
-
-TracepointSession::BufferInfo::BufferInfo() noexcept
-    : Mmap()
-    , DataPos()
-    , DataTail()
-    , DataHead64()
-{
-    return;
-}
-
-TracepointSession::TracepointInfo::~TracepointInfo()
-{
-    return;
-}
-
-TracepointSession::TracepointInfo::TracepointInfo(
-    std::unique_ptr<unique_fd[]> bufferFiles,
-    tracepoint_decode::PerfEventMetadata const& metadata) noexcept
-    : BufferFiles(std::move(bufferFiles))
-    , Metadata(metadata)
-    , EnableState(TracepointEnableState::Unknown)
-{
-    return;
-}
-
-TracepointSession::TracepointBookmark::TracepointBookmark(
-    uint64_t timestamp,
-    uint16_t bufferIndex,
-    uint16_t dataSize,
-    uint32_t dataPos) noexcept
-    : Timestamp(timestamp)
-    , BufferIndex(bufferIndex)
-    , DataSize(dataSize)
-    , DataPos(dataPos)
-{
-    return;
-}
-
-TracepointSession::UnorderedEnumerator::~UnorderedEnumerator()
-{
-    m_session.EnumeratorEnd(m_bufferIndex);
-}
-
-TracepointSession::UnorderedEnumerator::UnorderedEnumerator(
-    TracepointSession& session,
-    uint32_t bufferIndex) noexcept
-    : m_session(session)
-    , m_bufferIndex(bufferIndex)
-{
-    m_session.EnumeratorBegin(bufferIndex);
-}
-
-bool
-TracepointSession::UnorderedEnumerator::MoveNext() noexcept
-{
-    auto& session = m_session;
-    return session.EnumeratorMoveNext(
-        m_bufferIndex,
-        [&session](
-            uint8_t const* bufferData,
-            uint16_t sampleDataSize,
-            uint32_t sampleDataBufferPos)
-        {
-            return session.ParseSample(bufferData, sampleDataSize, sampleDataBufferPos);
-        },
-        NonSampleFnReturnFalse);
-}
-
-TracepointSession::OrderedEnumerator::~OrderedEnumerator()
-{
-    if (m_needsCleanup)
-    {
-        for (unsigned bufferIndex = 0; bufferIndex != m_session.m_bufferCount; bufferIndex += 1)
-        {
-            m_session.EnumeratorEnd(bufferIndex);
-        }
-    }
-}
-
-TracepointSession::OrderedEnumerator::OrderedEnumerator(TracepointSession& session) noexcept
-    : m_session(session)
-    , m_needsCleanup(false)
-    , m_index(0)
-{
-    return;
-}
-
-_Success_(return == 0) int
-TracepointSession::OrderedEnumerator::LoadAndSort() noexcept
-{
-    int error;
-    auto& session = m_session;
-
-    if (0 == (session.m_sampleType & PERF_SAMPLE_TIME))
-    {
-        error = EPERM;
-    }
-    else try
-    {
-        auto const sampleType = session.m_sampleType;
-        unsigned const bytesBeforeTime = sizeof(uint64_t) * (0 +
-            (0 != (sampleType & PERF_SAMPLE_IDENTIFIER)) +
-            (0 != (sampleType & PERF_SAMPLE_IP)) +
-            (0 != (sampleType & PERF_SAMPLE_TID)));
-
-        for (uint32_t bufferIndex = 0; bufferIndex != session.m_bufferCount; bufferIndex += 1)
-        {
-            session.EnumeratorBegin(bufferIndex);
-        }
-
-        // Circular: If we throw an exception, we need to unpause during cleanup.
-        // Realtime: If we throw an exception, we don't update tail pointers during cleanup.
-        m_needsCleanup = !session.IsRealtime();
-
-        session.m_enumeratorBookmarks.clear();
-        for (uint32_t bufferIndex = 0; bufferIndex != session.m_bufferCount; bufferIndex += 1)
-        {
-            auto const startSize = session.m_enumeratorBookmarks.size();
-
-            // Only need to call EnumeratorMoveNext once per buffer - it will loop until a callback
-            // returns true or it reaches end of buffer, and our callback never returns true.
-            session.EnumeratorMoveNext(
-                bufferIndex,
-                [bufferIndex, bytesBeforeTime, &session](
-                    uint8_t const* bufferData,
-                    uint16_t sampleDataSize,
-                    uint32_t sampleDataBufferPos)
-                {
-                    assert(0 == (sampleDataSize & 7));
-                    assert(0 == (sampleDataBufferPos & 7));
-
-                    if (sampleDataSize <= bytesBeforeTime)
-                    {
-                        session.m_corruptEventCount += 1;
-                        return false;
-                    }
-
-                    auto const timePos = (sampleDataBufferPos + bytesBeforeTime) & (session.m_bufferSize - 1);
-                    auto const timestamp = *reinterpret_cast<uint64_t const*>(bufferData + timePos);
-                    session.m_enumeratorBookmarks.emplace_back( // May throw bad_alloc.
-                        timestamp,
-                        bufferIndex,
-                        sampleDataSize,
-                        sampleDataBufferPos);
-                    return false; // Keep going.
-                },
-                NonSampleFnReturnFalse);
-
-            if (!session.IsRealtime())
-            {
-                // Circular buffers enumerate in reverse order. Fix that.
-                auto const endSize = session.m_enumeratorBookmarks.size();
-                auto const bookmarksData = session.m_enumeratorBookmarks.data();
-                std::reverse(bookmarksData + startSize, bookmarksData + endSize);
-            }
-        }
-
-        auto const bookmarksData = session.m_enumeratorBookmarks.data();
-        std::stable_sort(
-            bookmarksData,
-            bookmarksData + session.m_enumeratorBookmarks.size(),
-            [](TracepointBookmark const& a, TracepointBookmark const& b) noexcept
-            {
-                return a.Timestamp < b.Timestamp;
-            });
-
-        // From here on, do full cleanup.
-        m_needsCleanup = true;
-        error = 0;
-    }
-    catch (...)
-    {
-        error = ENOMEM;
-    }
-
-    return error;
-}
-
-bool
-TracepointSession::OrderedEnumerator::MoveNext() noexcept
-{
-    auto& session = m_session;
-    auto const buffers = session.m_buffers.get();
-    auto const pageSize = session.m_pageSize;
-    auto const enumeratorBookmarksData = session.m_enumeratorBookmarks.data();
-    auto const enumeratorBookmarksSize = session.m_enumeratorBookmarks.size();
-    while (m_index < enumeratorBookmarksSize)
-    {
-        auto const& item = enumeratorBookmarksData[m_index];
-        m_index += 1;
-
-        if (session.ParseSample(
-            static_cast<uint8_t const*>(buffers[item.BufferIndex].Mmap.get()) + pageSize,
-            item.DataSize,
-            item.DataPos))
-        {
-            return true;
         }
     }
 

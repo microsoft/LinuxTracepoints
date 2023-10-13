@@ -117,7 +117,7 @@ main(int argc, char* argv[])
             (long long unsigned)session.LostEventCount(),
             (long long unsigned)session.CorruptEventCount(),
             (long long unsigned)session.CorruptBufferCount());
-        for (auto& info : session.TracepointInfoRange())
+        for (auto& info : session.TracepointInfos())
         {
             auto& metadata = info.Metadata();
             auto name = metadata.Name();

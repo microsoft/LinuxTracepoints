@@ -26,6 +26,8 @@ using namespace std::string_view_literals;
 using namespace tracepoint_control;
 using namespace tracepoint_decode;
 
+// Helpers
+
 static bool
 NonSampleFnReturnFalse(
     [[maybe_unused]] uint8_t const* bufferData,
@@ -68,6 +70,18 @@ RoundUpBufferSize(uint32_t pageSize, size_t bufferSize) noexcept
     }
 
     return BufferSizeMax;
+}
+
+// TracepointInfo
+
+TracepointInfo::~TracepointInfo()
+{
+    return;
+}
+
+TracepointInfo::TracepointInfo() noexcept
+{
+    return;
 }
 
 tracepoint_decode::PerfEventMetadata const&
@@ -115,6 +129,301 @@ TracepointInfo::GetEventCount(_Out_ uint64_t* value) const noexcept
     *value = total;
     return err;
 }
+
+// TracepointInfoImpl
+
+TracepointSession::TracepointInfoImpl::~TracepointInfoImpl()
+{
+    return;
+}
+
+TracepointSession::TracepointInfoImpl::TracepointInfoImpl(
+    tracepoint_decode::PerfEventMetadata const& metadata,
+    std::unique_ptr<unique_fd[]> bufferFiles,
+    unsigned bufferFilesCount
+) noexcept
+    : m_metadata(metadata)
+    , m_bufferFiles(std::move(bufferFiles))
+    , m_bufferFilesCount(bufferFilesCount)
+    , m_enableState(TracepointEnableState::Unknown)
+{
+    return;
+}
+
+// BufferInfo
+
+TracepointSession::BufferInfo::~BufferInfo()
+{
+    return;
+}
+
+TracepointSession::BufferInfo::BufferInfo() noexcept
+    : Mmap()
+    , DataPos()
+    , DataTail()
+    , DataHead64()
+{
+    return;
+}
+
+// TracepointBookmark
+
+TracepointSession::TracepointBookmark::TracepointBookmark(
+    uint64_t timestamp,
+    uint16_t bufferIndex,
+    uint16_t dataSize,
+    uint32_t dataPos) noexcept
+    : Timestamp(timestamp)
+    , BufferIndex(bufferIndex)
+    , DataSize(dataSize)
+    , DataPos(dataPos)
+{
+    return;
+}
+
+// UnorderedEnumerator
+
+TracepointSession::UnorderedEnumerator::~UnorderedEnumerator()
+{
+    m_session.EnumeratorEnd(m_bufferIndex);
+}
+
+TracepointSession::UnorderedEnumerator::UnorderedEnumerator(
+    TracepointSession& session,
+    uint32_t bufferIndex) noexcept
+    : m_session(session)
+    , m_bufferIndex(bufferIndex)
+{
+    m_session.EnumeratorBegin(bufferIndex);
+}
+
+bool
+TracepointSession::UnorderedEnumerator::MoveNext() noexcept
+{
+    auto& session = m_session;
+    return session.EnumeratorMoveNext(
+        m_bufferIndex,
+        [&session](
+            uint8_t const* bufferData,
+            uint16_t sampleDataSize,
+            uint32_t sampleDataBufferPos)
+        {
+            return session.ParseSample(bufferData, sampleDataSize, sampleDataBufferPos);
+        },
+        NonSampleFnReturnFalse);
+}
+
+//  OrderedEnumerator
+
+TracepointSession::OrderedEnumerator::~OrderedEnumerator()
+{
+    if (m_needsCleanup)
+    {
+        for (unsigned bufferIndex = 0; bufferIndex != m_session.m_bufferCount; bufferIndex += 1)
+        {
+            m_session.EnumeratorEnd(bufferIndex);
+        }
+    }
+}
+
+TracepointSession::OrderedEnumerator::OrderedEnumerator(TracepointSession& session) noexcept
+    : m_session(session)
+    , m_needsCleanup(false)
+    , m_index(0)
+{
+    return;
+}
+
+_Success_(return == 0) int
+TracepointSession::OrderedEnumerator::LoadAndSort() noexcept
+{
+    int error;
+    auto& session = m_session;
+
+    if (0 == (session.m_sampleType & PERF_SAMPLE_TIME))
+    {
+        error = EPERM;
+    }
+    else try
+    {
+        auto const sampleType = session.m_sampleType;
+        unsigned const bytesBeforeTime = sizeof(uint64_t) * (0 +
+            (0 != (sampleType & PERF_SAMPLE_IDENTIFIER)) +
+            (0 != (sampleType & PERF_SAMPLE_IP)) +
+            (0 != (sampleType & PERF_SAMPLE_TID)));
+
+        for (uint32_t bufferIndex = 0; bufferIndex != session.m_bufferCount; bufferIndex += 1)
+        {
+            session.EnumeratorBegin(bufferIndex);
+        }
+
+        // Circular: If we throw an exception, we need to unpause during cleanup.
+        // Realtime: If we throw an exception, we don't update tail pointers during cleanup.
+        m_needsCleanup = !session.IsRealtime();
+
+        session.m_enumeratorBookmarks.clear();
+        for (uint32_t bufferIndex = 0; bufferIndex != session.m_bufferCount; bufferIndex += 1)
+        {
+            auto const startSize = session.m_enumeratorBookmarks.size();
+
+            // Only need to call EnumeratorMoveNext once per buffer - it will loop until a callback
+            // returns true or it reaches end of buffer, and our callback never returns true.
+            session.EnumeratorMoveNext(
+                bufferIndex,
+                [bufferIndex, bytesBeforeTime, &session](
+                    uint8_t const* bufferData,
+                    uint16_t sampleDataSize,
+                    uint32_t sampleDataBufferPos)
+                {
+                    assert(0 == (sampleDataSize & 7));
+                    assert(0 == (sampleDataBufferPos & 7));
+
+                    if (sampleDataSize <= bytesBeforeTime)
+                    {
+                        session.m_corruptEventCount += 1;
+                        return false;
+                    }
+
+                    auto const timePos = (sampleDataBufferPos + bytesBeforeTime) & (session.m_bufferSize - 1);
+                    auto const timestamp = *reinterpret_cast<uint64_t const*>(bufferData + timePos);
+                    session.m_enumeratorBookmarks.emplace_back( // May throw bad_alloc.
+                        timestamp,
+                        bufferIndex,
+                        sampleDataSize,
+                        sampleDataBufferPos);
+                    return false; // Keep going.
+                },
+                NonSampleFnReturnFalse);
+
+            if (!session.IsRealtime())
+            {
+                // Circular buffers enumerate in reverse order. Fix that.
+                auto const endSize = session.m_enumeratorBookmarks.size();
+                auto const bookmarksData = session.m_enumeratorBookmarks.data();
+                std::reverse(bookmarksData + startSize, bookmarksData + endSize);
+            }
+        }
+
+        auto const bookmarksData = session.m_enumeratorBookmarks.data();
+        std::stable_sort(
+            bookmarksData,
+            bookmarksData + session.m_enumeratorBookmarks.size(),
+            [](TracepointBookmark const& a, TracepointBookmark const& b) noexcept
+            {
+                return a.Timestamp < b.Timestamp;
+            });
+
+        // From here on, do full cleanup.
+        m_needsCleanup = true;
+        error = 0;
+    }
+    catch (...)
+    {
+        error = ENOMEM;
+    }
+
+    return error;
+}
+
+bool
+TracepointSession::OrderedEnumerator::MoveNext() noexcept
+{
+    auto& session = m_session;
+    auto const buffers = session.m_buffers.get();
+    auto const pageSize = session.m_pageSize;
+    auto const enumeratorBookmarksData = session.m_enumeratorBookmarks.data();
+    auto const enumeratorBookmarksSize = session.m_enumeratorBookmarks.size();
+    while (m_index < enumeratorBookmarksSize)
+    {
+        auto const& item = enumeratorBookmarksData[m_index];
+        m_index += 1;
+
+        if (session.ParseSample(
+            static_cast<uint8_t const*>(buffers[item.BufferIndex].Mmap.get()) + pageSize,
+            item.DataSize,
+            item.DataPos))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// TracepointInfoIterator
+
+TracepointInfoIterator::TracepointInfoIterator(InnerItTy it) noexcept
+    : m_it(it)
+{
+    return;
+}
+
+TracepointInfoIterator::TracepointInfoIterator() noexcept
+    : m_it()
+{
+    return;
+}
+
+TracepointInfoIterator&
+TracepointInfoIterator::operator++() noexcept
+{
+    ++m_it;
+    return *this;
+}
+
+TracepointInfoIterator
+TracepointInfoIterator::operator++(int) noexcept
+{
+    TracepointInfoIterator old(m_it);
+    ++m_it;
+    return old;
+}
+
+TracepointInfoIterator::pointer
+TracepointInfoIterator::operator->() const noexcept
+{
+    return &m_it->second;
+}
+
+TracepointInfoIterator::reference
+TracepointInfoIterator::operator*() const noexcept
+{
+    return m_it->second;
+}
+
+bool
+TracepointInfoIterator::operator==(TracepointInfoIterator other) const noexcept
+{
+    return m_it == other.m_it;
+}
+
+bool
+TracepointInfoIterator::operator!=(TracepointInfoIterator other) const noexcept
+{
+    return m_it != other.m_it;
+}
+
+// TracepointInfoRange
+
+TracepointInfoRange::TracepointInfoRange(RangeTy const& range) noexcept
+    : m_range(range)
+{
+    return;
+}
+
+TracepointInfoIterator
+TracepointInfoRange::begin() const noexcept
+{
+    return TracepointInfoIterator(m_range.begin());
+}
+
+TracepointInfoIterator
+TracepointInfoRange::end() const noexcept
+{
+    return TracepointInfoIterator(m_range.end());
+}
+
+// TracepointSession
 
 TracepointSession::~TracepointSession()
 {
@@ -302,35 +611,35 @@ TracepointSession::EnableTracePoint(TracepointName name) noexcept
     return error;
 }
 
-TracepointSession::InfoRange
-TracepointSession::TracepointInfoRange() const noexcept
+TracepointInfoRange
+TracepointSession::TracepointInfos() const noexcept
 {
-    return InfoRange(m_tracepointInfoById);
+    return TracepointInfoRange(m_tracepointInfoById);
 }
 
-TracepointSession::InfoIterator
-TracepointSession::TracepointInfoBegin() const noexcept
+TracepointInfoIterator
+TracepointSession::TracepointInfosBegin() const noexcept
 {
-    return InfoIterator(m_tracepointInfoById.begin());
+    return TracepointInfoIterator(m_tracepointInfoById.begin());
 }
 
-TracepointSession::InfoIterator
-TracepointSession::TracepointInfoEnd() const noexcept
+TracepointInfoIterator
+TracepointSession::TracepointInfosEnd() const noexcept
 {
-    return InfoIterator(m_tracepointInfoById.end());
+    return TracepointInfoIterator(m_tracepointInfoById.end());
 }
 
-TracepointSession::InfoIterator
-TracepointSession::TracepointInfo(unsigned id) const noexcept
+TracepointInfoIterator
+TracepointSession::FindTracepointInfo(unsigned id) const noexcept
 {
-    return InfoIterator(m_tracepointInfoById.find(id));
+    return TracepointInfoIterator(m_tracepointInfoById.find(id));
 }
 
-TracepointSession::InfoIterator
-TracepointSession::TracepointInfo(TracepointName name) const noexcept
+TracepointInfoIterator
+TracepointSession::FindTracepointInfo(TracepointName name) const noexcept
 {
     auto metadata = m_cache.FindByName(name);
-    return InfoIterator(metadata
+    return TracepointInfoIterator(metadata
         ? m_tracepointInfoById.find(metadata->Id())
         : m_tracepointInfoById.end());
 }
@@ -1033,283 +1342,4 @@ TracepointSession::EnumeratorMoveNext(
     }
 
     return false;
-}
-
-TracepointSession::BufferInfo::~BufferInfo()
-{
-    return;
-}
-
-TracepointSession::BufferInfo::BufferInfo() noexcept
-    : Mmap()
-    , DataPos()
-    , DataTail()
-    , DataHead64()
-{
-    return;
-}
-
-TracepointSession::TracepointInfoImpl::~TracepointInfoImpl()
-{
-    return;
-}
-
-TracepointSession::TracepointInfoImpl::TracepointInfoImpl(
-    tracepoint_decode::PerfEventMetadata const& metadata,
-    std::unique_ptr<unique_fd[]> bufferFiles,
-    unsigned bufferFilesCount
-    ) noexcept
-    : m_metadata(metadata)
-    , m_bufferFiles(std::move(bufferFiles))
-    , m_bufferFilesCount(bufferFilesCount)
-    , m_enableState(TracepointEnableState::Unknown)
-{
-    return;
-}
-
-TracepointSession::TracepointBookmark::TracepointBookmark(
-    uint64_t timestamp,
-    uint16_t bufferIndex,
-    uint16_t dataSize,
-    uint32_t dataPos) noexcept
-    : Timestamp(timestamp)
-    , BufferIndex(bufferIndex)
-    , DataSize(dataSize)
-    , DataPos(dataPos)
-{
-    return;
-}
-
-TracepointSession::UnorderedEnumerator::~UnorderedEnumerator()
-{
-    m_session.EnumeratorEnd(m_bufferIndex);
-}
-
-TracepointSession::UnorderedEnumerator::UnorderedEnumerator(
-    TracepointSession& session,
-    uint32_t bufferIndex) noexcept
-    : m_session(session)
-    , m_bufferIndex(bufferIndex)
-{
-    m_session.EnumeratorBegin(bufferIndex);
-}
-
-bool
-TracepointSession::UnorderedEnumerator::MoveNext() noexcept
-{
-    auto& session = m_session;
-    return session.EnumeratorMoveNext(
-        m_bufferIndex,
-        [&session](
-            uint8_t const* bufferData,
-            uint16_t sampleDataSize,
-            uint32_t sampleDataBufferPos)
-        {
-            return session.ParseSample(bufferData, sampleDataSize, sampleDataBufferPos);
-        },
-        NonSampleFnReturnFalse);
-}
-
-TracepointSession::OrderedEnumerator::~OrderedEnumerator()
-{
-    if (m_needsCleanup)
-    {
-        for (unsigned bufferIndex = 0; bufferIndex != m_session.m_bufferCount; bufferIndex += 1)
-        {
-            m_session.EnumeratorEnd(bufferIndex);
-        }
-    }
-}
-
-TracepointSession::OrderedEnumerator::OrderedEnumerator(TracepointSession& session) noexcept
-    : m_session(session)
-    , m_needsCleanup(false)
-    , m_index(0)
-{
-    return;
-}
-
-_Success_(return == 0) int
-TracepointSession::OrderedEnumerator::LoadAndSort() noexcept
-{
-    int error;
-    auto& session = m_session;
-
-    if (0 == (session.m_sampleType & PERF_SAMPLE_TIME))
-    {
-        error = EPERM;
-    }
-    else try
-    {
-        auto const sampleType = session.m_sampleType;
-        unsigned const bytesBeforeTime = sizeof(uint64_t) * (0 +
-            (0 != (sampleType & PERF_SAMPLE_IDENTIFIER)) +
-            (0 != (sampleType & PERF_SAMPLE_IP)) +
-            (0 != (sampleType & PERF_SAMPLE_TID)));
-
-        for (uint32_t bufferIndex = 0; bufferIndex != session.m_bufferCount; bufferIndex += 1)
-        {
-            session.EnumeratorBegin(bufferIndex);
-        }
-
-        // Circular: If we throw an exception, we need to unpause during cleanup.
-        // Realtime: If we throw an exception, we don't update tail pointers during cleanup.
-        m_needsCleanup = !session.IsRealtime();
-
-        session.m_enumeratorBookmarks.clear();
-        for (uint32_t bufferIndex = 0; bufferIndex != session.m_bufferCount; bufferIndex += 1)
-        {
-            auto const startSize = session.m_enumeratorBookmarks.size();
-
-            // Only need to call EnumeratorMoveNext once per buffer - it will loop until a callback
-            // returns true or it reaches end of buffer, and our callback never returns true.
-            session.EnumeratorMoveNext(
-                bufferIndex,
-                [bufferIndex, bytesBeforeTime, &session](
-                    uint8_t const* bufferData,
-                    uint16_t sampleDataSize,
-                    uint32_t sampleDataBufferPos)
-                {
-                    assert(0 == (sampleDataSize & 7));
-                    assert(0 == (sampleDataBufferPos & 7));
-
-                    if (sampleDataSize <= bytesBeforeTime)
-                    {
-                        session.m_corruptEventCount += 1;
-                        return false;
-                    }
-
-                    auto const timePos = (sampleDataBufferPos + bytesBeforeTime) & (session.m_bufferSize - 1);
-                    auto const timestamp = *reinterpret_cast<uint64_t const*>(bufferData + timePos);
-                    session.m_enumeratorBookmarks.emplace_back( // May throw bad_alloc.
-                        timestamp,
-                        bufferIndex,
-                        sampleDataSize,
-                        sampleDataBufferPos);
-                    return false; // Keep going.
-                },
-                NonSampleFnReturnFalse);
-
-            if (!session.IsRealtime())
-            {
-                // Circular buffers enumerate in reverse order. Fix that.
-                auto const endSize = session.m_enumeratorBookmarks.size();
-                auto const bookmarksData = session.m_enumeratorBookmarks.data();
-                std::reverse(bookmarksData + startSize, bookmarksData + endSize);
-            }
-        }
-
-        auto const bookmarksData = session.m_enumeratorBookmarks.data();
-        std::stable_sort(
-            bookmarksData,
-            bookmarksData + session.m_enumeratorBookmarks.size(),
-            [](TracepointBookmark const& a, TracepointBookmark const& b) noexcept
-            {
-                return a.Timestamp < b.Timestamp;
-            });
-
-        // From here on, do full cleanup.
-        m_needsCleanup = true;
-        error = 0;
-    }
-    catch (...)
-    {
-        error = ENOMEM;
-    }
-
-    return error;
-}
-
-bool
-TracepointSession::OrderedEnumerator::MoveNext() noexcept
-{
-    auto& session = m_session;
-    auto const buffers = session.m_buffers.get();
-    auto const pageSize = session.m_pageSize;
-    auto const enumeratorBookmarksData = session.m_enumeratorBookmarks.data();
-    auto const enumeratorBookmarksSize = session.m_enumeratorBookmarks.size();
-    while (m_index < enumeratorBookmarksSize)
-    {
-        auto const& item = enumeratorBookmarksData[m_index];
-        m_index += 1;
-
-        if (session.ParseSample(
-            static_cast<uint8_t const*>(buffers[item.BufferIndex].Mmap.get()) + pageSize,
-            item.DataSize,
-            item.DataPos))
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-TracepointSession::InfoIterator::InfoIterator(InnerItTy it) noexcept
-    : m_it(it)
-{
-    return;
-}
-
-TracepointSession::InfoIterator::InfoIterator() noexcept
-    : m_it()
-{
-    return;
-}
-
-TracepointSession::InfoIterator&
-TracepointSession::InfoIterator::operator++() noexcept
-{
-    ++m_it;
-    return *this;
-}
-
-TracepointSession::InfoIterator
-TracepointSession::InfoIterator::operator++(int) noexcept
-{
-    InfoIterator old(m_it);
-    ++m_it;
-    return old;
-}
-
-TracepointSession::InfoIterator::pointer
-TracepointSession::InfoIterator::operator->() const noexcept
-{
-    return &m_it->second;
-}
-
-TracepointSession::InfoIterator::reference
-TracepointSession::InfoIterator::operator*() const noexcept
-{
-    return m_it->second;
-}
-
-bool
-TracepointSession::InfoIterator::operator==(InfoIterator other) const noexcept
-{
-    return m_it == other.m_it;
-}
-
-bool
-TracepointSession::InfoIterator::operator!=(InfoIterator other) const noexcept
-{
-    return m_it != other.m_it;
-}
-
-TracepointSession::InfoRange::InfoRange(RangeTy const& range) noexcept
-    : m_range(range)
-{
-    return;
-}
-
-TracepointSession::InfoIterator
-TracepointSession::InfoRange::begin() const noexcept
-{
-    return InfoIterator(m_range.begin());
-}
-
-TracepointSession::InfoIterator
-TracepointSession::InfoRange::end() const noexcept
-{
-    return InfoIterator(m_range.end());
 }

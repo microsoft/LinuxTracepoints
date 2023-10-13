@@ -107,31 +107,6 @@ namespace tracepoint_control
     };
 
     /*
-    Information about a tracepoint that has been added to a session.
-    */
-    class TracepointInfo
-    {
-        friend class TracepointSession;
-
-        ~TracepointInfo() = default;
-        constexpr TracepointInfo() noexcept = default;
-
-    public:
-
-        TracepointInfo(TracepointInfo const&) = delete;
-        void operator=(TracepointInfo const&) = delete;
-
-        tracepoint_decode::PerfEventMetadata const&
-        Metadata() const noexcept;
-
-        TracepointEnableState
-        EnableState() const noexcept;
-
-        _Success_(return == 0) int
-        GetEventCount(_Out_ uint64_t* value) const noexcept;
-    };
-
-    /*
     Configuration settings for a tracepoint collection session.
 
     Required settings are specified as constructor parameters.
@@ -243,6 +218,31 @@ namespace tracepoint_control
     };
 
     /*
+    Information about a tracepoint that has been added to a session.
+    */
+    class TracepointInfo
+    {
+        friend class TracepointSession;
+
+        ~TracepointInfo();
+        TracepointInfo() noexcept;
+
+    public:
+
+        TracepointInfo(TracepointInfo const&) = delete;
+        void operator=(TracepointInfo const&) = delete;
+
+        tracepoint_decode::PerfEventMetadata const&
+        Metadata() const noexcept;
+
+        TracepointEnableState
+        EnableState() const noexcept;
+
+        _Success_(return == 0) int
+        GetEventCount(_Out_ uint64_t* value) const noexcept;
+    };
+
+    /*
     Manages a tracepoint collection session.
 
     Basic usage:
@@ -311,19 +311,6 @@ namespace tracepoint_control
             size_t get_size() const noexcept;
         };
 
-        struct BufferInfo
-        {
-            unique_mmap Mmap;
-            size_t DataPos;
-            size_t DataTail;
-            uint64_t DataHead64;
-
-            BufferInfo(BufferInfo const&) = delete;
-            void operator=(BufferInfo const&) = delete;
-            ~BufferInfo();
-            BufferInfo() noexcept;
-        };
-
         struct TracepointInfoImpl : TracepointInfo
         {
             tracepoint_decode::PerfEventMetadata const& m_metadata;
@@ -338,6 +325,19 @@ namespace tracepoint_control
                 tracepoint_decode::PerfEventMetadata const& metadata,
                 std::unique_ptr<unique_fd[]> bufferFiles,
                 unsigned bufferFilesCount) noexcept;
+        };
+
+        struct BufferInfo
+        {
+            unique_mmap Mmap;
+            size_t DataPos;
+            size_t DataTail;
+            uint64_t DataHead64;
+
+            BufferInfo(BufferInfo const&) = delete;
+            void operator=(BufferInfo const&) = delete;
+            ~BufferInfo();
+            BufferInfo() noexcept;
         };
 
         struct TracepointBookmark
@@ -396,17 +396,17 @@ namespace tracepoint_control
 
     public:
 
-        class InfoRange; // Forward declaration
+        class TracepointInfoRange; // Forward declaration
 
-        class InfoIterator
+        class TracepointInfoIterator
         {
             friend class TracepointSession;
-            friend class InfoRange;
+            friend class TracepointInfoRange;
             using InnerItTy = std::unordered_map<unsigned, TracepointInfoImpl>::const_iterator;
             InnerItTy m_it;
 
             explicit
-            InfoIterator(InnerItTy it) noexcept;
+            TracepointInfoIterator(InnerItTy it) noexcept;
 
         public:
 
@@ -416,28 +416,28 @@ namespace tracepoint_control
             using reference = TracepointInfo const&;
             using iterator_category = std::forward_iterator_tag;
 
-            InfoIterator() noexcept;
-            InfoIterator& operator++() noexcept;
-            InfoIterator operator++(int) noexcept;
+            TracepointInfoIterator() noexcept;
+            TracepointInfoIterator& operator++() noexcept;
+            TracepointInfoIterator operator++(int) noexcept;
             pointer operator->() const noexcept;
             reference operator*() const noexcept;
-            bool operator==(InfoIterator other) const noexcept;
-            bool operator!=(InfoIterator other) const noexcept;
+            bool operator==(TracepointInfoIterator other) const noexcept;
+            bool operator!=(TracepointInfoIterator other) const noexcept;
         };
 
-        class InfoRange
+        class TracepointInfoRange
         {
             friend class TracepointSession;
             using RangeTy = std::unordered_map<unsigned, TracepointInfoImpl>;
             RangeTy const& m_range;
 
             explicit
-            InfoRange(RangeTy const& range) noexcept;
+            TracepointInfoRange(RangeTy const& range) noexcept;
 
         public:
 
-            InfoIterator begin() const noexcept;
-            InfoIterator end() const noexcept;
+            TracepointInfoIterator begin() const noexcept;
+            TracepointInfoIterator end() const noexcept;
         };
 
         TracepointSession(TracepointSession const&) = delete;
@@ -659,22 +659,22 @@ namespace tracepoint_control
         both enabled and disabled tracepoints). Returned range is equivalent to
         TracepointInfoBegin()..TracepointInfoEnd().
         */
-        InfoRange
-        TracepointInfoRange() const noexcept;
+        TracepointInfoRange
+        TracepointInfos() const noexcept;
 
         /*
         Returns the begin iterator of a range for enumerating the tracepoints in
         the session.
         */
-        InfoIterator
-        TracepointInfoBegin() const noexcept;
+        TracepointInfoIterator
+        TracepointInfosBegin() const noexcept;
 
         /*
         Returns the end iterator of a range for enumerating the tracepoints in
         the session.
         */
-        InfoIterator
-        TracepointInfoEnd() const noexcept;
+        TracepointInfoIterator
+        TracepointInfosEnd() const noexcept;
 
         /*
         Returns an iterator referencing a tracepoint in this session. Returns
@@ -683,15 +683,15 @@ namespace tracepoint_control
         Note that ID is from the event's common_type field and is not the PERF_SAMPLE_ID
         or PERF_SAMPLE_IDENTIFIER value.
         */
-        InfoIterator
-        TracepointInfo(unsigned id) const noexcept;
+        TracepointInfoIterator
+        FindTracepointInfo(unsigned id) const noexcept;
 
         /*
         Returns an iterator referencing a tracepoint in this session. Returns
         TracepointInfoEnd() if the specified tracepoint is not in this session.
         */
-        InfoIterator
-        TracepointInfo(TracepointName name) const noexcept;
+        TracepointInfoIterator
+        FindTracepointInfo(TracepointName name) const noexcept;
 
         /*
         For realtime sessions only: Waits for the wakeup condition using
@@ -1013,6 +1013,9 @@ namespace tracepoint_control
         tracepoint_decode::PerfSampleEventInfo m_enumEventInfo;
         char m_enumNameBuffer[512];
     };
+
+    using TracepointInfoRange = TracepointSession::TracepointInfoRange;
+    using TracepointInfoIterator = TracepointSession::TracepointInfoIterator;
 }
 // namespace tracepoint_control
 

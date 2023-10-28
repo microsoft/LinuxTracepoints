@@ -13,6 +13,7 @@ TracepointSession class that manages a tracepoint collection session.
 #include <tracepoint/PerfEventMetadata.h>
 #include <tracepoint/PerfEventInfo.h>
 #include <tracepoint/PerfEventSessionInfo.h>
+#include <tracepoint/PerfDataFileDefs.h>
 #include <tracepoint/TracepointCache.h>
 
 #include <unordered_map>
@@ -124,10 +125,34 @@ namespace tracepoint_control
     {
         friend class TracepointSession;
 
-        static constexpr auto SampleTypeDefault = 0x486u;
-        static constexpr auto SampleTypeSupported = 0x107EFu;
-
     public:
+
+        /*
+        The flags that are set in the default value of the SampleType property:
+
+        | PERF_SAMPLE_TID
+        | PERF_SAMPLE_TIME
+        | PERF_SAMPLE_CPU
+        | PERF_SAMPLE_RAW
+        */
+        static constexpr auto SampleTypeDefault = 0x486u;
+
+        /*
+        The flags that are supported for use with the SampleType property:
+
+        | PERF_SAMPLE_IDENTIFIER
+        | PERF_SAMPLE_IP
+        | PERF_SAMPLE_TID
+        | PERF_SAMPLE_TIME
+        | PERF_SAMPLE_ADDR
+        | PERF_SAMPLE_ID
+        | PERF_SAMPLE_STREAM_ID
+        | PERF_SAMPLE_CPU
+        | PERF_SAMPLE_PERIOD
+        | PERF_SAMPLE_CALLCHAIN
+        | PERF_SAMPLE_RAW
+        */
+        static constexpr auto SampleTypeSupported = 0x107EFu;
 
         /*
         Initializes a TracepointSessionOptions to configure a session with the
@@ -242,6 +267,9 @@ namespace tracepoint_control
         tracepoint_decode::PerfEventMetadata const&
         Metadata() const noexcept;
 
+        tracepoint_decode::PerfEventDesc const&
+        EventDesc() const noexcept;
+
         TracepointEnableState
         EnableState() const noexcept;
 
@@ -286,6 +314,13 @@ namespace tracepoint_control
     {
         friend class TracepointInfo;
 
+        // This needs to match the attr.read_format used for tracepoints.
+        struct ReadFormat
+        {
+            uint64_t value;
+            uint64_t id;
+        };
+
         class unique_fd
         {
             int m_fd;
@@ -320,7 +355,8 @@ namespace tracepoint_control
 
         struct TracepointInfoImpl : TracepointInfo
         {
-            tracepoint_decode::PerfEventMetadata const& m_metadata;
+            tracepoint_decode::PerfEventDesc const m_eventDesc;
+            std::unique_ptr<char unsigned[]> const m_eventDescStorage;
             std::unique_ptr<unique_fd[]> const m_bufferFiles; // size is BufferFilesCount
             unsigned const m_bufferFilesCount;
             TracepointEnableState m_enableState;
@@ -329,9 +365,18 @@ namespace tracepoint_control
             void operator=(TracepointInfoImpl const&) = delete;
             ~TracepointInfoImpl();
             TracepointInfoImpl(
-                tracepoint_decode::PerfEventMetadata const& metadata,
+                tracepoint_decode::PerfEventDesc const& eventDesc,
+                std::unique_ptr<char unsigned[]> eventDescStorage,
                 std::unique_ptr<unique_fd[]> bufferFiles,
                 unsigned bufferFilesCount) noexcept;
+
+            // read(m_bufferFiles[i], data, sizeof(ReadFormat)).
+            _Success_(return == 0) int
+            Read(unsigned index, _Out_ ReadFormat* data) const noexcept;
+
+            // Calls read() on each file, returns sum of the value fields.
+            _Success_(return == 0) int
+            GetEventCountImpl(_Out_ uint64_t* value) const noexcept;
         };
 
         struct BufferInfo
@@ -1007,18 +1052,18 @@ namespace tracepoint_control
         uint32_t const m_pageSize;
         uint32_t const m_bufferSize;
         std::unique_ptr<BufferInfo[]> const m_buffers; // size is m_bufferCount
-        std::unordered_map<unsigned, TracepointInfoImpl> m_tracepointInfoById;
+        std::unordered_map<unsigned, TracepointInfoImpl> m_tracepointInfoByCommonType;
+        std::unordered_map<uint64_t, TracepointInfoImpl const*> m_tracepointInfoBySampleId;
         std::vector<uint8_t> m_eventDataBuffer; // Double-buffer for events that wrap.
         std::vector<TracepointBookmark> m_enumeratorBookmarks;
         std::unique_ptr<pollfd[]> m_pollfd;
-        unique_fd const* m_bufferLeaderFiles; // == m_tracepointInfoById[N].BufferFiles.get() for some N, size is m_bufferCount
+        unique_fd const* m_bufferLeaderFiles; // == m_tracepointInfoByCommonType[N].BufferFiles.get() for some N, size is m_bufferCount
         uint64_t m_sampleEventCount;
         uint64_t m_lostEventCount;
         uint64_t m_corruptEventCount;
         uint64_t m_corruptBufferCount;
         tracepoint_decode::PerfEventSessionInfo m_sessionInfo;
         tracepoint_decode::PerfSampleEventInfo m_enumEventInfo;
-        char m_enumNameBuffer[512];
     };
 
     using TracepointInfoRange = TracepointSession::TracepointInfoRange;

@@ -1880,13 +1880,16 @@ EventFormatter::AppendSampleAsJson(
     bool eventInfoValid;
     char const* sampleEventName;
     size_t sampleProviderNameLength;
+    auto const sampleEventInfoSampleType = sampleEventInfo.SampleType();
+    auto const sampleEventInfoName = sampleEventInfo.Name();
+    auto const sampleEventInfoMetadata = sampleEventInfo.Metadata();
 
-    if (sampleEventInfo.raw_meta &&
-        sampleEventInfo.raw_meta->Kind() == PerfEventKind::EventHeader)
+    if (sampleEventInfoMetadata &&
+        sampleEventInfoMetadata->Kind() == PerfEventKind::EventHeader)
     {
         // eventheader metadata.
 
-        auto const& meta = *sampleEventInfo.raw_meta;
+        auto const& meta = *sampleEventInfoMetadata;
         auto const eventHeaderOffset = meta.Fields()[meta.CommonFieldCount()].Offset();
         if (eventHeaderOffset > sampleEventInfo.raw_data_size ||
             !enumerator.StartEvent(
@@ -1938,11 +1941,11 @@ EventFormatter::AppendSampleAsJson(
     NotEventHeader:
 
         PerfByteReader const byteReader(fileBigEndian);
-        auto const sampleEventNameColon = strchr(sampleEventInfo.name, ':');
+        auto const sampleEventNameColon = strchr(sampleEventInfoName, ':');
         eventInfoValid = false;
         sampleEventName = sampleEventNameColon ? sampleEventNameColon + 1 : "";
         sampleProviderNameLength = sampleEventNameColon
-            ? sampleEventNameColon - sampleEventInfo.name
+            ? sampleEventNameColon - sampleEventInfoName
             : 0;
 
         (jsonFlags & EventFormatterJsonFlags_Name)
@@ -1955,7 +1958,7 @@ EventFormatter::AppendSampleAsJson(
             AppendJsonMemberBegin(sb, 0, "n"sv, 1);
             sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
             AppendUcsJsonEscaped<SwapNo>(sb,
-                reinterpret_cast<uint8_t const*>(sampleEventInfo.name),
+                reinterpret_cast<uint8_t const*>(sampleEventInfoName),
                 sampleProviderNameLength,
                 1);
             sb.WriteUtf8Byte(':'); // 1 extra byte reserved above.
@@ -1966,9 +1969,9 @@ EventFormatter::AppendSampleAsJson(
             sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
         }
 
-        if (sampleEventInfo.raw_meta)
+        if (sampleEventInfoMetadata)
         {
-            auto const& meta = *sampleEventInfo.raw_meta;
+            auto const& meta = *sampleEventInfoMetadata;
             size_t const firstField = (metaFlags & EventFormatterMetaFlags_common)
                 ? 0u
                 : meta.CommonFieldCount();
@@ -1982,7 +1985,7 @@ EventFormatter::AppendSampleAsJson(
                 AppendSampleFieldAsJsonImpl(sb, fieldData.data(), fieldData.size(), fieldMeta, fileBigEndian, true);
             }
         }
-        else if (sampleEventInfo.sample_type & PERF_SAMPLE_RAW)
+        else if (sampleEventInfoSampleType & PERF_SAMPLE_RAW)
         {
             AppendJsonMemberBegin(sb, 0, "raw"sv, 0);
             AppendHexBinaryVal(sb,
@@ -1996,12 +1999,12 @@ EventFormatter::AppendSampleAsJson(
         AppendJsonMemberBegin(sb, 0, "meta"sv, 1);
         sb.WriteJsonStructBegin(); // meta
 
-        if ((metaFlags & EventFormatterMetaFlags_time) && (sampleEventInfo.sample_type & PERF_SAMPLE_TIME))
+        if ((metaFlags & EventFormatterMetaFlags_time) && (sampleEventInfoSampleType & PERF_SAMPLE_TIME))
         {
             AppendJsonMemberBegin(sb, 0, "time"sv, 39); // "DATETIME.nnnnnnnnnZ" = 1 + 26 + 12
-            if (sampleEventInfo.session->ClockOffsetKnown())
+            if (sampleEventInfo.session_info->ClockOffsetKnown())
             {
-                auto timeSpec = sampleEventInfo.session->TimeToRealTime(sampleEventInfo.time);
+                auto timeSpec = sampleEventInfo.session_info->TimeToRealTime(sampleEventInfo.time);
                 sb.WriteUtf8Byte('\"');
                 sb.WriteDateTime(timeSpec.tv_sec);
                 sb.WritePrintf(12, ".%09uZ\"", timeSpec.tv_nsec);
@@ -2014,19 +2017,19 @@ EventFormatter::AppendSampleAsJson(
             }
         }
 
-        if ((metaFlags & EventFormatterMetaFlags_cpu) && (sampleEventInfo.sample_type & PERF_SAMPLE_CPU))
+        if ((metaFlags & EventFormatterMetaFlags_cpu) && (sampleEventInfoSampleType & PERF_SAMPLE_CPU))
         {
             AppendJsonMemberBegin(sb, 0, "cpu"sv, 10);
             sb.WritePrintf(10, "%u", sampleEventInfo.cpu);
         }
 
-        if ((metaFlags & EventFormatterMetaFlags_pid) && (sampleEventInfo.sample_type & PERF_SAMPLE_TID))
+        if ((metaFlags & EventFormatterMetaFlags_pid) && (sampleEventInfoSampleType & PERF_SAMPLE_TID))
         {
             AppendJsonMemberBegin(sb, 0, "pid"sv, 10);
             sb.WritePrintf(10, "%u", sampleEventInfo.pid);
         }
 
-        if ((metaFlags & EventFormatterMetaFlags_tid) && (sampleEventInfo.sample_type & PERF_SAMPLE_TID))
+        if ((metaFlags & EventFormatterMetaFlags_tid) && (sampleEventInfoSampleType & PERF_SAMPLE_TID))
         {
             AppendJsonMemberBegin(sb, 0, "tid"sv, 10);
             sb.WritePrintf(10, "%u", sampleEventInfo.tid);
@@ -2042,7 +2045,7 @@ EventFormatter::AppendSampleAsJson(
             {
                 AppendJsonMemberBegin(sb, 0, "provider"sv, 1);
                 sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
-                AppendUtf8JsonEscaped(sb, { sampleEventInfo.name, sampleProviderNameLength }, 1);
+                AppendUtf8JsonEscaped(sb, { sampleEventInfoName, sampleProviderNameLength }, 1);
                 sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
             }
 

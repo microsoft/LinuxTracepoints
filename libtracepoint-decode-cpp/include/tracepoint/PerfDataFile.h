@@ -10,6 +10,7 @@ PerfDataFile class - Reads perf.data files.
 #define _included_PerfDataFile_h
 
 #include "PerfByteReader.h"
+#include "PerfDataFileDefs.h"
 #include "PerfEventSessionInfo.h"
 #include <stdint.h>
 #include <stdio.h> // FILE
@@ -39,19 +40,12 @@ PerfDataFile class - Reads perf.data files.
 #ifndef _Out_writes_bytes_all_
 #define _Out_writes_bytes_all_(size)
 #endif
-#ifndef _Field_z_
-#define _Field_z_
-#endif
-#ifndef _Field_size_bytes_
-#define _Field_size_bytes_(size)
-#endif
 #ifndef _Success_
 #define _Success_(condition)
 #endif
-
-// Forward declarations from PerfEventAbi.h or linux/uapi/linux/perf_event.h:
-struct perf_event_attr;
-struct perf_event_header;
+#ifndef _Ret_opt_
+#define _Ret_opt_
+#endif
 
 namespace tracepoint_decode
 {
@@ -62,51 +56,6 @@ namespace tracepoint_decode
     // Forward declaration from PerfEventMetadata.h:
     class PerfEventMetadata;
 
-    // uint8 header index.
-    // From: perf.data-file-format.txt, perf/util/header.h.
-    enum PerfHeaderIndex : uint8_t {
-        PERF_HEADER_RESERVED = 0,       // always cleared
-        PERF_HEADER_FIRST_FEATURE = 1,
-        PERF_HEADER_TRACING_DATA = 1,
-        PERF_HEADER_BUILD_ID,
-        PERF_HEADER_HOSTNAME,
-        PERF_HEADER_OSRELEASE,
-        PERF_HEADER_VERSION,
-        PERF_HEADER_ARCH,
-        PERF_HEADER_NRCPUS,
-        PERF_HEADER_CPUDESC,
-        PERF_HEADER_CPUID,
-        PERF_HEADER_TOTAL_MEM,
-        PERF_HEADER_CMDLINE,
-        PERF_HEADER_EVENT_DESC,
-        PERF_HEADER_CPU_TOPOLOGY,
-        PERF_HEADER_NUMA_TOPOLOGY,
-        PERF_HEADER_BRANCH_STACK,
-        PERF_HEADER_PMU_MAPPINGS,
-        PERF_HEADER_GROUP_DESC,
-        PERF_HEADER_AUXTRACE,
-        PERF_HEADER_STAT,
-        PERF_HEADER_CACHE,
-        PERF_HEADER_SAMPLE_TIME,
-        PERF_HEADER_MEM_TOPOLOGY,
-        PERF_HEADER_CLOCKID,
-        PERF_HEADER_DIR_FORMAT,
-        PERF_HEADER_BPF_PROG_INFO,
-        PERF_HEADER_BPF_BTF,
-        PERF_HEADER_COMPRESSED,
-        PERF_HEADER_CPU_PMU_CAPS,
-        PERF_HEADER_CLOCK_DATA,
-        PERF_HEADER_HYBRID_TOPOLOGY,
-        PERF_HEADER_PMU_CAPS,
-        PERF_HEADER_LAST_FEATURE,
-    };
-
-    struct PerfEventDesc
-    {
-        perf_event_attr const* attr;    // NULL for unknown id.
-        _Field_z_ char const* name;     // "" if no name available.
-    };
-
     /*
     PerfDataFile class - Reads perf.data files.
     */
@@ -116,15 +65,21 @@ namespace tracepoint_decode
         struct perf_pipe_header;
         struct perf_file_header;
 
+        struct EventDesc : PerfEventDesc
+        {
+            std::unique_ptr<perf_event_attr> attrStorage;
+            std::unique_ptr<uint64_t[]> idsStorage;
+        };
+
         uint64_t m_filePos;
         uint64_t m_fileLen;
         uint64_t m_dataBeginFilePos;
         uint64_t m_dataEndFilePos;
         FILE* m_file;
         std::vector<uint8_t> m_eventData;
-        std::vector<char> m_headers[32]; // Stored file-endian.
-        std::vector<std::unique_ptr<perf_event_attr>> m_attrsList; // Stored host-endian.
-        std::map<uint64_t, PerfEventDesc> m_eventDescById; // Points into m_attrsList and/or m_headers.
+        std::vector<char> m_headers[PERF_HEADER_LAST_FEATURE]; // Stored file-endian.
+        std::vector<EventDesc> m_eventDescList; // Stored host-endian. Name points into m_headers.
+        std::map<uint64_t, size_t> m_eventDescById; // Index into m_eventDescList.
         PerfEventSessionInfo m_sessionInfo;
         PerfByteReader m_byteReader;
         int8_t m_sampleIdOffset; // -1 = unset, -2 = no id.
@@ -176,25 +131,70 @@ namespace tracepoint_decode
         uint64_t
         DataEndFilePos() const noexcept;
 
-        // Returns the number of attribute records available from Attr().
+        // Returns the number of attribute records available from EventDesc().
         uintptr_t
-        AttrCount() const noexcept;
+        EventDescCount() const noexcept;
 
         // Combined data from perf_file_header::attrs and PERF_RECORD_HEADER_ATTR.
-        // Requires attrIndex < AttrCount().
-        perf_event_attr const&
-        Attr(uintptr_t attrIndex) const noexcept;
+        // Requires: eventDescIndex < EventDescCount().
+        PerfEventDesc const&
+        EventDesc(uintptr_t eventDescIndex) const noexcept;
 
         // Combined data from perf_file_header::attrs, PERF_RECORD_HEADER_ATTR,
-        // and HEADER_EVENT_DESC. Returns {NULL,""} for unknown id.
-        PerfEventDesc
-        EventDescById(uint64_t id) const noexcept;
+        // and HEADER_EVENT_DESC. Returns NULL if sampleId is not known.
+        _Ret_opt_ PerfEventDesc const*
+        FindEventDescById(uint64_t sampleId) const noexcept;
 
         // Returns the raw data from the specified header (file-endian, use ByteReader()
         // to do byte-swapping as appropriate).
         // Returns empty if the requested header was not loaded from the file.
         std::string_view
         Header(PerfHeaderIndex headerIndex) const noexcept;
+
+        // Returns the LongSize parsed from a PERF_HEADER_TRACING_DATA header,
+        // or 0 if no PERF_HEADER_TRACING_DATA has been parsed.
+        uint8_t
+        TracingDataLongSize() const noexcept;
+
+        // Returns the PageSize parsed from a PERF_HEADER_TRACING_DATA header,
+        // or 0 if no PERF_HEADER_TRACING_DATA has been parsed.
+        uint32_t
+        TracingDataPageSize() const noexcept;
+
+        // Returns the header_page parsed from a PERF_HEADER_TRACING_DATA header,
+        // or {} if no PERF_HEADER_TRACING_DATA has been parsed.
+        std::string_view
+        TracingDataHeaderPage() const noexcept;
+
+        // Returns the header_event parsed from a PERF_HEADER_TRACING_DATA header,
+        // or {} if no PERF_HEADER_TRACING_DATA has been parsed.
+        std::string_view
+        TracingDataHeaderEvent() const noexcept;
+
+        // Returns the ftraces parsed from a PERF_HEADER_TRACING_DATA header,
+        // or NULL if no PERF_HEADER_TRACING_DATA has been parsed.
+        std::string_view const*
+        TracingDataFtraces() const noexcept;
+
+        // Returns the count of ftraces parsed from a PERF_HEADER_TRACING_DATA header,
+        // or 0 if no PERF_HEADER_TRACING_DATA has been parsed.
+        uint32_t
+        TracingDataFtraceCount() const noexcept;
+
+        // Returns the kallsyms parsed from a PERF_HEADER_TRACING_DATA header,
+        // or {} if no PERF_HEADER_TRACING_DATA has been parsed.
+        std::string_view
+        TracingDataKallsyms() const noexcept;
+
+        // Returns the printk parsed from a PERF_HEADER_TRACING_DATA header,
+        // or {} if no PERF_HEADER_TRACING_DATA has been parsed.
+        std::string_view
+        TracingDataPrintk() const noexcept;
+
+        // Returns the saved_cmdline parsed from a PERF_HEADER_TRACING_DATA header,
+        // or {} if no PERF_HEADER_TRACING_DATA has been parsed.
+        std::string_view
+        TracingDataSavedCmdLine() const noexcept;
 
         // Closes the input file, if any.
         void
@@ -226,10 +226,22 @@ namespace tracepoint_decode
         // 
         // On error, sets *ppEventHeader to NULL and returns errno.
         //
-        // For PERF_RECORD_HEADER_TRACING_DATA and PERF_RECORD_AUXTRACE, the extra
-        // data will be placed immediately after the event.
+        // Note that for PERF_RECORD_HEADER_TRACING_DATA and PERF_RECORD_AUXTRACE,
+        // there will be extra data immediately after the event. Use EventDataSize to
+        // get the actual event size.
         _Success_(return == 0) int
         ReadEvent(_Outptr_result_maybenull_ perf_event_header const** ppEventHeader) noexcept;
+
+        // Given a pEventHeader that was returned from ReadEvent, returns the actual
+        // size of the specified event.
+        //
+        // For most event types, this returns pEventHeader->size.
+        //
+        // For PERF_RECORD_HEADER_TRACING_DATA and PERF_RECORD_AUXTRACE, there is
+        // extra data after the event, and this will return a size that includes
+        // that extra data.
+        uint32_t
+        EventDataSize(perf_event_header const* pEventHeader) noexcept;
 
         // Tries to get event information from the event's prefix. The prefix is
         // usually present only for sample events. If the event prefix is not
@@ -282,7 +294,7 @@ namespace tracepoint_decode
 
         _Success_(return == 0) int
         AddAttr(
-            std::unique_ptr<perf_event_attr> pAttrPtr,
+            std::unique_ptr<perf_event_attr> pAttr,
             uint32_t cbAttrCopied,
             _In_z_ char const* pName,
             _In_reads_bytes_(cbIdsFileEndian) void const* pbIdsFileEndian,

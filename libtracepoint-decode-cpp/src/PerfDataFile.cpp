@@ -81,7 +81,7 @@ struct PerfDataFile::perf_pipe_header {
 // From: perf.data-file-format.txt
 struct PerfDataFile::perf_file_header {
     perf_pipe_header pipe_header;
-    uint64_t attr_size;    // size of an attribute in attrs
+    uint64_t attr_size;    // size of (perf_event_attrs + perf_file_section) in attrs.
     perf_file_section attrs;
     perf_file_section data;
     perf_file_section event_types; // Not used.
@@ -125,6 +125,10 @@ PerfDataFile::PerfDataFile() noexcept
     , m_dataBeginFilePos(0)
     , m_dataEndFilePos(0)
     , m_file(0)
+    , m_eventData()
+    , m_headers()
+    , m_eventDescList()
+    , m_eventDescById()
     , m_sessionInfo()
     , m_byteReader()
     , m_sampleIdOffset(-1)
@@ -136,7 +140,6 @@ PerfDataFile::PerfDataFile() noexcept
     , m_tracingDataLongSize(0)
     , m_tracingDataPageSize(0)
 {
-    static_assert(PERF_HEADER_LAST_FEATURE == sizeof(m_headers) / sizeof(m_headers[0]));
     return;
 }
 
@@ -171,25 +174,25 @@ PerfDataFile::DataEndFilePos() const noexcept
 }
 
 uintptr_t
-PerfDataFile::AttrCount() const noexcept
+PerfDataFile::EventDescCount() const noexcept
 {
-    return m_attrsList.size();
+    return m_eventDescList.size();
 }
 
-perf_event_attr const&
-PerfDataFile::Attr(uintptr_t attrIndex) const noexcept
+PerfEventDesc const&
+PerfDataFile::EventDesc(uintptr_t eventDescIndex) const noexcept
 {
-    assert(attrIndex < m_attrsList.size());
-    return *m_attrsList[attrIndex];
+    assert(eventDescIndex < m_eventDescList.size());
+    return m_eventDescList[eventDescIndex];
 }
 
-PerfEventDesc
-PerfDataFile::EventDescById(uint64_t id) const noexcept
+_Ret_opt_ PerfEventDesc const*
+PerfDataFile::FindEventDescById(uint64_t sampleId) const noexcept
 {
-    auto it = m_eventDescById.find(id);
+    auto const it = m_eventDescById.find(sampleId);
     return it != m_eventDescById.end()
-        ? it->second
-        : PerfEventDesc{ nullptr, "" };
+        ? &m_eventDescList[it->second]
+        : nullptr;
 }
 
 std::string_view
@@ -198,6 +201,60 @@ PerfDataFile::Header(PerfHeaderIndex headerIndex) const noexcept
     return headerIndex < ArrayCount(m_headers)
         ? std::string_view(m_headers[headerIndex].data(), m_headers[headerIndex].size())
         : std::string_view();
+}
+
+uint8_t
+PerfDataFile::TracingDataLongSize() const noexcept
+{
+    return m_tracingDataLongSize;
+}
+
+uint32_t
+PerfDataFile::TracingDataPageSize() const noexcept
+{
+    return m_tracingDataPageSize;
+}
+
+std::string_view
+PerfDataFile::TracingDataHeaderPage() const noexcept
+{
+    return m_headerPage;
+}
+
+std::string_view
+PerfDataFile::TracingDataHeaderEvent() const noexcept
+{
+    return m_headerEvent;
+}
+
+std::string_view const*
+PerfDataFile::TracingDataFtraces() const noexcept
+{
+    return m_ftraces.data();
+}
+
+uint32_t
+PerfDataFile::TracingDataFtraceCount() const noexcept
+{
+    return static_cast<uint32_t>(m_ftraces.size());
+}
+
+std::string_view
+PerfDataFile::TracingDataKallsyms() const noexcept
+{
+    return m_kallsyms;
+}
+
+std::string_view
+PerfDataFile::TracingDataPrintk() const noexcept
+{
+    return m_printk;
+}
+
+std::string_view
+PerfDataFile::TracingDataSavedCmdLine() const noexcept
+{
+    return m_cmdline;
 }
 
 void
@@ -221,8 +278,7 @@ PerfDataFile::Close() noexcept
         header.clear();
     }
 
-    m_attrsList.clear();
-    m_eventDescById.clear();
+    m_eventDescList.clear();
     m_byteReader = PerfByteReader();
     m_sampleIdOffset = -1;
     m_nonSampleIdOffset = -1;
@@ -597,6 +653,33 @@ ErrorOrEof:
     return error;
 }
 
+uint32_t
+PerfDataFile::EventDataSize(perf_event_header const* pEventHeader) noexcept
+{
+    uint32_t size;
+
+    // A few event types have data beyond what the header defines.
+    switch (pEventHeader->type)
+    {
+    default:
+        assert(pEventHeader->size >= sizeof(perf_event_header)); // ReadEvent would have failed otherwise.
+        size = pEventHeader->size;
+        break;
+
+    case PERF_RECORD_HEADER_TRACING_DATA:
+        assert(pEventHeader->size >= sizeof(perf_event_header) + sizeof(uint64_t));
+        size = static_cast<uint32_t>(pEventHeader->size + m_byteReader.ReadAs<uint64_t>(pEventHeader + 1));
+        break;
+
+    case PERF_RECORD_AUXTRACE:
+        assert(pEventHeader->size >= sizeof(perf_event_header) + sizeof(uint32_t));
+        size = static_cast<uint32_t>(pEventHeader->size + m_byteReader.ReadAs<uint32_t>(pEventHeader + 1));
+        break;
+    }
+
+    return size;
+}
+
 _Success_(return == 0) int
 PerfDataFile::GetSampleEventInfo(
     _In_ perf_event_header const* pEventHeader,
@@ -629,11 +712,10 @@ PerfDataFile::GetSampleEventInfo(
             goto Error;
         }
 
-        auto const& eventDesc = eventDescIt->second;
+        auto const& eventDesc = m_eventDescList[eventDescIt->second];
         auto const infoSampleTypes = eventDesc.attr->sample_type & SupportedSampleTypes;
         uint64_t const* infoReadValues = nullptr;
         uint64_t const* infoCallchain = nullptr;
-        PerfEventMetadata const* infoRawMeta = nullptr;
         char const* infoRawData = nullptr;
         uint32_t infoRawDataSize = 0;
 
@@ -788,29 +870,15 @@ PerfDataFile::GetSampleEventInfo(
                 goto Error;
             }
 
-            if (m_commonTypeOffset >= 0 &&
-                infoRawDataSize >= static_cast<uint32_t>(m_commonTypeOffset) + m_commonTypeSize)
-            {
-                auto type = m_byteReader.ReadAsDynU32(infoRawData + m_commonTypeOffset, m_commonTypeSize);
-                auto it = m_metadataById.find(type);
-                if (it != m_metadataById.end())
-                {
-                    infoRawMeta = &it->second;
-                }
-            }
-
             iArray += (sizeof(uint32_t) + infoRawDataSize + sizeof(uint64_t) - 1) / sizeof(uint64_t);
         }
 
         assert(iArray <= cArray);
         pInfo->id = id;
-        pInfo->attr = eventDesc.attr;
-        pInfo->session = &m_sessionInfo;
-        pInfo->name = eventDesc.name;
-        pInfo->sample_type = infoSampleTypes;
+        pInfo->event_desc = &eventDesc;
+        pInfo->session_info = &m_sessionInfo;
         pInfo->read_values = infoReadValues;
         pInfo->callchain = infoCallchain;
-        pInfo->raw_meta = infoRawMeta;
         pInfo->raw_data = infoRawData;
         pInfo->raw_data_size = infoRawDataSize;
         return 0;
@@ -819,13 +887,10 @@ PerfDataFile::GetSampleEventInfo(
 Error:
 
     pInfo->id = {};
-    pInfo->attr = {};
-    pInfo->session = {};
-    pInfo->name = {};
-    pInfo->sample_type = {};
+    pInfo->event_desc = {};
+    pInfo->session_info = {};
     pInfo->read_values = {};
     pInfo->callchain = {};
-    pInfo->raw_meta = {};
     pInfo->raw_data = {};
     pInfo->raw_data_size = {};
     return error;
@@ -857,7 +922,7 @@ PerfDataFile::GetNonSampleEventInfo(
             goto Error;
         }
 
-        auto const& eventDesc = eventDescIt->second;
+        auto const& eventDesc = m_eventDescList[eventDescIt->second];
         auto const infoSampleTypes = eventDesc.attr->sample_type & SupportedSampleTypes;
 
         auto const pArray = reinterpret_cast<uint64_t const*>(pEventHeader);
@@ -911,20 +976,16 @@ PerfDataFile::GetNonSampleEventInfo(
         assert(iArray > 0);
         assert(iArray < 0x10000 / sizeof(uint64_t));
         pInfo->id = id;
-        pInfo->attr = eventDesc.attr;
-        pInfo->session = &m_sessionInfo;
-        pInfo->name = eventDesc.name;
-        pInfo->sample_type = infoSampleTypes;
+        pInfo->event_desc = &eventDesc;
+        pInfo->session_info = &m_sessionInfo;
         return 0;
     }
 
 Error:
 
     pInfo->id = {};
-    pInfo->attr = {};
-    pInfo->session = {};
-    pInfo->name = {};
-    pInfo->sample_type = {};
+    pInfo->event_desc = {};
+    pInfo->session_info = {};
     return error;
 }
 
@@ -947,7 +1008,7 @@ PerfDataFile::LoadAttrs(perf_file_section const& attrs, uint64_t cbAttrAndIdSect
         uint32_t const cbAttrInFile = cbAttrAndIdSection - sizeof(perf_file_section);
         auto const cbAttrToCopy = std::min<uint32_t>(cbAttrInFile, sizeof(perf_event_attr));
 
-        m_attrsList.reserve(m_attrsList.size() + static_cast<uint32_t>(attrs.size) / cbAttrAndIdSection);
+        m_eventDescList.reserve(m_eventDescList.size() + static_cast<uint32_t>(attrs.size) / cbAttrAndIdSection);
 
         auto const attrFilePosEnd = attrs.offset + attrs.size;
         for (auto attrFilePos = attrs.offset; attrFilePos < attrFilePosEnd;)
@@ -1118,9 +1179,9 @@ ReadSection(
 }
 
 // Expects expectedName + NUL + SizeType size + char value[size].
-// Sets sv = value.
-// On success, returns pointer to after the value.
-// On failure, returns nullptr.
+// On success, sets sv = value and returns pointer to after value.
+// If expectedName not present, sets sv = {} and returns p.
+// On error, returns nullptr.
 template<class SizeType>
 static char const*
 ReadNamedSection(
@@ -1135,7 +1196,7 @@ ReadNamedSection(
         0 != memcmp(p, expectedName.data(), cchExpectedName))
     {
         *sv = {};
-        return nullptr;
+        return p;
     }
 
     return ReadSection<SizeType>(byteReader, p + cchExpectedName, pEnd, sv);
@@ -1302,6 +1363,19 @@ PerfDataFile::ParseTracingData() noexcept
                 }
             }
 
+            // Update EventDesc with the new metadata.
+            for (auto& desc : m_eventDescList)
+            {
+                if (desc.metadata == nullptr && desc.attr->type == PERF_TYPE_TRACEPOINT)
+                {
+                    auto it = m_metadataById.find(static_cast<uint32_t>(desc.attr->config));
+                    if (it != m_metadataById.end())
+                    {
+                        desc.metadata = &it->second;
+                    }
+                }
+            }
+
             // kallsyms
 
             p = ReadSection<uint32_t>(byteReader, p, pEnd, &m_kallsyms);
@@ -1403,7 +1477,7 @@ PerfDataFile::ParseHeaderEventDesc() noexcept
                 return; // Unexpected.
             }
 
-            for (unsigned iEvent = 0; iEvent != cEvents; iEvent += 1)
+            for (uint32_t iEvent = 0; iEvent != cEvents; iEvent += 1)
             {
                 if (Remaining(p, pEnd) < cbAttrInHeader + sizeof(uint32_t) + sizeof(uint32_t))
                 {
@@ -1504,14 +1578,13 @@ PerfDataFile::GetNonSampleEventId(_In_ perf_event_header const* pEventHeader, _O
 
 _Success_(return == 0) int
 PerfDataFile::AddAttr(
-    std::unique_ptr<perf_event_attr> pAttrPtr,
+    std::unique_ptr<perf_event_attr> pAttr,
     uint32_t cbAttrCopied,
     _In_z_ char const* pName,
     _In_reads_bytes_(cbIdsFileEndian) void const* pbIdsFileEndian,
     uintptr_t cbIdsFileEndian) noexcept(false)
 {
     assert(cbAttrCopied <= sizeof(perf_event_attr));
-    auto const pAttr = pAttrPtr.get();
 
     if (m_byteReader.ByteSwapNeeded())
     {
@@ -1575,15 +1648,37 @@ PerfDataFile::AddAttr(
         m_nonSampleIdOffset = nonSampleIdOffset;
     }
 
-    pAttr->size = static_cast<perf_event_attr_size>(cbAttrCopied);
-    m_attrsList.push_back(std::move(pAttrPtr));
-
-    auto const pIds = static_cast<uint64_t const*>(pbIdsFileEndian);
-    auto const cIds = cbIdsFileEndian / sizeof(uint64_t);
-    for (size_t i = 0; i != cIds; i += 1)
+    auto const cIds = static_cast<uint32_t>(cbIdsFileEndian / sizeof(uint64_t));
+    auto const pIdsFileEndian = static_cast<uint64_t const*>(pbIdsFileEndian);
+    auto pIds = std::make_unique<uint64_t[]>(cIds);
+    for (uint32_t i = 0; i != cIds; i += 1)
     {
-        auto const id = m_byteReader.Read(&pIds[i]);
-        m_eventDescById[id] = { pAttr, pName };
+        pIds[i] = m_byteReader.Read(&pIdsFileEndian[i]);
+    }
+
+    pAttr->size = static_cast<perf_event_attr_size>(cbAttrCopied);
+    auto const eventDescIndex = m_eventDescList.size();
+    auto const pEventListIds = pIds.get(); // To access ids after we move-from pIds.
+
+    PerfEventMetadata const* pMetadata = nullptr;
+    if (pAttr->type == PERF_TYPE_TRACEPOINT)
+    {
+        auto itMetadata = m_metadataById.find(static_cast<uint32_t>(pAttr->config));
+        if (itMetadata != m_metadataById.end())
+        {
+            pMetadata = &itMetadata->second;
+        }
+    }
+
+    m_eventDescList.push_back({
+        { pAttr.get(), pName, pMetadata, pIds.get(), cIds},
+        std::move(pAttr),
+        std::move(pIds)
+    });
+
+    for (uint32_t i = 0; i != cIds; i += 1)
+    {
+        m_eventDescById[pEventListIds[i]] = eventDescIndex;
     }
 
     return 0;

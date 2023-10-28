@@ -104,7 +104,7 @@ int main(int argc, char* argv[])
                 // Events are returned out-of-order and need to be sorted. Use a map to
                 // put them into timestamp order. Flush the map at the end of each round.
                 auto it = events.emplace(
-                    (sampleEventInfo.sample_type & PERF_SAMPLE_TIME) ? sampleEventInfo.time : 0u,
+                    (sampleEventInfo.SampleType() & PERF_SAMPLE_TIME) ? sampleEventInfo.time : 0u,
                     std::string());
                 err = formatter.AppendSampleAsJson(
                     it->second,

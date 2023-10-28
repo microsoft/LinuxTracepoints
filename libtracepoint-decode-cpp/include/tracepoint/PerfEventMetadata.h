@@ -164,6 +164,7 @@ namespace tracepoint_decode
     class PerfEventMetadata
     {
         std::string_view m_systemName;
+        std::string_view m_formatFileContents;
         std::string_view m_name;
         std::string_view m_printFmt;
         std::vector<PerfFieldMetadata> m_fields;
@@ -180,6 +181,11 @@ namespace tracepoint_decode
         // Returns the value of the systemName parameter, e.g. "user_events".
         constexpr std::string_view
         SystemName() const noexcept { return m_systemName; }
+
+        // Returns the value of the formatFileContents parameter, e.g.
+        // "name: my_event\nID: 1234\nformat:...".
+        constexpr std::string_view
+        FormatFileContents() const noexcept { return m_formatFileContents; }
 
         // Returns the value of the "name:" property, e.g. "my_event".
         constexpr std::string_view

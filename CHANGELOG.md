@@ -15,6 +15,7 @@
 - `EventFormatter` formats timestamps as date-time if clock information is
   available in the event metadata. If clock information is not present, it
   continues to format timestamps as seconds.
+- `TracepointSession` now includes ID in default sample type.
 - `TracepointSession` records clock information from the session.
 - `TracepointSession` provides access to information about the tracepoints
    that have been added to the session (metadata, status, statistics).

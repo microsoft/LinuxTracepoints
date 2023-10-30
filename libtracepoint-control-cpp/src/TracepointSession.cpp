@@ -112,6 +112,15 @@ TracepointInfo::GetEventCount(_Out_ uint64_t* value) const noexcept
     return self.GetEventCountImpl(value);
 }
 
+// ReadFormat
+
+struct TracepointSession::ReadFormat
+{
+    // This needs to match the attr.read_format used for tracepoints.
+    uint64_t value;
+    uint64_t id;
+};
+
 // TracepointInfoImpl
 
 TracepointSession::TracepointInfoImpl::~TracepointInfoImpl()
@@ -143,7 +152,7 @@ TracepointSession::TracepointInfoImpl::Read(unsigned index, _Out_ ReadFormat* da
         ? 0
         : size < 0
         ? errno
-        :  EPIPE;
+        : EPIPE;
     return error;
 }
 
@@ -1053,6 +1062,7 @@ TracepointSession::ParseSample(
         "SampleTypeSupported out of sync");
 
     auto const SampleTypeDefault = 0u
+        | PERF_SAMPLE_IDENTIFIER
         | PERF_SAMPLE_TID
         | PERF_SAMPLE_TIME
         | PERF_SAMPLE_CPU
@@ -1065,6 +1075,7 @@ TracepointSession::ParseSample(
     if (infoSampleTypes == SampleTypeDefault)
     {
         if (sampleDataSize <
+            sizeof(uint64_t) + // PERF_SAMPLE_IDENTIFIER
             sizeof(uint64_t) + // PERF_SAMPLE_TID
             sizeof(uint64_t) + // PERF_SAMPLE_TIME
             sizeof(uint64_t) + // PERF_SAMPLE_CPU
@@ -1072,6 +1083,10 @@ TracepointSession::ParseSample(
         {
             goto Error;
         }
+
+        // PERF_SAMPLE_IDENTIFIER
+        infoId = *reinterpret_cast<uint64_t const*>(p);
+        p += sizeof(uint64_t);
 
         // PERF_SAMPLE_TID
         auto const pTid = reinterpret_cast<uint32_t const*>(p);

@@ -68,7 +68,7 @@ namespace tracepoint_decode
       - Call AddEventDesc() to provide event information for events that don't
         have tracefs format information.
       - Call SetHeader() to provide data for other headers in the file.
-    - Close the file: writer.Close();
+    - Close the file: writer.FinalizeAndClose();
       - This writes the file footers, finalizes the headers, then closes the file.
     */
     class PerfDataFileWriter
@@ -135,7 +135,7 @@ namespace tracepoint_decode
         // Notes:
         // - The content of the data is written directly to the event data section of
         //   the output file without any validation.
-        // - dataSize should always be a multiple of 8.
+        // - Every perf_event_header block's size should be a multiple of 8.
         // - dataSize should almost always be the sum of hdr.size for all headers written,
         //   except for PERF_RECORD_HEADER_TRACING_DATA and PERF_RECORD_AUXTRACE which may
         //   have additional data in the block beyond the size indicated in the header.
@@ -154,7 +154,7 @@ namespace tracepoint_decode
         // Similar to WriteEventData, but accepts multiple blocks of data and returns
         // the number of bytes written instead of errno.
         //
-        // On error, returns -1.
+        // On error, returns -1. Check errno for error code.
         // On success, returns number of bytes written. In rare cases, may succeed with a
         // result less than dataSize (see writev(2) documentation).
         _Success_(return >= 0) ptrdiff_t
@@ -177,12 +177,12 @@ namespace tracepoint_decode
         // Note that the PerfDataFileWriter class has special support for the
         // following headers:
         //
-        // - If no data has been set via SetHeader(PERF_HEADER_TRACING_DATA, ...)
-        //   then the PERF_HEADER_TRACING_DATA header will be synthesized using
-        //   data supplied via AddTracepointEventDesc(...) and SetTracingData(...). 
-        // - If no data has been set via SetHeader(PERF_HEADER_EVENT_DESC, ...)
-        //   then the PERF_HEADER_EVENT_DESC header will be synthesized using data
-        //   supplied via AddTracepointEventDesc(...) and AddEventDesc(...).
+        // - If no data has been set via SetHeader(PERF_HEADER_TRACING_DATA, ...) then
+        //   CloseNoFinalize() will synthesize a PERF_HEADER_TRACING_DATA header using
+        //   data supplied via AddTracepointEventDesc(...) and SetTracingData(...).
+        // - If no data has been set via SetHeader(PERF_HEADER_EVENT_DESC, ...) then
+        //   CloseNoFinalize() will synthesize a PERF_HEADER_EVENT_DESC header using
+        //   data supplied via AddTracepointEventDesc(...) and AddEventDesc(...).
         _Success_(return == 0) int
         SetHeader(
             PerfHeaderIndex index,
@@ -191,17 +191,17 @@ namespace tracepoint_decode
 
         // Configures information to be included in the synthesized
         // PERF_HEADER_TRACING_DATA header. These settings are given default values
-        // when the PerfDataFileWriter is constructed. These settings are used when
-        // writing a file for which no data was provided via
+        // when the PerfDataFileWriter is constructed. These settings are used by
+        // CloseNoFinalize() if no data was provided via
         // SetHeader(PERF_HEADER_TRACING_DATA, ...).
-        // 
+        //
         // For all of the parameters, a 0 or {NULL, 0} value indicates "keep the
         // existing value". To indicate "set the value to empty", use {non-null, 0}.
         //
         // - longSize: Default is sizeof(size_t).
         // - pageSize: Default is sysconf(_SC_PAGESIZE).
         // - headerPage: Default is timestamp64+commit64+overwrite8+data4080. Empty means use default.
-        // - headerEvent: Default is type_len5, time_delta27, array32. Empty means use default.
+        // - headerEvent: Default is type_len:5, time_delta:27, array:32. Empty means use default.
         // - ftraces: Default is "".
         // - kallsyms: Default is "".
         // - printk: Default is "".
@@ -221,7 +221,7 @@ namespace tracepoint_decode
         // Adds perf_event_attr and name information for the specified event ids.
         // Use this for events that do NOT have tracefs format information, i.e.
         // when desc.metadata == NULL.
-        // 
+        //
         // Requires: desc.attr != NULL, desc.name != NULL.
         //
         // Returns 0 for success, errno for error.
@@ -239,8 +239,7 @@ namespace tracepoint_decode
         bool
         HasTracepointEventDesc(uint32_t common_type) const noexcept;
 
-        // Adds metadata for the event specified by desc.metadata->Id().
-        // If metadata is already set for that event, returns EEXIST.
+        // Adds perf_event_attr, name, and metadata for the specified event ids.
         // Use this for events that DO have tracefs format information, i.e.
         // when desc.metadata != NULL.
         //
@@ -249,6 +248,8 @@ namespace tracepoint_decode
         //
         // Returns 0 for success, errno for error.
         // Returns E2BIG if desc.name is 64KB or longer.
+        // Returns EEXIST if metadata has already been set for the common_type
+        // indicated in desc.metadata->Id().
         //
         // Note that each id used in the trace should map to exactly one attr provided
         // by AddTracepointEventDesc or AddEventDesc, but this is not validated by

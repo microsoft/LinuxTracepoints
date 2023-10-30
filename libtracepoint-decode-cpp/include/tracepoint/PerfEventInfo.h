@@ -36,8 +36,8 @@ namespace tracepoint_decode
 
     struct PerfSampleEventInfo
     {
-        PerfEventDesc const* event_desc;        // Always valid if GetSampleEventInfo succeeded.
-        PerfEventSessionInfo const* session_info;//Always valid if GetSampleEventInfo succeeded.
+        PerfEventDesc const* event_desc;        // Always valid if GetSampleEventInfo() succeeded.
+        PerfEventSessionInfo const* session_info;//Always valid if GetSampleEventInfo() succeeded.
         uint64_t id;                            // Valid if SampleType() & (PERF_SAMPLE_IDENTIFIER | PERF_SAMPLE_ID).
         uint32_t pid, tid;                      // Valid if SampleType() & PERF_SAMPLE_TID.
         uint64_t time;                          // Valid if SampleType() & PERF_SAMPLE_TIME.
@@ -52,6 +52,11 @@ namespace tracepoint_decode
         uintptr_t raw_data_size;                // Valid if SampleType() & PERF_SAMPLE_RAW. Size of raw_data.
 
         // Requires: GetSampleEventInfo() succeeded.
+        // Returns: event_desc->attr->sample_type.
+        uint64_t
+        SampleType() const noexcept;
+
+        // Requires: GetSampleEventInfo() succeeded.
         // Returns: event_desc->attr.
         perf_event_attr const&
         Attr() const noexcept;
@@ -60,11 +65,6 @@ namespace tracepoint_decode
         // Returns: event_desc->name.
         _Ret_z_ char const*
         Name() const noexcept;
-
-        // Requires: GetSampleEventInfo() succeeded.
-        // Returns: event_desc->attr->sample_type.
-        uint64_t
-        SampleType() const noexcept;
 
         // Requires: GetSampleEventInfo() succeeded.
         // Returns: event_desc->metadata (may be NULL).
@@ -75,28 +75,28 @@ namespace tracepoint_decode
 
     struct PerfNonSampleEventInfo
     {
-        PerfEventDesc const* event_desc;        // Always valid if GetNonSampleEventInfo succeeded.
-        PerfEventSessionInfo const* session_info;//Always valid if GetNonSampleEventInfo succeeded.
+        PerfEventDesc const* event_desc;        // Always valid if GetNonSampleEventInfo() succeeded.
+        PerfEventSessionInfo const* session_info;//Always valid if GetNonSampleEventInfo() succeeded.
         uint64_t id;                            // Valid if SampleType() & (PERF_SAMPLE_IDENTIFIER | PERF_SAMPLE_ID).
         uint32_t pid, tid;                      // Valid if SampleType() & PERF_SAMPLE_TID.
         uint64_t time;                          // Valid if SampleType() & PERF_SAMPLE_TIME.
         uint64_t stream_id;                     // Valid if SampleType() & PERF_SAMPLE_STREAM_ID.
         uint32_t cpu, cpu_reserved;             // Valid if SampleType() & PERF_SAMPLE_CPU.
 
-        // Requires: GetSampleEventInfo() succeeded.
+        // Requires: GetNonSampleEventInfo() succeeded.
+        // Returns: event_desc->attr->sample_type.
+        uint64_t
+        SampleType() const noexcept;
+
+        // Requires: GetNonSampleEventInfo() succeeded.
         // Returns: event_desc->attr.
         perf_event_attr const&
         Attr() const noexcept;
 
-        // Requires: GetSampleEventInfo() succeeded.
+        // Requires: GetNonSampleEventInfo() succeeded.
         // Returns: event_desc->name.
         _Ret_z_ char const*
         Name() const noexcept;
-
-        // Requires: GetSampleEventInfo() succeeded.
-        // Returns: event_desc->attr->sample_type.
-        uint64_t
-        SampleType() const noexcept;
     };
 }
 // namespace tracepoint_decode

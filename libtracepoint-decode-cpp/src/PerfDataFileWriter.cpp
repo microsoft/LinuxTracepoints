@@ -62,15 +62,9 @@ AppendValue(_Inout_ std::vector<char>* pHeader, T const& value)
 }
 
 static void
-AppendString(_Inout_ std::vector<char>* pHeader, std::string_view value)
-{
-    pHeader->insert(pHeader->end(), value.data(), value.data() + value.size());
-}
-
-static void
 AppendStringZ(_Inout_ std::vector<char>* pHeader, std::string_view value)
 {
-    AppendString(pHeader, value);
+    pHeader->insert(pHeader->end(), value.data(), value.data() + value.size());
     pHeader->push_back(0);
 }
 
@@ -160,9 +154,9 @@ struct PerfDataFileWriter::TracepointInfo
     PerfEventMetadata const& metadata;
     size_t eventDescIndex;
 
-    TracepointInfo(PerfEventMetadata const& _metadata, size_t index)
+    TracepointInfo(PerfEventMetadata const& _metadata, size_t _eventDescIndex)
         : metadata(_metadata)
-        , eventDescIndex(index)
+        , eventDescIndex(_eventDescIndex)
     {
         return;
     }
@@ -451,7 +445,7 @@ PerfDataFileWriter::SetTracingData(
         error = ENOMEM;
     }
 
-    return 0;
+    return error;
 }
 
 _Success_(return == 0) int
@@ -710,9 +704,9 @@ PerfDataFileWriter::SynthesizeEventDesc()
         AppendValue<perf_event_attr>(&header, desc.attr);       // attr
         AppendValue<uint32_t>(&header, nr_ids);                 // nr_ids
         AppendValue<uint32_t>(&header, nameSize + namePad);     // event_string.len
-        header.insert(header.end(), &name[0], &name[nameSize]);// event_string.string
+        header.insert(header.end(), &name[0], &name[nameSize]); // event_string.string
         header.insert(header.end(), &Zero64[0], &Zero64[namePad]);// NUL + pad to x8
-        header.insert(                                        // ids
+        header.insert(                                          // ids
             header.end(),
             reinterpret_cast<char const*>(desc.sampleIds.data()),
             reinterpret_cast<char const*>(desc.sampleIds.data() + desc.sampleIds.size()));

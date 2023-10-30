@@ -279,6 +279,7 @@ PerfDataFile::Close() noexcept
     }
 
     m_eventDescList.clear();
+    m_eventDescById.clear();
     m_byteReader = PerfByteReader();
     m_sampleIdOffset = -1;
     m_nonSampleIdOffset = -1;

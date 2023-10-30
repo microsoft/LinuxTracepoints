@@ -232,9 +232,13 @@ main(int argc, char* argv[])
                                 sampleIdsUsed.insert(desc.ids[i]);
                             }
                         }
-                        else if (err != EEXIST)
+                        else if (err == EEXIST)
                         {
-                            WriteWarningMessage(outputPath, err, "output.AddTracingData failed, metadata may be incomplete");
+                            // Already added metadata for this event.
+                        }
+                        else
+                        {
+                            WriteWarningMessage(outputPath, err, "output.AddTracepointEventDesc failed, metadata may be incomplete");
                         }
                     }
                 }
@@ -248,11 +252,11 @@ main(int argc, char* argv[])
             }
 
             // Populate the output file's EventDesc table from the input file's table.
-            // Some of this was already done by AddTracingData.
+            // Some of this was already done by AddTracepointEventDesc.
             // In addition, the input file's table usually has duplicate entries - one entry with
             // names and one entry without names. Therefore, MergeEventDesc will skip ids that are
-            // already populated, and we merge descriptors with names before merging descriptors
-            // without names.
+            // already populated, and we merge all descriptors with names before merging any
+            // descriptors that don't have names.
             for (size_t iDesc = 0; iDesc != input.EventDescCount(); iDesc += 1)
             {
                 // First, merge data from descriptors that have names.

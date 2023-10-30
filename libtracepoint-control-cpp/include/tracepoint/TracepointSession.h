@@ -130,12 +130,13 @@ namespace tracepoint_control
         /*
         The flags that are set in the default value of the SampleType property:
 
+        | PERF_SAMPLE_IDENTIFIER
         | PERF_SAMPLE_TID
         | PERF_SAMPLE_TIME
         | PERF_SAMPLE_CPU
         | PERF_SAMPLE_RAW
         */
-        static constexpr auto SampleTypeDefault = 0x486u;
+        static constexpr auto SampleTypeDefault = 0x10486u;
 
         /*
         The flags that are supported for use with the SampleType property:
@@ -183,14 +184,15 @@ namespace tracepoint_control
         Flags use the perf_event_sample_format values defined in <linux/perf_event.h>
         or <tracepoint/PerfEventAbi.h>.
 
-        The default value is:
+        The following flags are enabled by default (SampleTypeDefault):
 
+        | PERF_SAMPLE_IDENTIFIER
         | PERF_SAMPLE_TID
         | PERF_SAMPLE_TIME
         | PERF_SAMPLE_CPU
         | PERF_SAMPLE_RAW
 
-        The following flags are supported:
+        The following flags are supported (SampleTypeSupported):
 
         | PERF_SAMPLE_IDENTIFIER
         | PERF_SAMPLE_IP
@@ -314,12 +316,7 @@ namespace tracepoint_control
     {
         friend class TracepointInfo;
 
-        // This needs to match the attr.read_format used for tracepoints.
-        struct ReadFormat
-        {
-            uint64_t value;
-            uint64_t id;
-        };
+        struct ReadFormat; // Forward declaration
 
         class unique_fd
         {

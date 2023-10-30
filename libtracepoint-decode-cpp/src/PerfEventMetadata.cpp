@@ -697,6 +697,7 @@ PerfEventMetadata::~PerfEventMetadata()
 
 PerfEventMetadata::PerfEventMetadata() noexcept
     : m_systemName()
+    , m_formatFileContents()
     , m_name()
     , m_printFmt()
     , m_fields()
@@ -730,6 +731,7 @@ PerfEventMetadata::Parse(
     Clear();
 
     m_systemName = systemName;
+    m_formatFileContents = formatFileContents;
 
     bool foundId = false;
     auto p = formatFileContents.data();

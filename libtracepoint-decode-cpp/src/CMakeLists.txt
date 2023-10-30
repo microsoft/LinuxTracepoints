@@ -2,7 +2,9 @@
 add_library(tracepoint-decode
     PerfByteReader.cpp
     PerfDataFile.cpp
+    PerfDataFileWriter.cpp
     PerfEventAbi.cpp
+    PerfEventInfo.cpp
     PerfEventMetadata.cpp
     PerfEventSessionInfo.cpp)
 target_include_directories(tracepoint-decode
@@ -12,6 +14,8 @@ target_include_directories(tracepoint-decode
 set(DECODE_HEADERS
     "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfByteReader.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfDataFile.h"
+    "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfDataFileDefs.h"
+    "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfDataFileWriter.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfEventAbi.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfEventInfo.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/PerfEventMetadata.h"

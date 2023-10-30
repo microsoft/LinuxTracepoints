@@ -99,7 +99,7 @@ main(int argc, char* argv[])
         error = session.EnumerateSampleEventsUnordered(
             [](PerfSampleEventInfo const& event) -> int
             {
-                auto ts = event.session->TimeToRealTime(event.time);
+                auto ts = event.session_info->TimeToRealTime(event.time);
                 time_t const secs = (time_t)ts.tv_sec;
                 tm t = {};
                 gmtime_r(&secs, &t);
@@ -108,7 +108,7 @@ main(int argc, char* argv[])
                     event.tid,
                     1900 + t.tm_year, 1 + t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, ts.tv_nsec,
                     (long unsigned)event.raw_data_size,
-                    event.name);
+                    event.Name());
                 return 0;
             });
         fprintf(stderr, "Enum: %u, Count=%llu, Lost=%llu, Bad=%llu, BadBuf=%llu\n",

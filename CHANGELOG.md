@@ -2,13 +2,27 @@
 
 ## v1.3.0 (TBD)
 
-- `PerfEventInfo.h` adds a field with session information to the metadata of
-  each event. The session information includes clock information.
-- `PerfDataFile.h` decodes clock information from perf.data files if present.
-- `TracepointSession.h` records clock information from the session.
-- `EventFormatter.h` formats timestamps as date-time if clock information is
+- **Breaking changes** to `PerfDataFile` and `PerfSampleEventInfo` classes:
+  - `dataFile.AttrCount()` method replaced by `EventDescCount()` method.
+  - `dataFile.Attr(index)` method replaced by `EventDesc(index)` method.
+    The returned `PerfEventDesc` object contains an `attr` pointer.
+  - `dataFile.EventDescById(id)` method replaced by `FindEventDescById(id)`.
+  - `eventInfo.session` field renamed to `session_info`.
+  - `eventInfo.attr` field replaced by `Attr()` method.
+  - `eventInfo.name` field replaced by `Name()` method.
+  - `eventInfo.sample_type` field replaced by `SampleType()` method.
+  - `eventInfo.raw_meta` field replaced by `Metadata()` method.
+- `EventFormatter` formats timestamps as date-time if clock information is
   available in the event metadata. If clock information is not present, it
   continues to format timestamps as seconds.
+- `TracepointSession` now includes ID in default sample type.
+- `TracepointSession` records clock information from the session.
+- `TracepointSession` provides access to information about the tracepoints
+   that have been added to the session (metadata, status, statistics).
+- `PerfDataFile` decodes clock information from perf.data files if present.
+- `PerfDataFile` provides access to more metadata via `PerfEventDesc` struct.
+- `PerfDataFile` provides `EventDataSize` for determining the size of an event.
+- New `PerfDataFileWriter` class for generating `perf.data` files.
 - Changed procedure for locating the `user_events_data` file.
   - Old: parse `/proc/mounts` to determine the `tracefs` or `debugfs` mount
     point, then use that as the root for the `user_events_data` path.

@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/*
+Demonstrates use of TracepointCache to look up tracefs metadata.
+*/
+
 #include <tracepoint/TracepointCache.h>
 #include <stdio.h>
 

@@ -11,3 +11,10 @@ target_link_libraries(control-session
     PUBLIC tracepoint-control tracepoint-decode)
 target_compile_features(control-session
     PRIVATE cxx_std_17)
+
+add_executable(save-session
+    save-session.cpp)
+target_link_libraries(save-session
+    PUBLIC tracepoint-control tracepoint-decode)
+target_compile_features(save-session
+    PRIVATE cxx_std_17)

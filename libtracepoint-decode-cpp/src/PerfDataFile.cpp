@@ -684,7 +684,7 @@ PerfDataFile::EventDataSize(perf_event_header const* pEventHeader) noexcept
 _Success_(return == 0) int
 PerfDataFile::GetSampleEventInfo(
     _In_ perf_event_header const* pEventHeader,
-    _Out_ PerfSampleEventInfo * pInfo) const noexcept
+    _Out_ PerfSampleEventInfo* pInfo) const noexcept
 {
     auto const SupportedSampleTypes = 0
         | PERF_SAMPLE_IDENTIFIER
@@ -715,8 +715,6 @@ PerfDataFile::GetSampleEventInfo(
 
         auto const& eventDesc = m_eventDescList[eventDescIt->second];
         auto const infoSampleTypes = eventDesc.attr->sample_type & SupportedSampleTypes;
-        uint64_t const* infoReadValues = nullptr;
-        uint64_t const* infoCallchain = nullptr;
         char const* infoRawData = nullptr;
         uint32_t infoRawDataSize = 0;
 
@@ -792,7 +790,7 @@ PerfDataFile::GetSampleEventInfo(
         if (infoSampleTypes & PERF_SAMPLE_READ)
         {
             IF_EQUAL_GOTO_ERROR(iArray, cArray);
-            infoReadValues = &pArray[iArray];
+            pInfo->read_values = &pArray[iArray];
 
             auto const SupportedReadFormats = 0
                 | PERF_FORMAT_TOTAL_TIME_ENABLED
@@ -847,7 +845,8 @@ PerfDataFile::GetSampleEventInfo(
         if (infoSampleTypes & PERF_SAMPLE_CALLCHAIN)
         {
             IF_EQUAL_GOTO_ERROR(iArray, cArray);
-            infoCallchain = &pArray[iArray];
+            auto const infoCallchain = &pArray[iArray];
+            pInfo->callchain = infoCallchain;
             auto const count = m_byteReader.Read(infoCallchain);
             iArray += 1;
 
@@ -875,11 +874,10 @@ PerfDataFile::GetSampleEventInfo(
         }
 
         assert(iArray <= cArray);
-        pInfo->id = id;
         pInfo->event_desc = &eventDesc;
         pInfo->session_info = &m_sessionInfo;
-        pInfo->read_values = infoReadValues;
-        pInfo->callchain = infoCallchain;
+        pInfo->header = pEventHeader;
+        pInfo->id = id;
         pInfo->raw_data = infoRawData;
         pInfo->raw_data_size = infoRawDataSize;
         return 0;
@@ -887,11 +885,10 @@ PerfDataFile::GetSampleEventInfo(
 
 Error:
 
-    pInfo->id = {};
     pInfo->event_desc = {};
     pInfo->session_info = {};
-    pInfo->read_values = {};
-    pInfo->callchain = {};
+    pInfo->header = {};
+    pInfo->id = {};
     pInfo->raw_data = {};
     pInfo->raw_data_size = {};
     return error;
@@ -900,7 +897,7 @@ Error:
 _Success_(return == 0) int
 PerfDataFile::GetNonSampleEventInfo(
     _In_ perf_event_header const* pEventHeader,
-    _Out_ PerfNonSampleEventInfo * pInfo) const noexcept
+    _Out_ PerfNonSampleEventInfo* pInfo) const noexcept
 {
     auto const SupportedSampleTypes = 0
         | PERF_SAMPLE_TID
@@ -976,17 +973,19 @@ PerfDataFile::GetNonSampleEventInfo(
 
         assert(iArray > 0);
         assert(iArray < 0x10000 / sizeof(uint64_t));
-        pInfo->id = id;
         pInfo->event_desc = &eventDesc;
         pInfo->session_info = &m_sessionInfo;
+        pInfo->header = pEventHeader;
+        pInfo->id = id;
         return 0;
     }
 
 Error:
 
-    pInfo->id = {};
     pInfo->event_desc = {};
     pInfo->session_info = {};
+    pInfo->header = {};
+    pInfo->id = {};
     return error;
 }
 

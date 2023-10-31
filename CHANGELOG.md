@@ -15,6 +15,8 @@
 - `EventFormatter` formats timestamps as date-time if clock information is
   available in the event metadata. If clock information is not present, it
   continues to format timestamps as seconds.
+- `TracepointSession` provides `SavePerfDataFile(filename)` method to save
+  the current contents of the session buffers into a `perf.data` file.
 - `TracepointSession` now includes ID in default sample type.
 - `TracepointSession` records clock information from the session.
 - `TracepointSession` provides access to information about the tracepoints

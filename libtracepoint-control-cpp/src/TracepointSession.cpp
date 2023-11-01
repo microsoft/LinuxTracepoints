@@ -14,6 +14,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/uio.h>
+#include <sys/utsname.h>
 #include <asm/unistd.h> // __NR_perf_event_open
 #include <linux/perf_event.h>
 
@@ -81,13 +82,13 @@ call writev once for every 16 noncontinguous blocks of memory to be written.
 */
 class IovecList
 {
-    static constexpr int Max = 16;
-    int m_used = 0;
+    static constexpr unsigned Max = 16;
+    unsigned m_used = 0;
     iovec m_vecs[Max];
 
 public:
 
-    int
+    unsigned
     RoomLeft() const noexcept
     {
         return Max - m_used;
@@ -96,7 +97,7 @@ public:
     void
     Add(uint8_t const* p, size_t c) noexcept
     {
-        assert(m_used < Max);
+        assert(m_used < Max); // Caller is responsible for checking RoomLeft().
         auto const lastVec = m_used - 1;
         if (0 != m_used &&
             p == static_cast<uint8_t*>(m_vecs[lastVec].iov_base) + m_vecs[lastVec].iov_len)
@@ -124,28 +125,53 @@ public:
         }
         else
         {
-            size_t total = 0;
-            for (int i = 0; i < m_used; i += 1)
+            size_t cbToWrite = 0;
+            for (unsigned i = 0; i != m_used; i += 1)
             {
-                total += m_vecs[i].iov_len;
+                cbToWrite += m_vecs[i].iov_len;
+                if (cbToWrite < m_vecs[i].iov_len)
+                {
+                    error = ERANGE;
+                    goto Done;
+                }
             }
 
-            auto written = output.WriteEventDataIovecs(m_vecs, m_used);
-            if (written < 0)
+            for (auto skip = 0u;;)
             {
-                error = errno;
-            }
-            else if (static_cast<size_t>(written) != total)
-            {
-                error = EINTR; // TODO - handle partial write?
-            }
-            else
-            {
-                error = 0;
+                auto const cbWritten = output.WriteEventDataIovecs(m_vecs + skip, m_used - skip);
+                if (cbWritten < 0)
+                {
+                    error = errno;
+                    break;
+                }
+                else if (static_cast<size_t>(cbWritten) == cbToWrite)
+                {
+                    error = 0;
+                    break;
+                }
+
+                // Partial write. Skip what was written and try again.
+
+                auto cbToSkip = static_cast<size_t>(cbWritten);
+                assert(cbToWrite > cbToSkip);
+                cbToWrite -= cbToSkip;
+
+                while (cbToSkip >= m_vecs[skip].iov_len)
+                {
+                    cbToSkip -= m_vecs[skip].iov_len;
+                    skip += 1;
+                }
+
+                assert(skip < m_used);
+                m_vecs[skip].iov_base = static_cast<uint8_t*>(m_vecs[skip].iov_base) + cbToSkip;
+                m_vecs[skip].iov_len = m_vecs[skip].iov_len - cbToSkip;
             }
 
             m_used = 0;
         }
+
+    Done:
+
         return error;
     }
 };
@@ -839,6 +865,11 @@ TracepointSession::SavePerfDataFile(
 {
     int error = 0;
     PerfDataFileWriter output;
+    IovecList vecList;
+    struct {
+        uint64_t first;
+        uint64_t last;
+    } times = { ~uint64_t(0), 0 };
 
     error = output.Create(perfDataFileName, mode);
     if (error != 0)
@@ -848,9 +879,7 @@ TracepointSession::SavePerfDataFile(
 
     if (m_bufferLeaderFiles != nullptr)
     {
-        IovecList vecList;
-
-        auto recordFn = [this, &vecList](
+        auto recordFn = [this, &vecList, &times](
             uint8_t const* bufferData,
             uint16_t recordSize,
             uint32_t recordBufferPos) noexcept
@@ -879,8 +908,19 @@ TracepointSession::SavePerfDataFile(
                 // save a few cycles by inlining ParseSample and removing the
                 // parts we don't need.
 
-                // If this succeeds it will set m_enumEventInfo.event_desc.
-                ParseSample(bufferData, recordSize, recordBufferPos);
+                // If this succeeds it will set m_enumEventInfo.
+                if (ParseSample(bufferData, recordSize, recordBufferPos))
+                {
+                    if (m_enumEventInfo.time < times.first)
+                    {
+                        times.first = m_enumEventInfo.time;
+                    }
+
+                    if (m_enumEventInfo.time > times.last)
+                    {
+                        times.last = m_enumEventInfo.time;
+                    }
+                }
             }
             return true;
         };
@@ -924,7 +964,99 @@ TracepointSession::SavePerfDataFile(
         }
     }
 
-    // TODO: Other headers.
+    // Optional headers
+
+    // uname stuff
+    {
+        utsname uts;
+        if (0 == uname(&uts))
+        {
+            error = output.SetStringHeader(PERF_HEADER_HOSTNAME, uts.nodename);
+            if (error != 0)
+            {
+                goto Done;
+            }
+
+            error = output.SetStringHeader(PERF_HEADER_OSRELEASE, uts.release);
+            if (error != 0)
+            {
+                goto Done;
+            }
+
+            error = output.SetStringHeader(PERF_HEADER_ARCH, uts.machine);
+            if (error != 0)
+            {
+                goto Done;
+            }
+        }
+    }
+
+    // nrcpus
+    {
+        auto const conf = sysconf(_SC_NPROCESSORS_CONF);
+        auto const onln = sysconf(_SC_NPROCESSORS_ONLN);
+        if (conf > 0 && onln > 0)
+        {
+            struct {
+                uint32_t available;
+                uint32_t online;
+            } const nrcpus = {
+                static_cast<uint32_t>(conf),
+                static_cast<uint32_t>(onln),
+            };
+            error = output.SetHeader(PERF_HEADER_NRCPUS, &nrcpus, sizeof(nrcpus));
+            if (error != 0)
+            {
+                goto Done;
+            }
+        }
+    }
+
+    // clock stuff
+    {
+        if (0 != (m_sampleType & PERF_SAMPLE_TIME) &&
+            times.first <= times.last)
+        {
+            error = output.SetHeader(PERF_HEADER_SAMPLE_TIME, &times, sizeof(times));
+            if (error != 0)
+            {
+                goto Done;
+            }
+        }
+
+        auto const clockId = m_sessionInfo.ClockId();
+        if (clockId != 0xFFFFFFFF)
+        {
+            uint64_t const clockId64 = clockId;
+            error = output.SetHeader(PERF_HEADER_CLOCKID, &clockId64, sizeof(clockId64));
+            if (error != 0)
+            {
+                goto Done;
+            }
+        }
+
+        if (m_sessionInfo.ClockOffsetKnown())
+        {
+            uint64_t wallClockNS, clockidTimeNS;
+            m_sessionInfo.GetClockOffset(&wallClockNS, &clockidTimeNS);
+            struct {
+                uint32_t version;
+                uint32_t clockid;
+                uint64_t wallClockNS;
+                uint64_t clockidTimeNS;
+            } const clockData = {
+                1,
+                clockId,
+                wallClockNS,
+                clockidTimeNS,
+            };
+            error = output.SetHeader(PERF_HEADER_CLOCK_DATA, &clockData, sizeof(clockData));
+            if (error != 0)
+            {
+                goto Done;
+            }
+        }
+    }
 
     error = output.FinalizeAndClose();
 
@@ -1188,8 +1320,6 @@ TracepointSession::ParseSample(
     assert(0 == (recordBufferPos & 7));
     assert(recordSize <= m_bufferSize);
     assert(recordBufferPos < m_bufferSize);
-
-    m_enumEventInfo.header = BufferDataPosToHeader(bufferData, recordBufferPos);
 
     uint8_t const* p;
 
@@ -1595,8 +1725,7 @@ template<class RecordFn>
 bool
 TracepointSession::EnumeratorMoveNext(
     uint32_t bufferIndex,
-    RecordFn&& recordFn)
-    noexcept(noexcept(recordFn(nullptr, 0, 0)))
+    RecordFn&& recordFn) noexcept(noexcept(recordFn(nullptr, 0, 0)))
 {
     auto& buffer = m_buffers[bufferIndex];
     auto const bufferData = static_cast<uint8_t const*>(buffer.Mmap.get()) + m_pageSize;

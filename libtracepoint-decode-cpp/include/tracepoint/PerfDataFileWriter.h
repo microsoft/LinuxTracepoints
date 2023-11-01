@@ -189,6 +189,14 @@ namespace tracepoint_decode
             _In_reads_bytes_(dataSize) void const* data,
             size_t dataSize) noexcept;
 
+        // Sets or resets the data for the specified perf_header_string header.
+        // Use this for headers where the header value is a perf_header_string, e.g.
+        // HOSTNAME, OSRELEASE, VERSION, ARCH, CPUDESC, CPUID, CMDLINE.
+        _Success_(return == 0) int
+        SetStringHeader(
+            PerfHeaderIndex index,
+            _In_z_ char const* str) noexcept;
+
         // Configures information to be included in the synthesized
         // PERF_HEADER_TRACING_DATA header. These settings are given default values
         // when the PerfDataFileWriter is constructed. These settings are used by

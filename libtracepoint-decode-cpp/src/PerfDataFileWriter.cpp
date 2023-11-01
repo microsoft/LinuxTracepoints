@@ -372,6 +372,55 @@ PerfDataFileWriter::SetHeader(
 }
 
 _Success_(return == 0) int
+PerfDataFileWriter::SetStringHeader(
+    PerfHeaderIndex index,
+    _In_z_ char const* str) noexcept
+{
+    int error;
+
+    try
+    {
+        if (index >= PERF_HEADER_LAST_FEATURE)
+        {
+            error = EINVAL;
+        }
+        else
+        {
+            auto const strLen = strlen(str);
+            if (strLen >= 0xFFFFFFFF)
+            {
+                error = E2BIG;
+            }
+            else
+            {
+                auto const cbStr = strLen + 1;
+                auto const headerLen = (sizeof(uint32_t) + cbStr + 7) & ~size_t(7);
+
+                /*
+                struct perf_header_string {
+                       uint32_t len;
+                       char string[len]; // zero terminated
+                };
+                */
+                auto& header = m_headers[index];
+                header.clear();
+                header.reserve(headerLen);
+                AppendValue(&header, static_cast<uint32_t>(cbStr)); // uint32_t len;
+                header.insert(header.end(), &str[0], &str[cbStr]);  // char string[len];
+                header.resize(headerLen);
+                error = 0;
+            }
+        }
+    }
+    catch (...)
+    {
+        error = ENOMEM;
+    }
+
+    return error;
+}
+
+_Success_(return == 0) int
 PerfDataFileWriter::SetTracingData(
     uint8_t longSize,
     uint32_t pageSize,

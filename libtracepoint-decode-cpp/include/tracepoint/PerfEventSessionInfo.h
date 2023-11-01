@@ -10,8 +10,8 @@
 #ifdef _WIN32
 #include <sal.h>
 #endif
-#ifndef _In_reads_bytes_
-#define _In_reads_bytes_(cb)
+#ifndef _Out_
+#define _Out_
 #endif
 
 namespace tracepoint_decode
@@ -49,6 +49,15 @@ namespace tracepoint_decode
         // From HEADER_CLOCK_DATA. If unknown, use SetClockData(0xFFFFFFFF, 0, 0).
         void
         SetClockData(uint32_t clockid, uint64_t wallClockNS, uint64_t clockidTimeNS) noexcept;
+
+        // Gets offset values suitable for use in HEADER_CLOCK_DATA.
+        // Note: The returned NS values may be normalized relative to the values provided
+        // to SetClockData, but the difference between them will be the same as the
+        // difference between the values provided to SetClockData.
+        void
+        GetClockOffset(
+            _Out_ uint64_t* wallClockNS,
+            _Out_ uint64_t* clockidTimeNS) const noexcept;
 
         // Returns the clockid of the session timestamp, e.g. CLOCK_MONOTONIC.
         // Returns 0xFFFFFFFF if the session timestamp clockid is unknown.

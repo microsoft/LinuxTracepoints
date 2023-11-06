@@ -51,10 +51,16 @@
 // Forward declaration from sys/uio.h:
 struct iovec;
 
+// Forward declaration from sys/utsname.h:
+struct utsname;
+
 #endif // !_WIN32
 
 namespace tracepoint_decode
 {
+    // Forward declaration from PerfEventSessionInfo.h:
+    class PerfEventSessionInfo;
+
     /*
     PerfDataFileWriter class - Writes perf.data files.
 
@@ -196,6 +202,36 @@ namespace tracepoint_decode
         SetStringHeader(
             PerfHeaderIndex index,
             _In_z_ char const* str) noexcept;
+
+        // Sets the data for the NRCPUS header.
+        _Success_(return == 0) int
+        SetNrCpusHeader(uint32_t available, uint32_t online) noexcept;
+
+        // Sets the data for the SAMPLE_TIME header.
+        _Success_(return == 0) int
+        SetSampleTimeHeader(uint64_t first, uint64_t last) noexcept;
+
+        // Sets the data for the CLOCKID header.
+        _Success_(return == 0) int
+        SetClockIdHeader(uint32_t clockid) noexcept;
+
+        // Sets the data for the CLOCK_DATA header.
+        _Success_(return == 0) int
+        SetClockDataHeader(uint32_t clockid, uint64_t wallClockNS, uint64_t clockidTimeNS) noexcept;
+
+        // Sets or resets the data for headers available in the specified sessionInfo:
+        // - CLOCKID: Set based on ClockId(); cleared if ClockId() == 0xFFFFFFFF.
+        // - CLOCK_DATA: Set based on GetClockOffset(); cleared if !ClockOffsetKnown().
+        _Success_(return == 0) int
+        SetSessionInfoHeaders(PerfEventSessionInfo const& sessionInfo) noexcept;
+
+#ifndef _WIN32
+
+        // Sets or resets the data for the HOSTNAME, OSRELEASE, and ARCH headers.
+        _Success_(return == 0) int
+        SetUtsNameHeaders(utsname const& uts) noexcept;
+
+#endif // !_WIN32
 
         // Configures information to be included in the synthesized
         // PERF_HEADER_TRACING_DATA header. These settings are given default values

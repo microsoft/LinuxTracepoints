@@ -4,6 +4,7 @@
 #include <tracepoint/PerfDataFileWriter.h>
 #include <tracepoint/PerfEventAbi.h>
 #include <tracepoint/PerfEventMetadata.h>
+#include <tracepoint/PerfEventSessionInfo.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -22,6 +23,7 @@ static bool constexpr HostIsBigEndian = false;
 #define O_CLOEXEC                       0
 #else // _WIN32
 #include <unistd.h>
+#include <sys/utsname.h>
 #include <sys/uio.h>
 #include <endian.h>
 static bool constexpr HostIsBigEndian = __BYTE_ORDER == __BIG_ENDIAN;
@@ -407,7 +409,7 @@ PerfDataFileWriter::SetStringHeader(
                 header.reserve(headerLen);
                 AppendValue(&header, static_cast<uint32_t>(cbStr)); // uint32_t len;
                 header.insert(header.end(), &str[0], &str[cbStr]);  // char string[len];
-                header.resize(headerLen);
+                header.resize(headerLen); // NUL-terminate, pad to a multiple of 8 bytes.
                 error = 0;
             }
         }
@@ -419,6 +421,127 @@ PerfDataFileWriter::SetStringHeader(
 
     return error;
 }
+
+_Success_(return == 0) int
+PerfDataFileWriter::SetNrCpusHeader(uint32_t available, uint32_t online) noexcept
+{
+    struct {
+        uint32_t available;
+        uint32_t online;
+    } const nrcpus = {
+        available,
+        online,
+    };
+    return SetHeader(PERF_HEADER_NRCPUS, &nrcpus, sizeof(nrcpus));
+}
+
+_Success_(return == 0) int
+PerfDataFileWriter::SetSampleTimeHeader(uint64_t first, uint64_t last) noexcept
+{
+    struct {
+        uint64_t first;
+        uint64_t last;
+    } const times = {
+        first,
+        last,
+    };
+    return SetHeader(PERF_HEADER_SAMPLE_TIME, &times, sizeof(times));
+}
+
+_Success_(return == 0) int
+PerfDataFileWriter::SetClockIdHeader(uint32_t clockid) noexcept
+{
+    uint64_t const clockid64 = clockid;
+    return SetHeader(PERF_HEADER_CLOCKID, &clockid64, sizeof(clockid64));
+}
+
+_Success_(return == 0) int
+PerfDataFileWriter::SetClockDataHeader(uint32_t clockid, uint64_t wallClockNS, uint64_t clockidTimeNS) noexcept
+{
+    struct {
+        uint32_t version;
+        uint32_t clockid;
+        uint64_t wallClockNS;
+        uint64_t clockidTimeNS;
+    } const clockData = {
+        1,
+        clockid,
+        wallClockNS,
+        clockidTimeNS,
+    };
+    return SetHeader(PERF_HEADER_CLOCK_DATA, &clockData, sizeof(clockData));
+}
+
+_Success_(return == 0) int
+PerfDataFileWriter::SetSessionInfoHeaders(PerfEventSessionInfo const& sessionInfo) noexcept
+{
+    int error = 0;
+
+    auto const clockid = sessionInfo.ClockId();
+    if (clockid == 0xFFFFFFFF)
+    {
+        m_headers[PERF_HEADER_CLOCKID].clear();
+    }
+    else
+    {
+        error = SetClockIdHeader(clockid);
+        if (error != 0)
+        {
+            goto Done;
+        }
+    }
+
+    if (!sessionInfo.ClockOffsetKnown())
+    {
+        m_headers[PERF_HEADER_CLOCK_DATA].clear();
+    }
+    else
+    {
+        uint64_t wallClockNS, clockidTimeNS;
+        sessionInfo.GetClockOffset(&wallClockNS, &clockidTimeNS);
+        error = SetClockDataHeader(clockid, wallClockNS, clockidTimeNS);
+        if (error != 0)
+        {
+            goto Done;
+        }
+    }
+
+Done:
+
+    return error;
+}
+
+#ifndef _WIN32
+
+_Success_(return == 0) int
+PerfDataFileWriter::SetUtsNameHeaders(utsname const& uts) noexcept
+{
+    int error;
+
+    error = SetStringHeader(PERF_HEADER_HOSTNAME, uts.nodename);
+    if (error != 0)
+    {
+        goto Done;
+    }
+
+    error = SetStringHeader(PERF_HEADER_OSRELEASE, uts.release);
+    if (error != 0)
+    {
+        goto Done;
+    }
+
+    error = SetStringHeader(PERF_HEADER_ARCH, uts.machine);
+    if (error != 0)
+    {
+        goto Done;
+    }
+
+Done:
+
+    return error;
+}
+
+#endif // !_WIN32
 
 _Success_(return == 0) int
 PerfDataFileWriter::SetTracingData(

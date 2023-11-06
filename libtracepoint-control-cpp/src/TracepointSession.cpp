@@ -877,6 +877,8 @@ TracepointSession::SavePerfDataFile(
         goto Done;
     }
 
+    // Write event data:
+
     if (m_bufferLeaderFiles != nullptr)
     {
         auto recordFn = [this, &vecList, &times](
@@ -964,47 +966,26 @@ TracepointSession::SavePerfDataFile(
         }
     }
 
-    // Optional headers
+    // Write system information headers:
 
-    // uname stuff
+    utsname uts;
+    if (0 == uname(&uts))
     {
-        utsname uts;
-        if (0 == uname(&uts))
+        // HOSTNAME, OSRELEASE, ARCH
+        error = output.SetUtsNameHeaders(uts);
+        if (error != 0)
         {
-            error = output.SetStringHeader(PERF_HEADER_HOSTNAME, uts.nodename);
-            if (error != 0)
-            {
-                goto Done;
-            }
-
-            error = output.SetStringHeader(PERF_HEADER_OSRELEASE, uts.release);
-            if (error != 0)
-            {
-                goto Done;
-            }
-
-            error = output.SetStringHeader(PERF_HEADER_ARCH, uts.machine);
-            if (error != 0)
-            {
-                goto Done;
-            }
+            goto Done;
         }
     }
 
-    // nrcpus
     {
         auto const conf = sysconf(_SC_NPROCESSORS_CONF);
         auto const onln = sysconf(_SC_NPROCESSORS_ONLN);
         if (conf > 0 && onln > 0)
         {
-            struct {
-                uint32_t available;
-                uint32_t online;
-            } const nrcpus = {
-                static_cast<uint32_t>(conf),
-                static_cast<uint32_t>(onln),
-            };
-            error = output.SetHeader(PERF_HEADER_NRCPUS, &nrcpus, sizeof(nrcpus));
+            // NRCPUS
+            error = output.SetNrCpusHeader(static_cast<uint32_t>(conf), static_cast<uint32_t>(onln));
             if (error != 0)
             {
                 goto Done;
@@ -1012,51 +993,25 @@ TracepointSession::SavePerfDataFile(
         }
     }
 
-    // clock stuff
+    if (0 != (m_sampleType & PERF_SAMPLE_TIME) &&
+        times.first <= times.last)
     {
-        if (0 != (m_sampleType & PERF_SAMPLE_TIME) &&
-            times.first <= times.last)
+        // SAMPLE_TIME
+        error = output.SetSampleTimeHeader(times.first, times.last);
+        if (error != 0)
         {
-            error = output.SetHeader(PERF_HEADER_SAMPLE_TIME, &times, sizeof(times));
-            if (error != 0)
-            {
-                goto Done;
-            }
-        }
-
-        auto const clockId = m_sessionInfo.ClockId();
-        if (clockId != 0xFFFFFFFF)
-        {
-            uint64_t const clockId64 = clockId;
-            error = output.SetHeader(PERF_HEADER_CLOCKID, &clockId64, sizeof(clockId64));
-            if (error != 0)
-            {
-                goto Done;
-            }
-        }
-
-        if (m_sessionInfo.ClockOffsetKnown())
-        {
-            uint64_t wallClockNS, clockidTimeNS;
-            m_sessionInfo.GetClockOffset(&wallClockNS, &clockidTimeNS);
-            struct {
-                uint32_t version;
-                uint32_t clockid;
-                uint64_t wallClockNS;
-                uint64_t clockidTimeNS;
-            } const clockData = {
-                1,
-                clockId,
-                wallClockNS,
-                clockidTimeNS,
-            };
-            error = output.SetHeader(PERF_HEADER_CLOCK_DATA, &clockData, sizeof(clockData));
-            if (error != 0)
-            {
-                goto Done;
-            }
+            goto Done;
         }
     }
+
+    // CLOCKID, CLOCK_DATA
+    error = output.SetSessionInfoHeaders(m_sessionInfo);
+    if (error != 0)
+    {
+        goto Done;
+    }
+
+    // Flush to disk:
 
     error = output.FinalizeAndClose();
 

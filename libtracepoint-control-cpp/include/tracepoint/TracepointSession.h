@@ -22,6 +22,9 @@ TracepointSession class that manages a tracepoint collection session.
 
 #include <signal.h> // sigset_t
 
+#ifndef _In_z_
+#define _In_z_
+#endif
 #ifndef _In_reads_
 #define _In_reads_(size)
 #endif
@@ -393,13 +396,14 @@ namespace tracepoint_control
         {
             uint64_t Timestamp;
             uint16_t BufferIndex;
-            uint16_t DataSize;
-            uint32_t DataPos;
+            uint16_t RecordSize;
+            uint32_t RecordBufferPos;
+
             TracepointBookmark(
                 uint64_t timestamp,
                 uint16_t bufferIndex,
-                uint16_t dataSize,
-                uint32_t dataPos) noexcept;
+                uint16_t recordSize,
+                uint32_t recordBufferPos) noexcept;
         };
 
         class UnorderedEnumerator
@@ -785,6 +789,49 @@ namespace tracepoint_control
             _Out_writes_(BufferCount()) int* pBufferFiles) const noexcept;
 
         /*
+        Creates a perf.data-format file and writes all pending data from the
+        current session's buffers to the file. This can be done for all session
+        types but is usually used with circular sessions.
+
+        File is created as:
+
+            open(perfDataFileName, O_CREAT|O_WRONLY|O_TRUNC|O_CLOEXEC, mode);
+
+        Returns: int error code (errno), or 0 for success.
+
+        *** Circular session behavior ***
+
+        For each buffer (usually one per CPU):
+
+        - Pause collection into the buffer.
+        - Write buffer's data to the file.
+        - Unpause the buffer.
+
+        Note that events are lost if they arrive while the buffer is paused. The lost
+        event count indicates how many events were lost during previous pauses that would
+        have been part of a enumeration if there had been no pauses. It does not include
+        the count of events that were lost due to the current enumeration's pause (those
+        will show up after a subsequent enumeration).
+
+        *** Realtime session behavior ***
+
+        For each buffer (usually one per CPU):
+
+        - Write buffer's pending (unconsumed) events to the file.
+        - Mark the enumerated events as consumed, making room for subsequent events.
+
+        Note that events are lost if they arrive while the buffer is full. The lost
+        event count indicates how many events were lost during previous periods when
+        the buffer was full. It does not include the count of events that were lost
+        due to the buffer being full at the start of the current enumeration (those will
+        show up after a subsequent enumeration).
+        */
+        _Success_(return == 0) int
+        SavePerfDataFile(
+            _In_z_ char const* perfDataFileName,
+            int mode = -1) noexcept;
+
+        /*
         For each PERF_RECORD_SAMPLE record in the session's buffers, in timestamp
         order, invoke:
 
@@ -1022,8 +1069,8 @@ namespace tracepoint_control
         bool
         ParseSample(
             uint8_t const* bufferData,
-            uint16_t sampleDataSize,
-            uint32_t sampleDataBufferPos) noexcept;
+            uint16_t recordSize,
+            uint32_t recordBufferPos) noexcept;
 
         void
         EnumeratorEnd(uint32_t bufferIndex) const noexcept;
@@ -1031,12 +1078,11 @@ namespace tracepoint_control
         void
         EnumeratorBegin(uint32_t bufferIndex) noexcept;
 
-        template<class SampleFn, class NonSampleFn>
+        template<class RecordFn>
         bool
         EnumeratorMoveNext(
             uint32_t bufferIndex,
-            SampleFn&& sampleFn,
-            NonSampleFn&& nonSampleFn);
+            RecordFn&& recordFn) noexcept(noexcept(recordFn(nullptr, 0, 0)));
 
     private:
 

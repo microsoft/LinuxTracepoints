@@ -20,8 +20,9 @@
 #define _Ret_opt_
 #endif
 
-// Forward declaration from PerfEventAbi.h or linux/uapi/linux/perf_event.h:
+// Forward declarations from PerfEventAbi.h or linux/uapi/linux/perf_event.h:
 struct perf_event_attr;
+struct perf_event_header;
 
 namespace tracepoint_decode
 {
@@ -38,6 +39,7 @@ namespace tracepoint_decode
     {
         PerfEventDesc const* event_desc;        // Always valid if GetSampleEventInfo() succeeded.
         PerfEventSessionInfo const* session_info;//Always valid if GetSampleEventInfo() succeeded.
+        perf_event_header const* header;        // Always valid if GetSampleEventInfo() succeeded. Points into event.
         uint64_t id;                            // Valid if SampleType() & (PERF_SAMPLE_IDENTIFIER | PERF_SAMPLE_ID).
         uint32_t pid, tid;                      // Valid if SampleType() & PERF_SAMPLE_TID.
         uint64_t time;                          // Valid if SampleType() & PERF_SAMPLE_TIME.
@@ -77,6 +79,7 @@ namespace tracepoint_decode
     {
         PerfEventDesc const* event_desc;        // Always valid if GetNonSampleEventInfo() succeeded.
         PerfEventSessionInfo const* session_info;//Always valid if GetNonSampleEventInfo() succeeded.
+        perf_event_header const* header;        // Always valid if GetNonSampleEventInfo() succeeded. Points into event.
         uint64_t id;                            // Valid if SampleType() & (PERF_SAMPLE_IDENTIFIER | PERF_SAMPLE_ID).
         uint32_t pid, tid;                      // Valid if SampleType() & PERF_SAMPLE_TID.
         uint64_t time;                          // Valid if SampleType() & PERF_SAMPLE_TIME.

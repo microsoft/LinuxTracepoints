@@ -85,6 +85,23 @@ PerfEventSessionInfo::SetClockData(
     }
 }
 
+void
+PerfEventSessionInfo::GetClockOffset(
+    _Out_ uint64_t* wallClockNS,
+    _Out_ uint64_t* clockidTimeNS) const noexcept
+{
+    if (m_clockOffsetSec >= 0)
+    {
+        *clockidTimeNS = 0;
+        *wallClockNS = static_cast<uint64_t>(m_clockOffsetSec) * Billion + m_clockOffsetNsec;
+    }
+    else
+    {
+        *wallClockNS = 0;
+        *clockidTimeNS = static_cast<uint64_t>(-m_clockOffsetSec) * Billion - m_clockOffsetNsec;
+    }
+}
+
 uint32_t
 PerfEventSessionInfo::ClockId() const noexcept
 {

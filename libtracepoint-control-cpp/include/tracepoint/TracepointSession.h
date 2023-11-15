@@ -22,6 +22,12 @@ TracepointSession class that manages a tracepoint collection session.
 
 #include <signal.h> // sigset_t
 
+#ifndef _In_
+#define _In_
+#endif
+#ifndef _In_opt_
+#define _In_opt_
+#endif
 #ifndef _In_z_
 #define _In_z_
 #endif
@@ -30,6 +36,9 @@ TracepointSession class that manages a tracepoint collection session.
 #endif
 #ifndef _In_reads_opt_
 #define _In_reads_opt_(size)
+#endif
+#ifndef _Inout_updates_
+#define _Inout_updates_(size)
 #endif
 #ifndef _Out_opt_
 #define _Out_opt_
@@ -108,6 +117,31 @@ namespace tracepoint_control
         Tracepoint is disabled.
         */
         Disabled,
+    };
+
+    /*
+    Function type used for the callback of SetSaveToFds or ConfigureWithFdstore.
+
+    The function should dup(...) the specified FD into the recorded state. The recorded
+    FD should be tagged with a copy of the specified name.
+
+    If using a systemd fdstore, the implementation might be something like:
+
+        sd_pid_notifyf_with_fds(0, false, &fd, 1, "FDSTORE=1\nFDNAME=%s", name);
+    */
+    using TracepointSaveToFdsCallback = void(
+        uintptr_t callbackContext,
+        _In_z_ char const* name,
+        int fd) noexcept;
+
+    /*
+    Type of TracepointSession's SaveToFds property.
+    */
+    struct TracepointSaveToFds
+    {
+        char const* NamePrefix;
+        TracepointSaveToFdsCallback* Callback;
+        uintptr_t CallbackContext;
     };
 
     /*
@@ -429,6 +463,7 @@ namespace tracepoint_control
         friend class TracepointInfo;
 
         struct ReadFormat; // Forward declaration
+        struct RestoreHeader; // Forward declaration
 
         class unique_fd
         {
@@ -468,6 +503,7 @@ namespace tracepoint_control
             std::unique_ptr<char unsigned[]> const m_eventDescStorage;
             std::unique_ptr<unique_fd[]> const m_bufferFiles; // size is BufferFilesCount
             unsigned const m_bufferFilesCount;
+            uint32_t const m_restoreInfoFileEnableStateOffset;
             TracepointEnableState m_enableState;
 
             TracepointInfoImpl(TracepointInfoImpl const&) = delete;
@@ -477,7 +513,8 @@ namespace tracepoint_control
                 tracepoint_decode::PerfEventDesc const& eventDesc,
                 std::unique_ptr<char unsigned[]> eventDescStorage,
                 std::unique_ptr<unique_fd[]> bufferFiles,
-                unsigned bufferFilesCount) noexcept;
+                unsigned bufferFilesCount,
+                uint32_t restoreInfoFileEnableStateOffset) noexcept;
 
             // read(m_bufferFiles[i], data, sizeof(ReadFormat)).
             _Success_(return == 0) int
@@ -655,6 +692,310 @@ namespace tracepoint_control
         TracepointSession(
             TracepointCache& cache,
             TracepointSessionOptions const& options) noexcept(false);
+
+        /*
+        Configures this session to save/restore using systemd fdstore (see:
+        https://systemd.io/FILE_DESCRIPTOR_STORE).
+
+        Requires:
+
+        - Session has no tracepoints added (freshly constructed or cleared).
+        - namePrefix is a nul-terminated string of up to 15 alphanumeric chars, i.e.
+          strlen(namePrefix) <= 15.
+
+        Parameters:
+
+        - namePrefix: A nul-terminated string of up to 15 alphanumeric chars, used to
+          identify this session (in case multiple components are using the same fdstore).
+          All names that are saved/restored by this session will start with
+          "namePrefix/...".
+        - callback: The user-provided callback that will be invoked when a name/FD pair
+          should be recorded in the fdstore (see SetSaveToFds). This may be NULL, in
+          which case ConfigureWithFdstore will not invoke SetSaveToFds.
+        - callbackContext: The user-provided value that will be passed to the callback.
+        - count: The number of names and FDs that are provided. This should be set to the
+          value returned by sd_listen_fds_with_names. If this value is zero or negative,
+          ConfigureWithFdstore will not invoke RestoreFromFds and will return success.
+        - listenFdsStart: The value of the first FD to use. This should be set to the
+          value of SD_LISTEN_FDS_START, which is defined in <systemd/sd-daemon.h>.
+        - names: An array of nul-terminated strings that identify the FDs. This should be
+          set to the names received from the call to sd_listen_fds_with_names.
+
+        Effects:
+
+        - If callback != NULL, configures session as if by
+          SetSaveToFds(namePrefix, callback, callbackContext, false).
+        - If count > 0, attempts to restore session state using names and FDs as if by
+          RestoreFromFds(namePrefix, count, List(listenFdsStart, count), names).
+        - Returns the error code from RestoreFromFds(...), or 0 if count <= 0.
+
+        Note that the callback (if configured) will be invoked during the call to
+        ConfigureWithFdstore (as part of the RestoreFromFds step) to record the names and
+        FDs of the restored session.
+
+        Returns 0 for success, nonzero errno for failure from RestoreFromFds(...). The
+        return code should usually be ignored in release but may be useful for debugging
+        or diagnostics. See RestoreFromFds(...) for possible error cases.
+
+        In the success or partial-success cases, the session will take ownership of names
+        and FDs that it uses (i.e. the names that start with "namePrefix/..." and the
+        corresponding FDs). For each I where names[I] and listenFdsStart+I correspond to
+        a name and fd that were used to restore state, this function will set
+        names[I] = NULL and will take responsibility for calling free(name) and close(fd)
+        when appropriate.
+
+        After calling this function, even if it succeeds, you'll probably want to review
+        the session's enabled/disabled events to make sure it is configured the way you
+        want. For example, you may need to enable/disable some tracepoints if the desired
+        session configuration has changed since last time.
+
+        Typical usage:
+
+            int error;
+
+            // Session construction comes before the call to
+            // sd_listen_fds_with_names(...) because constructor may throw exceptions:
+
+            TracepointSession session1(cache, TracepointSessionOptions(...)); // May throw.
+            TracepointSession session2(cache, TracepointSessionOptions(...)); // May throw.
+
+            // Get the FDs from systemd's fdstore:
+
+            char** names = NULL;
+            int const count = sd_listen_fds_with_names(true, &names); // true = clear the fdstore
+
+            // Restore sessions from past fdstore (best-effort, may fail), and configure
+            // sessions to save to future fdstore (always, even if restore fails). Note
+            // that count may be negative (if sd_listen_fds_with_names failed) or 0 (no
+            // prior session), in which case nothing will be restored.
+
+            error = session1.ConfigureWithFdstore(
+                "prefix1",          // Prefix is used to identify which names/FDs belong to session1.
+                &StoreFdsCallback,  // User-defined callback, typically invokes sd_pid_notifyf_with_fds.
+                storeFdsContext,    // Context to pass to StoreFdsCallback.
+                count,              // The return value from sd_listen_fds_with_names.
+                SD_LISTEN_FDS_START,// Value defined in <systemd/sd-daemon.h>.
+                names);             // The names received from sd_listen_fds_with_names.
+            Log("restore session1", error);
+
+            error = session2.ConfigureWithFdstore(
+                "prefix2",          // Prefix is used to identify which names/FDs belong to session2.
+                &StoreFdsCallback,  // User-defined callback, typically invokes sd_pid_notifyf_with_fds.
+                storeFdsContext,    // Context to pass to StoreFdsCallback.
+                count,              // The return value from sd_listen_fds_with_names.
+                SD_LISTEN_FDS_START,// Value defined in <systemd/sd-daemon.h>.
+                names);             // The names received from sd_listen_fds_with_names.
+            Log("restore session2", error);
+
+            // Clean up names and fds that weren't used by ConfigureWithFdstore:
+
+            for (int i = 0; i < count; i += 1)
+            {
+                if (names[i] != NULL)
+                {
+                    free(names[i]);
+                    close(SD_LISTEN_FDS_START + i);
+                }
+            }
+
+            free(names);
+
+            // Make sure that the sessions are configured properly, e.g. if the fdstore
+            // was empty because this is the first time we start the session since boot,
+            // or if the call to sd_listen_fds_with_names failed for any reason.
+
+            for (auto& tracepointName : DefaultNamesForSession1)
+            {
+                session1.EnableTracepoint(tracepointName);
+            }
+
+            for (auto& tracepointName : DefaultNamesForSession2)
+            {
+                session2.EnableTracepoint(tracepointName);
+            }
+        */
+        _Success_(return == 0) int
+        ConfigureWithFdstore(
+            _In_z_ char const* namePrefix,
+            _In_opt_ TracepointSaveToFdsCallback* callback,
+            uintptr_t callbackContext,
+            int count,
+            unsigned listenFdsStart,
+            _Inout_updates_(count) char const** names) noexcept;
+
+        /*
+        Configures this TracepointSession object so that it takes over the management of
+        an existing tracepoint collection session that was managed by a previous
+        TracepointSession object.
+
+        Parameters:
+
+        - namePrefix: A nul-terminated string of up to 15 alphanumeric chars, used to
+          identify this session in case multiple components are using the same fdstore.
+          The restore operation will ignore all names do not start with "namePrefix/...".
+        - count: The number of names and FDs that are provided. If this value is zero,
+          RestoreFromFds will do nothing.
+        - fds: An array (length = count) of FDs from the fdstore. This should contain FDs
+          that were dup'ed from the FDs that were passed to a TracepointSaveToFdsCallback
+          by a previous TracepointSession.
+        - names: An array (length = count) of names from the fdstore. This should contain
+          strings that were strdup'ed from the names that were passed to a
+          TracepointSaveToFdsCallback by a previous TracepointSession.
+
+        Requires:
+
+        - Session has no tracepoints added (freshly constructed or cleared).
+        - namePrefix is a nul-terminated string of up to 15 alphanumeric chars, i.e.
+          strlen(namePrefix) <= 15.
+        - Assumes that the provided fds/names were dup'ed/strdup'ed from values that were
+          passed to a TracepointSaveToFdsCallback by a previous TracepointSession.
+        - Assumes that the previous TracepointSession object has been Clear'ed or
+          destroyed so that there is no contention on access to the underlying files.
+        - Assumes that for each I in the range 0 <= I < count, each non-NULL names[I]
+          that starts with "namePrefix/..." corresponds to a non-negative fds[I], i.e.
+          that names[I] is strcmp-equal to the name that was provided by the call to
+          TracepointSaveToFdsCallback that provided fds[I].
+
+        Returns 0 for success, nonzero errno for failure. The return code should usually
+        be ignored in release but may be useful for debugging or diagnostics. Errors may
+        include the following:
+
+        - EPERM: One or more tracepoints have already been added to the session.
+          RestoreFromFds(...) may not be used after a call to EnableTracepoint(...) or
+          RestoreFromFds(...). The session state was NOT restored.
+
+        - EILSEQ: Session state is corrupt or unusable. The session state was NOT
+          restored.
+
+        - EMEDIUMTYPE: Existing session options (from constructor) conflict with new
+          options (from fdstore session). The session state was NOT restored.
+
+        - All other errors: The session state was partially restored (best effort).
+
+        In the success or partial-restore cases, the session will take ownership of the
+        names and FDs that it uses (i.e. the names that start with "namePrefix/..." and
+        the corresponding FDs). For each I where names[I] and fds[I] correspond to a name
+        and fd that were used, this function will set names[I] = NULL, will set
+        fds[I] = -1, and will take responsibility for calling free(name) and close(fd)
+        when appropriate. Caller is responsible for the remaining names and fds.
+
+        In the success or partial-restore cases, if a SaveToFds callback is configured,
+        it will be invoked for any FDs that are added to the session restore state.
+
+        After calling this function, even if it succeeds, you'll probably want to review
+        the session's enabled/disabled events to make sure it is configured the way you
+        want. For example, you may need to enable/disable some tracepoints if the desired
+        session configuration has changed since last time.
+
+        Typical usage:
+
+            int error;
+
+            TracepointSession session1(cache, TracepointSessionOptions(...)); // May throw.
+            TracepointSession session2(cache, TracepointSessionOptions(...)); // May throw.
+
+            // Get the FDs and names from previous sessions.
+
+            unsigned const count = (number of names/fds from previous sessions);
+            char const** const names = (array of names from previous sessions);
+            int* const fds = (array of fds from previous sessions);
+
+            // Restore sessions from past fdstore (best-effort, may fail). Note that
+            // count may be 0 (e.g. no prior session), in which case nothing will be
+            // restored.
+
+            error = session1.RestoreFromFds("prefix1", count, fds, names);
+            Log("restore session1", error);
+
+            error = session2.RestoreFromFds("prefix2", count, fds, names);
+            Log("restore session2", error);
+
+            // Clean up names and fds that weren't used by RestoreFromFds.
+
+            for (int i = 0; i < count; i += 1)
+            {
+                if (names[i] != NULL)
+                {
+                    free(names[i]);
+                    close(fds[i]);
+                }
+            }
+
+            free(names); // Assuming that the names array was allocated with malloc.
+            free(fds);   // Assuming that the fds array was allocated with malloc.
+
+            // Make sure that the sessions are configured properly, e.g. if the count was
+            // 0 because this is the first time we start the session since boot, or if
+            // some other failure occurred during restore.
+
+            for (auto& tracepointName : DefaultNamesForSession1)
+            {
+                session1.EnableTracepoint(tracepointName);
+            }
+
+            for (auto& tracepointName : DefaultNamesForSession2)
+            {
+                session2.EnableTracepoint(tracepointName);
+            }
+
+            // Configure callbacks for future restores.
+            // Note that this may be done before or after the restore step.
+
+            session1.SetSaveToFds("prefix1", &StoreFdsCallback, storeFdsContext);
+            session2.SetSaveToFds("prefix2", &StoreFdsCallback, storeFdsContext);
+
+        */
+        _Success_(return == 0) int
+        RestoreFromFds(
+            _In_z_ char const* namePrefix,
+            unsigned count,
+            _Inout_updates_(count) int* fds,
+            _Inout_updates_(count) char const** names) noexcept;
+
+        /*
+        Gets the values specified in the most-recent call to SetSaveToFds(...).
+        Returns {"", NULL, 0} if the values have never been set or have been cleared.
+        */
+        TracepointSaveToFds
+        GetSaveToFds() const noexcept;
+
+        /*
+        Clears the previous SaveToFds settings, if any.
+        Sets SaveToFds.NamePrefix = "", SaveToFds.Callback = NULL, and
+        SaveToFds.CallbackContext = 0.
+        */
+        void
+        ClearSaveToFds() noexcept;
+
+        /*
+        Configures this session to automatically save the state of this session.
+        Replaces the previous SaveToFds settings, if any.
+
+        Requires:
+
+        - namePrefix is a nul-terminated string of up to 15 alphanumeric chars, i.e.
+          strlen(namePrefix) <= 15.
+
+        Effects:
+
+        - Sets SaveToFds.NamePrefix = namePrefix, SaveToFds.Callback = callback, and
+          SaveToFds.CallbackContext = callbackContext.
+        - If invokeCallbackForExistingFds is true, immediately invokes the provided
+          callback as needed to record the current state of the system.
+
+        After a call to SetSaveToFds, the callback will be invoked as needed to record
+        subsequent changes to the session state, e.g. it could be invoked one or more
+        times by a call to the EnableTracepoint(...) function.
+
+        Note that some state is tracked internally (within the files) so not all changes
+        to the TracepointSession configuration will result in a callback.
+        */
+        void
+        SetSaveToFds(
+            _In_z_ char const* namePrefix,
+            _In_ TracepointSaveToFdsCallback* callback,
+            uintptr_t callbackContext,
+            bool invokeCallbackForExistingFds = true) noexcept;
 
         /*
         Returns the tracepoint cache associated with this session.
@@ -1198,10 +1539,25 @@ namespace tracepoint_control
             TracepointInfoImpl& tpi,
             bool enabled) noexcept;
 
+        void
+        InvokeSaveToFdsCallbackForExistingFds() const noexcept;
+
+        void
+        InvokeSaveToFdsCallback(uint16_t restoreFdsIndex) const noexcept;
+
         _Success_(return == 0) int
         AddTracepoint(
             tracepoint_decode::PerfEventMetadata const& metadata,
+            std::unique_ptr<unique_fd[]> existingFiles,
             TracepointEnableState enableState) noexcept(false);
+
+        template<class FdList>
+        _Success_(return == 0) int
+        RestoreFromFdsImpl(
+            _In_z_ char const* namePrefix,
+            unsigned count,
+            FdList fdList,
+            _Inout_updates_(count) char const** names) noexcept;
 
     private:
 
@@ -1223,6 +1579,13 @@ namespace tracepoint_control
         std::unordered_map<unsigned, TracepointInfoImpl> m_tracepointInfoByCommonType;
         std::unordered_map<uint64_t, TracepointInfoImpl const*> m_tracepointInfoBySampleId;
         unique_fd const* m_bufferLeaderFiles; // == m_tracepointInfoByCommonType[N].BufferFiles.get() for some N, size is m_bufferCount
+        
+        std::vector<int> m_restoreFds;
+        unique_fd m_restoreInfoFile;
+        uint32_t m_restoreInfoFilePos;
+        char m_saveToFdsNamePrefix[16];
+        TracepointSaveToFdsCallback* m_saveToFdsCallback;
+        uintptr_t m_saveToFdsCallbackContext;
 
         // Statistics
 

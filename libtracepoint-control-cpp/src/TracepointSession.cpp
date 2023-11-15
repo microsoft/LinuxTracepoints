@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <assert.h>
 #include <errno.h>
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
 
@@ -25,9 +26,16 @@
 #define DEBUG_PRINTF(...) printf(__VA_ARGS__)
 #endif // NDEBUG
 
+#ifndef _Inout_
+#define _Inout_
+#endif
+
 using namespace std::string_view_literals;
 using namespace tracepoint_control;
 using namespace tracepoint_decode;
+
+static constexpr unsigned RestoreFdsMax = 65535;
+static constexpr char FdNameSeparator = '/';
 
 // Helpers
 
@@ -108,8 +116,50 @@ MakeSessionInfo(uint32_t clockid) noexcept
     return sessionInfo;
 }
 
+template<class T>
+static void
+AppendValue(_Inout_ std::vector<char>* buffer, T const& value)
+{
+    auto const pbValue = reinterpret_cast<char const*>(&value);
+    buffer->insert(buffer->end(), pbValue, pbValue + sizeof(T));
+}
+
 namespace
 {
+    struct PointerFdList
+    {
+        int* const fds;
+
+        int
+        Get(unsigned index) const noexcept
+        {
+            return fds[index];
+        }
+
+        void
+        Clear(unsigned index) const noexcept
+        {
+            fds[index] = -1;
+        }
+    };
+
+    struct SequentialFdList
+    {
+        unsigned const start;
+
+        int
+        Get(unsigned index) const noexcept
+        {
+            return start + index;
+        }
+
+        void
+        Clear(unsigned) const noexcept
+        {
+            return;
+        }
+    };
+
     /*
     Manages a scatter-gather list of chunks of memory that need to be written to
     the perf.data file. This allows us to reduce the number of kernel calls.
@@ -125,13 +175,13 @@ namespace
     public:
 
         unsigned
-        RoomLeft() const noexcept
+            RoomLeft() const noexcept
         {
             return Max - m_used;
         }
 
         void
-        Add(uint8_t const* p, size_t c) noexcept
+            Add(uint8_t const* p, size_t c) noexcept
         {
             assert(m_used < Max); // Caller is responsible for checking RoomLeft().
             auto const lastVec = m_used - 1;
@@ -262,6 +312,78 @@ struct TracepointSession::ReadFormat
     uint64_t id;
 };
 
+// RestoreHeader
+
+struct TracepointSession::RestoreHeader
+{
+    uint16_t Magic;
+    uint16_t Size;
+    uint32_t ClockId;
+    bool ClockOffsetKnown;
+    TracepointSessionMode Mode;
+    bool WakeupUseWatermark;
+    char Padding1;
+    uint32_t WakeupValue;
+    uint32_t SampleType;
+    uint32_t BufferCount;
+    uint32_t PageSize;
+    uint32_t BufferSize;
+    /*
+    Followed by 1 or more tightly-packed instances of:
+        TracepointEnableState EnableState;
+        uint32_t FullNameLength;
+        char FullName[FullNameLength]; // Not nul-terminated.
+    */
+
+    explicit
+    RestoreHeader(_In_reads_bytes_(sizeof(RestoreHeader)) char const* bytes) noexcept
+    {
+        memcpy(this, bytes, sizeof(RestoreHeader));
+    }
+
+    explicit constexpr
+    RestoreHeader(TracepointSession const& session) noexcept
+        : Magic(0x0001)
+        , Size(sizeof(RestoreHeader))
+        , ClockId(session.m_sessionInfo.ClockId())
+        , ClockOffsetKnown(session.m_sessionInfo.ClockOffsetKnown())
+        , Mode(session.m_mode)
+        , WakeupUseWatermark(session.m_wakeupUseWatermark)
+        , Padding1(0)
+        , WakeupValue(session.m_wakeupValue)
+        , SampleType(session.m_sampleType)
+        , BufferCount(session.m_bufferCount)
+        , PageSize(session.m_pageSize)
+        , BufferSize(session.m_bufferSize)
+    {
+        return;
+    }
+
+    constexpr bool
+    operator==(RestoreHeader const& other) const noexcept
+    {
+        return
+            Magic == other.Magic &&
+            Size == other.Size &&
+            ClockId == other.ClockId &&
+            ClockOffsetKnown == other.ClockOffsetKnown &&
+            Mode == other.Mode &&
+            WakeupUseWatermark == other.WakeupUseWatermark &&
+            //Padding1 == other.Padding1 &&
+            WakeupValue == other.WakeupValue &&
+            SampleType == other.SampleType &&
+            BufferCount == other.BufferCount &&
+            PageSize == other.PageSize &&
+            BufferSize == other.BufferSize;
+    }
+
+    constexpr bool
+    operator!=(RestoreHeader const& other) const noexcept
+    {
+        return !(*this == other);
+    }
+};
+
 // TracepointInfoImpl
 
 TracepointSession::TracepointInfoImpl::~TracepointInfoImpl()
@@ -273,12 +395,14 @@ TracepointSession::TracepointInfoImpl::TracepointInfoImpl(
     tracepoint_decode::PerfEventDesc const& eventDesc,
     std::unique_ptr<char unsigned[]> eventDescStorage,
     std::unique_ptr<unique_fd[]> bufferFiles,
-    unsigned bufferFilesCount
+    unsigned bufferFilesCount,
+    uint32_t restoreInfoFileEnableStateOffset
     ) noexcept
     : m_eventDesc(eventDesc)
     , m_eventDescStorage(std::move(eventDescStorage))
     , m_bufferFiles(std::move(bufferFiles))
     , m_bufferFilesCount(bufferFilesCount)
+    , m_restoreInfoFileEnableStateOffset(restoreInfoFileEnableStateOffset)
     , m_enableState(TracepointEnableState::Unknown)
 {
     return;
@@ -630,6 +754,12 @@ TracepointSession::TracepointSession(
     , m_tracepointInfoByCommonType() // may throw bad_alloc (but probably doesn't).
     , m_tracepointInfoBySampleId() // may throw bad_alloc (but probably doesn't).
     , m_bufferLeaderFiles(nullptr)
+    , m_restoreFds()
+    , m_restoreInfoFile()
+    , m_restoreInfoFilePos(sizeof(RestoreHeader))
+    , m_saveToFdsNamePrefix()
+    , m_saveToFdsCallback(nullptr)
+    , m_saveToFdsCallbackContext(0)
     , m_sampleEventCount(0)
     , m_lostEventCount(0)
     , m_corruptEventCount(0)
@@ -640,6 +770,73 @@ TracepointSession::TracepointSession(
     , m_enumEventInfo()
 {
     assert(options.m_mode <= TracepointSessionMode::RealTime);
+}
+
+_Success_(return == 0) int
+TracepointSession::ConfigureWithFdstore(
+    _In_z_ char const* namePrefix,
+    _In_opt_ TracepointSaveToFdsCallback* callback,
+    uintptr_t callbackContext,
+    int count,
+    unsigned listenFdsStart,
+    _Inout_updates_(count) char const** names) noexcept
+{
+    if (callback != nullptr)
+    {
+        SetSaveToFds(namePrefix, callback, callbackContext, false);
+    }
+
+    auto const error = count > 0
+        ? RestoreFromFdsImpl(namePrefix, count, SequentialFdList{ listenFdsStart }, names)
+        : 0;
+    return error;
+}
+
+_Success_(return == 0) int
+TracepointSession::RestoreFromFds(
+    _In_z_ char const* namePrefix,
+    unsigned count,
+    _Inout_updates_(count) int* fds,
+    _Inout_updates_(count) char const** names) noexcept
+{
+    auto const error = count > 0
+        ? RestoreFromFdsImpl(namePrefix, count, PointerFdList{ fds }, names)
+        : 0;
+    return error;
+}
+
+TracepointSaveToFds
+TracepointSession::GetSaveToFds() const noexcept
+{
+    return { m_saveToFdsNamePrefix, m_saveToFdsCallback, m_saveToFdsCallbackContext };
+}
+
+void
+TracepointSession::ClearSaveToFds() noexcept
+{
+    m_saveToFdsNamePrefix[0] = '\0';
+    m_saveToFdsCallback = nullptr;
+    m_saveToFdsCallbackContext = 0;
+}
+
+void
+TracepointSession::SetSaveToFds(
+    _In_z_ char const* namePrefix,
+    _In_ TracepointSaveToFdsCallback* callback,
+    uintptr_t callbackContext,
+    bool invokeCallbackForExistingFds) noexcept
+{
+    assert(strlen(namePrefix) < sizeof(m_saveToFdsNamePrefix));
+
+    strncpy(m_saveToFdsNamePrefix, namePrefix, sizeof(m_saveToFdsNamePrefix) - 1);
+    m_saveToFdsNamePrefix[sizeof(m_saveToFdsNamePrefix) - 1] = '\0';
+    m_saveToFdsCallback = callback;
+    m_saveToFdsCallbackContext = callbackContext;
+
+    if (invokeCallbackForExistingFds)
+    {
+        InvokeSaveToFdsCallbackForExistingFds();
+    }
 }
 
 TracepointCache&
@@ -707,6 +904,11 @@ TracepointSession::Clear() noexcept
     m_tracepointInfoByCommonType.clear();
     m_tracepointInfoBySampleId.clear();
     m_bufferLeaderFiles = nullptr;
+    m_restoreFds.clear();
+    m_restoreInfoFile.reset();
+    m_restoreInfoFilePos = sizeof(RestoreHeader);
+
+    ClearSaveToFds();
 
     m_sampleEventCount = 0;
     m_lostEventCount = 0;
@@ -1091,7 +1293,7 @@ TracepointSession::EnableTracepointImpl(PerfEventMetadata const& metadata) noexc
     auto const existingIt = m_tracepointInfoByCommonType.find(metadata.Id());
     if (existingIt == m_tracepointInfoByCommonType.end())
     {
-        error = AddTracepoint(metadata, TracepointEnableState::Enabled);
+        error = AddTracepoint(metadata, nullptr, TracepointEnableState::Enabled);
     }
     else
     {
@@ -1618,6 +1820,16 @@ TracepointSession::SetTracepointEnableState(
         goto Done;
     }
 
+    assert(m_restoreInfoFile);
+    assert(m_restoreInfoFilePos > tpi.m_restoreInfoFileEnableStateOffset);
+    assert(tpi.m_restoreInfoFileEnableStateOffset != 0);
+
+    if (1 != pwrite(m_restoreInfoFile.get(), &UnknownState, sizeof(TracepointEnableState), tpi.m_restoreInfoFileEnableStateOffset))
+    {
+        error = errno;
+        goto Done;
+    }
+
     tpi.m_enableState = UnknownState;
 
     error = IoctlForEachFile(
@@ -1628,6 +1840,9 @@ TracepointSession::SetTracepointEnableState(
     if (error == 0)
     {
         tpi.m_enableState = desiredState;
+
+        // Best-effort.
+        pwrite(m_restoreInfoFile.get(), &desiredState, sizeof(TracepointEnableState), tpi.m_restoreInfoFileEnableStateOffset);
     }
 
 Done:
@@ -1635,9 +1850,35 @@ Done:
     return error;
 }
 
+void
+TracepointSession::InvokeSaveToFdsCallbackForExistingFds() const noexcept
+{
+    if (m_saveToFdsCallback != nullptr)
+    {
+        assert(m_restoreFds.size() <= RestoreFdsMax);
+        for (uint16_t restoreFdsIndex = 0; restoreFdsIndex != m_restoreFds.size(); restoreFdsIndex += 1)
+        {
+            InvokeSaveToFdsCallback(restoreFdsIndex);
+        }
+    }
+}
+
+void
+TracepointSession::InvokeSaveToFdsCallback(uint16_t restoreFdsIndex) const noexcept
+{
+    assert(m_saveToFdsCallback != nullptr);
+    assert(restoreFdsIndex < m_restoreFds.size());
+
+    char name[sizeof(m_saveToFdsNamePrefix) + sizeof("/12345678")];
+    snprintf(name, sizeof(name), "%s%c%X",
+        m_saveToFdsNamePrefix, FdNameSeparator, restoreFdsIndex);
+    m_saveToFdsCallback(m_saveToFdsCallbackContext, name, m_restoreFds[restoreFdsIndex]);
+}
+
 _Success_(return == 0) int
 TracepointSession::AddTracepoint(
     PerfEventMetadata const& metadata,
+    std::unique_ptr<unique_fd[]> existingFiles,
     TracepointEnableState enableState) noexcept(false)
 {
     int error;
@@ -1698,43 +1939,49 @@ TracepointSession::AddTracepoint(
             m_bufferCount
         };
 
+        auto const existingFilesProvided = existingFiles != nullptr;
         auto er = m_tracepointInfoByCommonType.try_emplace(metadata.Id(),
             eventDesc,
             std::move(eventDescStorage),
-            std::make_unique<unique_fd[]>(m_bufferCount),
-            m_bufferCount);
+            existingFilesProvided ? std::move(existingFiles) : std::make_unique<unique_fd[]>(m_bufferCount),
+            m_bufferCount,
+            m_restoreInfoFilePos);
         assert(er.second);
         auto& tpi = er.first->second;
         tpi.m_enableState = enableState;
 
         // Starting from here, if there is an error then we must erase(metadata.Id).
 
-        for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
+        if (!existingFilesProvided)
         {
-            errno = 0;
-            tpi.m_bufferFiles[bufferIndex].reset(perf_event_open(pAttr, -1, bufferIndex, -1, PERF_FLAG_FD_CLOEXEC));
-            if (!tpi.m_bufferFiles[bufferIndex])
+            for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
             {
-                error = errno;
-                if (error == 0)
+                errno = 0;
+                tpi.m_bufferFiles[bufferIndex].reset(perf_event_open(pAttr, -1, bufferIndex, -1, PERF_FLAG_FD_CLOEXEC));
+                if (!tpi.m_bufferFiles[bufferIndex])
                 {
-                    error = ENODEV;
+                    error = errno;
+                    if (error == 0)
+                    {
+                        error = ENODEV;
+                    }
+
+                    goto Error;
                 }
-
-                goto Error;
             }
-        }
 
-        if (m_bufferLeaderFiles)
-        {
-            // Leader already exists. Add this event to the leader's mmaps.
-            error = IoctlForEachFile(tpi.m_bufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_SET_OUTPUT, m_bufferLeaderFiles);
-            if (error)
+            if (m_bufferLeaderFiles)
             {
-                goto Error;
+                // Leader already exists. Add this event to the leader's mmaps.
+                error = IoctlForEachFile(tpi.m_bufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_SET_OUTPUT, m_bufferLeaderFiles);
+                if (error)
+                {
+                    goto Error;
+                }
             }
         }
-        else
+
+        if (m_bufferLeaderFiles == nullptr)
         {
             // This is the first event. Make it the "leader" (the owner of the session buffers).
             auto const mmapSize = m_pageSize + m_bufferSize;
@@ -1784,7 +2031,94 @@ TracepointSession::AddTracepoint(
             (void)added;
         }
 
+        // Set up the restore info for this tracepoint.
+
+        if (!m_restoreInfoFile)
+        {
+            assert(m_restoreInfoFilePos == sizeof(RestoreHeader));
+            assert(m_restoreFds.empty());
+            m_restoreFds.clear();
+            m_restoreFds.reserve(1 + m_bufferCount); // May throw.
+
+            unique_fd restoreInfoFile(memfd_create("TracepointSessionRestoreInfo", MFD_CLOEXEC));
+            if (!restoreInfoFile)
+            {
+                error = errno;
+                goto Error;
+            }
+
+            RestoreHeader const restoreHeader(*this);
+            auto const written = write(restoreInfoFile.get(), &restoreHeader, sizeof(restoreHeader));
+            if (written != sizeof(restoreHeader))
+            {
+                error = written < 0 ? errno : EIO;
+                goto Error;
+            }
+
+            // Success. Commit it.
+
+            m_restoreInfoFile = std::move(restoreInfoFile);
+            m_restoreInfoFilePos = sizeof(restoreHeader);
+            m_restoreFds.push_back(m_restoreInfoFile.get()); // Won't throw (reserved above).
+            if (m_saveToFdsCallback != nullptr)
+            {
+                InvokeSaveToFdsCallback(m_restoreFds.size() - 1);
+            }
+        }
+
+        if (m_restoreFds.size() + m_bufferCount > RestoreFdsMax)
+        {
+            error = E2BIG;
+            goto Error;
+        }
+
+        m_restoreFds.reserve(m_restoreFds.size() + m_bufferCount); // May throw.
+
+        auto const nameSize = static_cast<uint32_t>(systemName.size() + 1 + eventName.size());
+
+        std::vector<char> buffer;
+        buffer.reserve(sizeof(enableState) + sizeof(nameSize) + nameSize); // May throw.
+
+        AppendValue<TracepointEnableState>(&buffer, enableState);
+        AppendValue<uint32_t>(&buffer, nameSize);
+        buffer.insert(buffer.end(), systemName.data(), systemName.data() + systemName.size());
+        buffer.push_back(':');
+        buffer.insert(buffer.end(), eventName.data(), eventName.data() + eventName.size());
+
+        auto const written = write(m_restoreInfoFile.get(), buffer.data(), buffer.size());
+        if (written != static_cast<ssize_t>(buffer.size()))
+        {
+            if (written < 0)
+            {
+                error = errno;
+            }
+            else
+            {
+                if (written > 0)
+                {
+                    // Try to undo (best-effort).
+                    lseek64(m_restoreInfoFile.get(), m_restoreInfoFilePos, SEEK_SET);
+                    ftruncate64(m_restoreInfoFile.get(), m_restoreInfoFilePos);
+                }
+
+                error = EIO;
+            }
+
+            goto Error;
+        }
+
+        m_restoreInfoFilePos += static_cast<uint32_t>(buffer.size());
+
         // Success. Commit it. (No exceptions beyond this point.)
+
+        for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
+        {
+            m_restoreFds.push_back(tpi.m_bufferFiles[bufferIndex].get()); // Won't throw (reserved above).
+            if (m_saveToFdsCallback != nullptr)
+            {
+                InvokeSaveToFdsCallback(m_restoreFds.size() - 1);
+            }
+        }
 
         if (!m_bufferLeaderFiles)
         {
@@ -1808,6 +2142,306 @@ Error:
 
     // May or may not have been added yet. If not, erase does nothing.
     m_tracepointInfoByCommonType.erase(metadata.Id());
+
+Done:
+
+    return error;
+}
+
+template<class FdList>
+_Success_(return == 0) int
+TracepointSession::RestoreFromFdsImpl(
+    _In_z_ char const* namePrefix,
+    unsigned count,
+    FdList fdList,
+    _Inout_updates_(count) char const** names) noexcept
+{
+    assert(strlen(namePrefix) < sizeof(m_saveToFdsNamePrefix));
+
+    int error;
+
+    struct FdImport
+    {
+        /*
+        ListIndex == UINT32_MAX : We own Fd (if any), name has been freed.
+        ListIndex != UINT32_MAX : Caller owns Fd and name.
+        */
+
+        int Fd = -1;
+        unsigned ListIndex = UINT32_MAX;
+    };
+
+    std::vector<FdImport> fdImports;
+
+    char namePrefixBuf[sizeof(m_saveToFdsNamePrefix)];
+    auto const namePrefixLen = strnlen(namePrefix, sizeof(namePrefixBuf) - 1);
+    memcpy(namePrefixBuf, namePrefix, namePrefixLen);
+    namePrefixBuf[namePrefixLen] = FdNameSeparator;
+
+    if (m_bufferLeaderFiles)
+    {
+        error = EPERM;
+        goto Done;
+    }
+
+    assert(m_restoreFds.size() <= 1); // Should be empty or just the restore info file.
+
+    try
+    {
+        std::vector<char> restoreInfo;
+
+        for (unsigned listIndex = 0; listIndex != count; listIndex += 1)
+        {
+            auto const fd = fdList.Get(listIndex);
+            if (fd < 0)
+            {
+                continue; // Invalid FD.
+            }
+
+            auto const name = names[listIndex];
+            if (name == nullptr)
+            {
+                continue; // Invalid name.
+            }
+
+            if (0 != strncmp(name, namePrefixBuf, namePrefixLen + 1))
+            {
+                continue; // Somebody else's name/FD.
+            }
+
+            auto const indexBegin = name + namePrefixLen + 1;
+            char* indexEnd = nullptr;
+            auto fdImportsIndex = strtoul(indexBegin, &indexEnd, 16);
+            if (indexEnd == indexBegin || indexEnd[0] != '\0' || fdImportsIndex > 65535)
+            {
+                continue; // Expected name = "namePrefix/fdImportsIndex".
+            }
+
+            if (fdImportsIndex >= fdImports.size())
+            {
+                fdImports.resize(fdImportsIndex + 1);
+            }
+            else if (fdImports[fdImportsIndex].Fd >= 0)
+            {
+                error = EILSEQ; // Duplicate fdImportsIndex.
+                goto Done;
+            }
+
+            fdImports[fdImportsIndex] = { fd, listIndex };
+        }
+
+        if (fdImports.empty() || fdImports[0].Fd < 0)
+        {
+            error = EILSEQ; // No restoreInfo file.
+            goto Done;
+        }
+
+        auto const restoreInfoFileEnd = lseek64(fdImports[0].Fd, 0, SEEK_END);
+        if (restoreInfoFileEnd < static_cast<int>(sizeof(RestoreHeader)) ||
+            restoreInfoFileEnd >= UINT32_MAX)
+        {
+            error = EILSEQ; // Invalid restoreInfo file.
+            goto Done;
+        }
+
+        restoreInfo.resize(static_cast<uint32_t>(restoreInfoFileEnd));
+
+        auto const restoreInfoFileRead = pread(fdImports[0].Fd, restoreInfo.data(), restoreInfo.size(), 0);
+        if (static_cast<size_t>(restoreInfoFileRead) != restoreInfo.size())
+        {
+            error = EILSEQ; // Failed to read restoreInfo file.
+            goto Done;
+        }
+
+        size_t restoreInfoPos = 0;
+        if (RestoreHeader(*this) != RestoreHeader(restoreInfo.data() + restoreInfoPos))
+        {
+            error = EMEDIUMTYPE; // Configuration mismatch.
+            goto Done;
+        }
+
+        restoreInfoPos += sizeof(RestoreHeader);
+
+        // Looks good enough for us to begin restore.
+        // Best-effort, might still complete with nonzero error.
+        // No "goto Done" after this point.
+
+        error = 0;
+
+        // Take ownership of names and fds that we will be using.
+        for (auto& fdImport : fdImports)
+        {
+            auto const listIndex = fdImport.ListIndex;
+            if (listIndex != UINT32_MAX)
+            {
+                // Caller is no longer responsible for FD.
+                // It will either move into new session or be closed on exit.
+                fdList.Clear(listIndex);
+
+                // Caller is no longer responsible for name.
+                // Free it now.
+                free(const_cast<char*>(names[listIndex]));
+                names[listIndex] = nullptr;
+
+                fdImport.ListIndex = UINT32_MAX;
+            }
+        }
+
+        // We're done with the restore info file.
+        close(fdImports[0].Fd);
+        fdImports[0].Fd = -1;
+
+        std::unique_ptr<unique_fd[]> existingFiles;
+
+        for (unsigned fdImportsIndex = 1;
+            fdImportsIndex + m_bufferCount <= fdImports.size();
+            fdImportsIndex += m_bufferCount)
+        {
+            auto const leader = fdImportsIndex == 1;
+
+            if (!existingFiles)
+            {
+                existingFiles = std::make_unique<unique_fd[]>(m_bufferCount);
+            }
+
+            bool allPresent = true;
+            for (unsigned i = 0; i != m_bufferCount; i += 1)
+            {
+                existingFiles[i].reset(fdImports[fdImportsIndex + i].Fd);
+                fdImports[fdImportsIndex + i].Fd = -1;
+
+                if (!existingFiles[i])
+                {
+                    allPresent = false;
+                    break;
+                }
+            }
+
+            if (!allPresent)
+            {
+                // Unexpected: Event incompletely stored.
+                if (error == 0)
+                {
+                    error = ENOENT;
+                }
+
+                if (leader)
+                {
+                    break; // Cannot proceed.
+                }
+
+                continue;
+            }
+
+            assert(restoreInfoPos <= restoreInfo.size());
+
+            TracepointEnableState enableState;
+            uint32_t fullNameSize;
+            if (restoreInfo.size() - restoreInfoPos < sizeof(enableState) + sizeof(fullNameSize))
+            {
+                // Unexpected: invalid metadata.
+                if (error == 0)
+                {
+                    error = ENOENT;
+                }
+
+                break; // Cannot proceed.
+            }
+
+            memcpy(&enableState, restoreInfo.data() + restoreInfoPos, sizeof(enableState));
+            restoreInfoPos += sizeof(enableState);
+
+            memcpy(&fullNameSize, restoreInfo.data() + restoreInfoPos, sizeof(fullNameSize));
+            restoreInfoPos += sizeof(fullNameSize);
+            if (restoreInfo.size() - restoreInfoPos < fullNameSize)
+            {
+                // Unexpected: invalid metadata.
+                if (error == 0)
+                {
+                    error = ENOENT;
+                }
+
+                break; // Cannot proceed.
+            }
+
+            std::string_view const fullName(restoreInfo.data() + restoreInfoPos, fullNameSize);
+            restoreInfoPos += fullNameSize;
+
+            if (enableState == TracepointEnableState::Disabled && !leader)
+            {
+                // Don't restore disabled events.
+                continue;
+            }
+
+            auto const colonPos = fullName.find(':');
+            if (colonPos == std::string_view::npos)
+            {
+                // Unexpected: invalid name.
+                if (error == 0)
+                {
+                    error = ENOENT;
+                }
+
+                if (leader)
+                {
+                    break; // Cannot proceed.
+                }
+
+                continue;
+            }
+
+            PerfEventMetadata const* metadata = nullptr;
+            auto const metadataError = m_cache.FindOrAddFromSystem(
+                TracepointName(fullName.substr(0, colonPos), fullName.substr(colonPos + 1)),
+                &metadata);
+            if (metadata == nullptr)
+            {
+                // Unexpected: metadata not found.
+                if (error == 0)
+                {
+                    error = metadataError;
+                }
+
+                if (leader)
+                {
+                    break; // Cannot proceed.
+                }
+
+                continue;
+            }
+
+            auto const addError = AddTracepoint(*metadata, std::move(existingFiles), enableState);
+            if (addError != 0)
+            {
+                // Unexpected: Event failed to add.
+                if (error == 0)
+                {
+                    error = addError;
+                }
+
+                if (leader)
+                {
+                    break; // Cannot proceed.
+                }
+
+                continue;
+            }
+        }
+    }
+    catch (...)
+    {
+        error = ENOMEM;
+    }
+
+    for (auto& fdImport : fdImports)
+    {
+        if (fdImport.Fd >= 0 && fdImport.ListIndex == UINT32_MAX)
+        {
+            close(fdImport.Fd);
+        }
+    }
+
+    InvokeSaveToFdsCallbackForExistingFds();
 
 Done:
 

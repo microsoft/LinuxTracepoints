@@ -6,14 +6,101 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#include <assert.h>
+#include <malloc.h>
 
 #include <unistd.h>
+#include <vector>
 
 #include <tracepoint/PerfEventAbi.h>
 
 using namespace std::string_view_literals;
 using namespace tracepoint_control;
 using namespace tracepoint_decode;
+
+static char
+GetChar()
+{
+    char const firstChar = (char)getchar();
+    auto ch = firstChar;
+    while (ch != '\n')
+    {
+        ch = (char)getchar();
+    }
+    return firstChar;
+}
+
+struct FdStore
+{
+    std::vector<int> fds;
+    std::vector<char const*> names;
+    bool error = false;
+
+    ~FdStore()
+    {
+        assert(fds.size() == names.size());
+        for (size_t i = 0; i != fds.size(); i += 1)
+        {
+            assert((fds[i] < 0) == (names[i] == nullptr));
+
+            if (fds[i] >= 0)
+            {
+                close(fds[i]);
+            }
+
+            if (names[i] != nullptr)
+            {
+                free(const_cast<char*>(names[i]));
+            }
+        }
+    }
+
+    FdStore() = default;
+
+    FdStore(FdStore const&) = delete;
+    FdStore& operator=(FdStore const&) = delete;
+};
+
+static void
+FdstoreCallback(
+    uintptr_t callbackContext,
+    _In_z_ char const* name,
+    int fd) noexcept
+{
+    auto& fdstore = *reinterpret_cast<FdStore*>(callbackContext);
+    fprintf(stderr, "FdstoreCallback: %s = %d\n", name, fd);
+    try
+    {
+        fdstore.fds.reserve(fdstore.fds.size() + 1);
+        fdstore.names.reserve(fdstore.names.size() + 1);
+
+        auto fdDup = dup(fd);
+        if (fdDup < 0)
+        {
+            fprintf(stderr, "dup failed\n");
+            fdstore.error = true;
+            return;
+        }
+
+        auto nameDup = strdup(name);
+        if (nameDup == nullptr)
+        {
+            close(fdDup);
+            fprintf(stderr, "strdup failed\n");
+            fdstore.error = true;
+            return;
+        }
+
+        fdstore.fds.push_back(fdDup);
+        fdstore.names.push_back(nameDup);
+    }
+    catch (...)
+    {
+        fprintf(stderr, "reserve failed\n");
+        fdstore.error = true;
+        return;
+    }
+}
 
 int
 main(int argc, char* argv[])
@@ -81,19 +168,29 @@ main(int argc, char* argv[])
     {
         fprintf(stderr, "\n");
 
-        if (mode == TracepointSessionMode::Circular)
+        printf("Press enter to refresh, s + enter to save/restore, x + enter to exit...\n");
+        char ch = GetChar();
+        if (ch == 'x' || ch == 'X')
         {
-            sleep(5);
+            break;
         }
-        else
+        else if (ch == 's' || ch == 'S')
+        {
+            FdStore fdstore;
+            session.SetSaveToFds("prefix", &FdstoreCallback, (uintptr_t)&fdstore, true);
+            session.Clear();
+            printf("Saved. Press enter to restore...\n");
+            ch = GetChar();
+            error = session.RestoreFromFds("prefix", fdstore.fds.size(), fdstore.fds.data(), fdstore.names.data());
+            printf("RestoreFromFds() = %u\n", error);
+        }
+
+        if (mode != TracepointSessionMode::Circular)
         {
             int activeCount;
+            printf("WaitForWakeup()...\n");
             error = session.WaitForWakeup(nullptr, nullptr, &activeCount);
             fprintf(stderr, "WaitForWakeup() = %u, active = %d\n", error, activeCount);
-            if (error != 0)
-            {
-                sleep(5);
-            }
         }
 
         error = session.EnumerateSampleEventsUnordered(

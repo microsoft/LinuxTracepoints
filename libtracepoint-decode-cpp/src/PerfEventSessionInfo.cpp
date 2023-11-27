@@ -102,22 +102,10 @@ PerfEventSessionInfo::GetClockOffset(
     }
 }
 
-uint32_t
-PerfEventSessionInfo::ClockId() const noexcept
-{
-    return m_clockId;
-}
-
 PerfEventTimeSpec
 PerfEventSessionInfo::ClockOffset() const noexcept
 {
     return { m_clockOffsetSec, m_clockOffsetNsec };
-}
-
-bool
-PerfEventSessionInfo::ClockOffsetKnown() const noexcept
-{
-    return m_clockOffsetKnown;
 }
 
 PerfEventTimeSpec

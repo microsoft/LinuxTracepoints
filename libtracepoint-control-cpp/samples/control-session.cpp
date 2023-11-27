@@ -67,8 +67,8 @@ main(int argc, char* argv[])
     unsigned enabled = 0;
     for (int argi = 2; argi < argc; argi += 1)
     {
-        error = session.EnableTracePoint(TracepointName(argv[argi]));
-        fprintf(stderr, "EnableTracePoint(%s) = %u\n", argv[argi], error);
+        error = session.EnableTracepoint(TracepointName(argv[argi]));
+        fprintf(stderr, "EnableTracepoint(%s) = %u\n", argv[argi], error);
         enabled += error == 0;
     }
 

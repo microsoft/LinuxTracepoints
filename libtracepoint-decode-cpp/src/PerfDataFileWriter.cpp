@@ -449,7 +449,7 @@ PerfDataFileWriter::SetSampleTimeHeader(uint64_t first, uint64_t last) noexcept
 }
 
 _Success_(return == 0) int
-PerfDataFileWriter::SetClockIdHeader(uint32_t clockid) noexcept
+PerfDataFileWriter::SetClockidHeader(uint32_t clockid) noexcept
 {
     uint64_t const clockid64 = clockid;
     return SetHeader(PERF_HEADER_CLOCKID, &clockid64, sizeof(clockid64));
@@ -477,14 +477,14 @@ PerfDataFileWriter::SetSessionInfoHeaders(PerfEventSessionInfo const& sessionInf
 {
     int error = 0;
 
-    auto const clockid = sessionInfo.ClockId();
+    auto const clockid = sessionInfo.Clockid();
     if (clockid == 0xFFFFFFFF)
     {
         m_headers[PERF_HEADER_CLOCKID].clear();
     }
     else
     {
-        error = SetClockIdHeader(clockid);
+        error = SetClockidHeader(clockid);
         if (error != 0)
         {
             goto Done;

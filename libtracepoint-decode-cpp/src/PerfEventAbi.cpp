@@ -111,7 +111,7 @@ EnumToString(
     return str;
 }
 
-_Ret_z_ char const*
+_Ret_z_ char const* _ltpDecl
 PerfEnumToString(perf_type_id value, _Pre_cap_(11) char* scratch) noexcept
 {
     static char const* const names[] = {
@@ -126,7 +126,7 @@ PerfEnumToString(perf_type_id value, _Pre_cap_(11) char* scratch) noexcept
     return EnumToString(names, ArrayCount(names), value, scratch);
 }
 
-_Ret_z_ char const*
+_Ret_z_ char const* _ltpDecl
 PerfEnumToString(perf_event_type value, _Pre_cap_(11) char* scratch) noexcept
 {
     static char const* const names[] = {

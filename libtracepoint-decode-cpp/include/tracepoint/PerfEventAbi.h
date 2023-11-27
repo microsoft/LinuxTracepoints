@@ -18,6 +18,14 @@
 #define _Pre_cap_(c)
 #endif
 
+#ifndef _ltpDecl
+#ifdef _WIN32
+#define _ltpDecl __cdecl
+#else
+#define _ltpDecl
+#endif
+#endif
+
 // uint32 value for perf_event_attr::type.
 enum perf_type_id : uint32_t {
     PERF_TYPE_HARDWARE = 0,
@@ -596,8 +604,8 @@ enum perf_event_type : uint32_t {
      * #define MAX_EVENT_NAME 64
      * 
      * struct perf_trace_event_type {
-     *     uint64_t	event_id;
-     *     char	name[MAX_EVENT_NAME];
+     *     uint64_t    event_id;
+     *     char    name[MAX_EVENT_NAME];
      * };
      * 
      * struct event_type_event {
@@ -644,10 +652,10 @@ enum perf_event_type : uint32_t {
      * Auxtrace type specific information. Describe me
      * 
      * struct auxtrace_info_event {
-	 *     struct perf_event_header header;
-	 *     uint32_t type;
-	 *     uint32_t reserved__; // For alignment
-	 *     uint64_t priv[];
+     *     struct perf_event_header header;
+     *     uint32_t type;
+     *     uint32_t reserved__; // For alignment
+     *     uint64_t priv[];
      * };
      */
     PERF_RECORD_AUXTRACE_INFO = 70,
@@ -659,21 +667,21 @@ enum perf_event_type : uint32_t {
      * by the CPU.
      * 
      * struct auxtrace_event {
-	 *      struct perf_event_header header;
-	 *      uint64_t size;
-	 *      uint64_t offset;
-	 *      uint64_t reference;
-	 *      uint32_t idx;
-	 *      uint32_t tid;
-	 *      uint32_t cpu;
-	 *      uint32_t reserved__; // For alignment
+     *      struct perf_event_header header;
+     *      uint64_t size;
+     *      uint64_t offset;
+     *      uint64_t reference;
+     *      uint32_t idx;
+     *      uint32_t tid;
+     *      uint32_t cpu;
+     *      uint32_t reserved__; // For alignment
      * };
      * 
      * struct aux_event {
-	 *      struct perf_event_header header;
-	 *      uint64_t	aux_offset;
-	 *      uint64_t	aux_size;
-	 *      uint64_t	flags;
+     *      struct perf_event_header header;
+     *      uint64_t    aux_offset;
+     *      uint64_t    aux_size;
+     *      uint64_t    flags;
      * };
      */
     PERF_RECORD_AUXTRACE = 71,
@@ -682,22 +690,22 @@ enum perf_event_type : uint32_t {
      * Describes an error in hardware tracing
      * 
      * enum auxtrace_error_type {
-	 *     PERF_AUXTRACE_ERROR_ITRACE  = 1,
-	 *     PERF_AUXTRACE_ERROR_MAX
+     *     PERF_AUXTRACE_ERROR_ITRACE  = 1,
+     *     PERF_AUXTRACE_ERROR_MAX
      * };
      * 
      * #define MAX_AUXTRACE_ERROR_MSG 64
      * 
      * struct auxtrace_error_event {
-	 *     struct perf_event_header header;
-	 *     uint32_t type;
-	 *     uint32_t code;
-	 *     uint32_t cpu;
-	 *     uint32_t pid;
-	 *     uint32_t tid;
-	 *     uint32_t reserved__; // For alignment
-	 *     uint64_t ip;
-	 *     char msg[MAX_AUXTRACE_ERROR_MSG];
+     *     struct perf_event_header header;
+     *     uint32_t type;
+     *     uint32_t code;
+     *     uint32_t cpu;
+     *     uint32_t pid;
+     *     uint32_t tid;
+     *     uint32_t reserved__; // For alignment
+     *     uint64_t ip;
+     *     char msg[MAX_AUXTRACE_ERROR_MSG];
      * };
      */
     PERF_RECORD_AUXTRACE_ERROR = 72,
@@ -718,8 +726,8 @@ enum perf_event_type : uint32_t {
 
     /*
      * struct compressed_event {
-     *     struct perf_event_header	header;
-     *     char				data[];
+     *     struct perf_event_header    header;
+     *     char                data[];
      * };
 
     The header is followed by compressed data frame that can be decompressed
@@ -753,12 +761,12 @@ namespace tracepoint_decode
 {
     // Returns a string for the PERF_TYPE_* enum value, e.g. "HARDWARE".
     // If enum is not recognized, formats decimal value into and returns scratch.
-    _Ret_z_ char const*
+    _Ret_z_ char const* _ltpDecl
     PerfEnumToString(perf_type_id value, _Pre_cap_(11) char* scratch) noexcept;
 
     // Returns a string for the PERF_RECORD_* enum value, e.g. "SAMPLE".
     // If enum is not recognized, formats decimal value into and returns scratch.
-    _Ret_z_ char const*
+    _Ret_z_ char const* _ltpDecl
     PerfEnumToString(perf_event_type value, _Pre_cap_(11) char* scratch) noexcept;
 }
 // namespace tracepoint_decode

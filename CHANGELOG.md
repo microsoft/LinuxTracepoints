@@ -1,17 +1,21 @@
 # LinuxTracepoints Change Log
 
-## v1.3.0 (TBD)
+## v1.3.0 (2023-11-27)
 
-- **Breaking changes** to `PerfDataFile` and `PerfSampleEventInfo` classes:
+- **Breaking changes** to `PerfDataFile`:
   - `dataFile.AttrCount()` method replaced by `EventDescCount()` method.
   - `dataFile.Attr(index)` method replaced by `EventDesc(index)` method.
     The returned `PerfEventDesc` object contains an `attr` pointer.
   - `dataFile.EventDescById(id)` method replaced by `FindEventDescById(id)`.
+- **Breaking changes** to `PerfSampleEventInfo`:
   - `eventInfo.session` field renamed to `session_info`.
   - `eventInfo.attr` field replaced by `Attr()` method.
   - `eventInfo.name` field replaced by `Name()` method.
   - `eventInfo.sample_type` field replaced by `SampleType()` method.
   - `eventInfo.raw_meta` field replaced by `Metadata()` method.
+- **Breaking changes** to `TracepointSession`:
+  - `session.EnableTracePoint(...)` method renamed to `EnableTracepoint(...)`.
+  - `session.DisableTracePoint(...)` method renamed to `DisableTracepoint(...)`.
 - `EventFormatter` formats timestamps as date-time if clock information is
   available in the event metadata. If clock information is not present, it
   continues to format timestamps as seconds.
@@ -31,7 +35,7 @@
   - New: try `/sys/kernel/tracing/user_events_data`; if that doesn't exist,
     parse `/proc/mounts` to find the `tracefs` or `debugfs` mount point.
   - Rationale: Probe an absolute path so that containers don't have to
-    create a fake `/proc/mounts` and for efficiency.
+    create a fake `/proc/mounts` and for efficiency in the common case.
 
 ## v1.2.1 (2023-07-24)
 

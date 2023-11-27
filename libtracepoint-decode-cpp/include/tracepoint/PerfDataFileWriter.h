@@ -213,14 +213,14 @@ namespace tracepoint_decode
 
         // Sets the data for the CLOCKID header.
         _Success_(return == 0) int
-        SetClockIdHeader(uint32_t clockid) noexcept;
+        SetClockidHeader(uint32_t clockid) noexcept;
 
         // Sets the data for the CLOCK_DATA header.
         _Success_(return == 0) int
         SetClockDataHeader(uint32_t clockid, uint64_t wallClockNS, uint64_t clockidTimeNS) noexcept;
 
         // Sets or resets the data for headers available in the specified sessionInfo:
-        // - CLOCKID: Set based on ClockId(); cleared if ClockId() == 0xFFFFFFFF.
+        // - CLOCKID: Set based on Clockid(); cleared if Clockid() == 0xFFFFFFFF.
         // - CLOCK_DATA: Set based on GetClockOffset(); cleared if !ClockOffsetKnown().
         _Success_(return == 0) int
         SetSessionInfoHeaders(PerfEventSessionInfo const& sessionInfo) noexcept;

@@ -61,8 +61,11 @@ namespace tracepoint_decode
 
         // Returns the clockid of the session timestamp, e.g. CLOCK_MONOTONIC.
         // Returns 0xFFFFFFFF if the session timestamp clockid is unknown.
-        uint32_t
-        ClockId() const noexcept;
+        constexpr uint32_t
+        Clockid() const noexcept
+        {
+            return m_clockId;
+        }
 
         // Returns the CLOCK_REALTIME value that corresponds to an event timestamp of 0
         // for this session. Returns 1970 if the session timestamp offset is unknown.
@@ -70,8 +73,11 @@ namespace tracepoint_decode
         ClockOffset() const noexcept;
 
         // Returns true if session clock offset is known.
-        bool
-        ClockOffsetKnown() const noexcept;
+        constexpr bool
+        ClockOffsetKnown() const noexcept
+        {
+            return m_clockOffsetKnown;
+        }
 
         // Converts time from session timestamp to real-time (time since 1970):
         // TimeToRealTime = ClockOffset() + time.

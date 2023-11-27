@@ -74,107 +74,144 @@ RoundUpBufferSize(uint32_t pageSize, size_t bufferSize) noexcept
     return BufferSizeMax;
 }
 
-/*
-Manages a scatter-gather list of chunks of memory that need to be written to
-the perf.data file. This allows us to reduce the number of kernel calls.
-Instead of calling write() once per event (or twice if the event wraps), we
-call writev once for every 16 noncontinguous blocks of memory to be written.
-*/
-class IovecList
+static tracepoint_decode::PerfEventSessionInfo
+MakeSessionInfo(uint32_t clockid) noexcept
 {
-    static constexpr unsigned Max = 16;
-    unsigned m_used = 0;
-    iovec m_vecs[Max];
+    static const auto Billion = 1000000000u;
 
-public:
+    tracepoint_decode::PerfEventSessionInfo sessionInfo;
+    sessionInfo.SetClockid(clockid);
 
-    unsigned
-    RoomLeft() const noexcept
+    timespec monotonic;
+    timespec realtime;
+    if (0 == clock_gettime(clockid, &monotonic) &&
+        0 == clock_gettime(CLOCK_REALTIME, &realtime))
     {
-        return Max - m_used;
-    }
-
-    void
-    Add(uint8_t const* p, size_t c) noexcept
-    {
-        assert(m_used < Max); // Caller is responsible for checking RoomLeft().
-        auto const lastVec = m_used - 1;
-        if (0 != m_used &&
-            p == static_cast<uint8_t*>(m_vecs[lastVec].iov_base) + m_vecs[lastVec].iov_len)
+        uint64_t monotonicNS, realtimeNS;
+        if (monotonic.tv_sec < realtime.tv_sec ||
+            (monotonic.tv_sec == realtime.tv_sec && monotonic.tv_nsec < realtime.tv_nsec))
         {
-            // This block immediately follows the last block. Merge the blocks.
-            m_vecs[lastVec].iov_len += c;
+            monotonicNS = 0;
+            realtimeNS = static_cast<uint64_t>(realtime.tv_sec - monotonic.tv_sec) * Billion
+                + realtime.tv_nsec - monotonic.tv_nsec;
         }
         else
         {
-            m_vecs[m_used].iov_base = const_cast<uint8_t*>(p);
-            m_vecs[m_used].iov_len = c;
-            m_used += 1;
+            realtimeNS = 0;
+            monotonicNS = static_cast<uint64_t>(monotonic.tv_sec - realtime.tv_sec) * Billion
+                + monotonic.tv_nsec - realtime.tv_nsec;
         }
+
+        sessionInfo.SetClockData(clockid, realtimeNS, monotonicNS);
     }
 
-    _Success_(return == 0) int
-    Flush(PerfDataFileWriter& output) noexcept
+    return sessionInfo;
+}
+
+namespace
+{
+    /*
+    Manages a scatter-gather list of chunks of memory that need to be written to
+    the perf.data file. This allows us to reduce the number of kernel calls.
+    Instead of calling write() once per event (or twice if the event wraps), we
+    call writev once for every 16 noncontinguous blocks of memory to be written.
+    */
+    class IovecList
     {
-        assert(m_used <= Max);
+        static constexpr unsigned Max = 16;
+        unsigned m_used = 0;
+        iovec m_vecs[Max];
 
-        int error;
-        if (m_used == 0)
+    public:
+
+        unsigned
+        RoomLeft() const noexcept
         {
-            error = 0;
-        }
-        else
-        {
-            size_t cbToWrite = 0;
-            for (unsigned i = 0; i != m_used; i += 1)
-            {
-                cbToWrite += m_vecs[i].iov_len;
-                if (cbToWrite < m_vecs[i].iov_len)
-                {
-                    error = ERANGE;
-                    goto Done;
-                }
-            }
-
-            for (auto skip = 0u;;)
-            {
-                auto const cbWritten = output.WriteEventDataIovecs(m_vecs + skip, m_used - skip);
-                if (cbWritten < 0)
-                {
-                    error = errno;
-                    break;
-                }
-                else if (static_cast<size_t>(cbWritten) == cbToWrite)
-                {
-                    error = 0;
-                    break;
-                }
-
-                // Partial write. Skip what was written and try again.
-
-                auto cbToSkip = static_cast<size_t>(cbWritten);
-                assert(cbToWrite > cbToSkip);
-                cbToWrite -= cbToSkip;
-
-                while (cbToSkip >= m_vecs[skip].iov_len)
-                {
-                    cbToSkip -= m_vecs[skip].iov_len;
-                    skip += 1;
-                }
-
-                assert(skip < m_used);
-                m_vecs[skip].iov_base = static_cast<uint8_t*>(m_vecs[skip].iov_base) + cbToSkip;
-                m_vecs[skip].iov_len = m_vecs[skip].iov_len - cbToSkip;
-            }
-
-            m_used = 0;
+            return Max - m_used;
         }
 
-    Done:
+        void
+        Add(uint8_t const* p, size_t c) noexcept
+        {
+            assert(m_used < Max); // Caller is responsible for checking RoomLeft().
+            auto const lastVec = m_used - 1;
+            if (0 != m_used &&
+                p == static_cast<uint8_t*>(m_vecs[lastVec].iov_base) + m_vecs[lastVec].iov_len)
+            {
+                // This block immediately follows the last block. Merge the blocks.
+                m_vecs[lastVec].iov_len += c;
+            }
+            else
+            {
+                m_vecs[m_used].iov_base = const_cast<uint8_t*>(p);
+                m_vecs[m_used].iov_len = c;
+                m_used += 1;
+            }
+        }
 
-        return error;
-    }
-};
+        _Success_(return == 0) int
+        Flush(PerfDataFileWriter& output) noexcept
+        {
+            assert(m_used <= Max);
+
+            int error;
+            if (m_used == 0)
+            {
+                error = 0;
+            }
+            else
+            {
+                size_t cbToWrite = 0;
+                for (unsigned i = 0; i != m_used; i += 1)
+                {
+                    cbToWrite += m_vecs[i].iov_len;
+                    if (cbToWrite < m_vecs[i].iov_len)
+                    {
+                        error = ERANGE;
+                        goto Done;
+                    }
+                }
+
+                for (auto skip = 0u;;)
+                {
+                    auto const cbWritten = output.WriteEventDataIovecs(m_vecs + skip, m_used - skip);
+                    if (cbWritten < 0)
+                    {
+                        error = errno;
+                        break;
+                    }
+                    else if (static_cast<size_t>(cbWritten) == cbToWrite)
+                    {
+                        error = 0;
+                        break;
+                    }
+
+                    // Partial write. Skip what was written and try again.
+
+                    auto cbToSkip = static_cast<size_t>(cbWritten);
+                    assert(cbToWrite > cbToSkip);
+                    cbToWrite -= cbToSkip;
+
+                    while (cbToSkip >= m_vecs[skip].iov_len)
+                    {
+                        cbToSkip -= m_vecs[skip].iov_len;
+                        skip += 1;
+                    }
+
+                    assert(skip < m_used);
+                    m_vecs[skip].iov_base = static_cast<uint8_t*>(m_vecs[skip].iov_base) + cbToSkip;
+                    m_vecs[skip].iov_len = m_vecs[skip].iov_len - cbToSkip;
+                }
+
+                m_used = 0;
+            }
+
+        Done:
+
+            return error;
+        }
+    };
+}
 
 // TracepointInfo
 
@@ -580,7 +617,8 @@ TracepointSession::TracepointSession(
 TracepointSession::TracepointSession(
     TracepointCache& cache,
     TracepointSessionOptions const& options) noexcept(false)
-    : m_cache(cache)
+    : m_sessionInfo(MakeSessionInfo(CLOCK_MONOTONIC_RAW))
+    , m_cache(cache)
     , m_mode(options.m_mode)
     , m_wakeupUseWatermark(options.m_wakeupUseWatermark)
     , m_wakeupValue(options.m_wakeupValue)
@@ -591,46 +629,17 @@ TracepointSession::TracepointSession(
     , m_buffers(std::make_unique<BufferInfo[]>(m_bufferCount)) // may throw bad_alloc.
     , m_tracepointInfoByCommonType() // may throw bad_alloc (but probably doesn't).
     , m_tracepointInfoBySampleId() // may throw bad_alloc (but probably doesn't).
-    , m_eventDataBuffer()
-    , m_enumeratorBookmarks()
-    , m_pollfd(nullptr)
     , m_bufferLeaderFiles(nullptr)
     , m_sampleEventCount(0)
     , m_lostEventCount(0)
     , m_corruptEventCount(0)
     , m_corruptBufferCount(0)
-    , m_sessionInfo()
+    , m_eventDataBuffer()
+    , m_enumeratorBookmarks()
+    , m_pollfd(nullptr)
     , m_enumEventInfo()
 {
-    static const auto Billion = 1000000000u;
-
     assert(options.m_mode <= TracepointSessionMode::RealTime);
-    m_sessionInfo.SetClockid(CLOCK_MONOTONIC_RAW);
-
-    timespec monotonic;
-    timespec realtime;
-    if (0 == clock_gettime(CLOCK_MONOTONIC_RAW, &monotonic) &&
-        0 == clock_gettime(CLOCK_REALTIME, &realtime))
-    {
-        uint64_t monotonicNS, realtimeNS;
-        if (monotonic.tv_sec < realtime.tv_sec ||
-            (monotonic.tv_sec == realtime.tv_sec && monotonic.tv_nsec < realtime.tv_nsec))
-        {
-            monotonicNS = 0;
-            realtimeNS = static_cast<uint64_t>(realtime.tv_sec - monotonic.tv_sec) * Billion
-                + realtime.tv_nsec - monotonic.tv_nsec;
-        }
-        else
-        {
-            realtimeNS = 0;
-            monotonicNS = static_cast<uint64_t>(monotonic.tv_sec - realtime.tv_sec) * Billion
-                + monotonic.tv_nsec - realtime.tv_nsec;
-        }
-
-        m_sessionInfo.SetClockData(CLOCK_MONOTONIC_RAW, realtimeNS, monotonicNS);
-    }
-
-    return;
 }
 
 TracepointCache&
@@ -690,28 +699,34 @@ TracepointSession::CorruptBufferCount() const noexcept
 void
 TracepointSession::Clear() noexcept
 {
-    m_tracepointInfoByCommonType.clear();
-    m_tracepointInfoBySampleId.clear();
-    m_bufferLeaderFiles = nullptr;
     for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
     {
         m_buffers[bufferIndex].Mmap.reset();
     }
+
+    m_tracepointInfoByCommonType.clear();
+    m_tracepointInfoBySampleId.clear();
+    m_bufferLeaderFiles = nullptr;
+
+    m_sampleEventCount = 0;
+    m_lostEventCount = 0;
+    m_corruptEventCount = 0;
+    m_corruptBufferCount = 0;
 }
 
 _Success_(return == 0) int
-TracepointSession::DisableTracePoint(unsigned id) noexcept
+TracepointSession::DisableTracepoint(unsigned id) noexcept
 {
     auto const metadata = m_cache.FindById(id);
     auto const error = metadata == nullptr
         ? ENOENT
-        : DisableTracePointImpl(*metadata);
+        : DisableTracepointImpl(*metadata);
 
     return error;
 }
 
 _Success_(return == 0) int
-TracepointSession::DisableTracePoint(TracepointName name) noexcept
+TracepointSession::DisableTracepoint(TracepointName name) noexcept
 {
     int error;
 
@@ -719,25 +734,25 @@ TracepointSession::DisableTracePoint(TracepointName name) noexcept
     error = m_cache.FindOrAddFromSystem(name, &metadata);
     if (error == 0)
     {
-        error = DisableTracePointImpl(*metadata);
+        error = DisableTracepointImpl(*metadata);
     }
 
     return error;
 }
 
 _Success_(return == 0) int
-TracepointSession::EnableTracePoint(unsigned id) noexcept
+TracepointSession::EnableTracepoint(unsigned id) noexcept
 {
     auto const metadata = m_cache.FindById(id);
     auto const error = metadata == nullptr
         ? ENOENT
-        : EnableTracePointImpl(*metadata);
+        : EnableTracepointImpl(*metadata);
 
     return error;
 }
 
 _Success_(return == 0) int
-TracepointSession::EnableTracePoint(TracepointName name) noexcept
+TracepointSession::EnableTracepoint(TracepointName name) noexcept
 {
     int error;
 
@@ -745,7 +760,7 @@ TracepointSession::EnableTracePoint(TracepointName name) noexcept
     error = m_cache.FindOrAddFromSystem(name, &metadata);
     if (error == 0)
     {
-        error = EnableTracePointImpl(*metadata);
+        error = EnableTracepointImpl(*metadata);
     }
 
     return error;
@@ -861,7 +876,7 @@ TracepointSession::GetBufferFiles(
 _Success_(return == 0) int
 TracepointSession::SavePerfDataFile(
     _In_z_ char const* perfDataFileName,
-    int mode) noexcept
+    TracepointSavePerfDataFileOptions const& options) noexcept
 {
     int error = 0;
     PerfDataFileWriter output;
@@ -871,7 +886,17 @@ TracepointSession::SavePerfDataFile(
         uint64_t last;
     } times = { ~uint64_t(0), 0 };
 
-    error = output.Create(perfDataFileName, mode);
+    if (options.m_timestampWrittenRangeFirst)
+    {
+        *options.m_timestampWrittenRangeFirst = 0;
+    }
+
+    if (options.m_timestampWrittenRangeLast)
+    {
+        *options.m_timestampWrittenRangeLast = 0;
+    }
+
+    error = output.Create(perfDataFileName, options.m_openMode);
     if (error != 0)
     {
         goto Done;
@@ -881,11 +906,44 @@ TracepointSession::SavePerfDataFile(
 
     if (m_bufferLeaderFiles != nullptr)
     {
-        auto recordFn = [this, &vecList, &times](
+        auto recordFn = [this, &vecList, &times, &options](
             uint8_t const* bufferData,
             uint16_t recordSize,
             uint32_t recordBufferPos) noexcept
         {
+            // Look up the correct value for m_enumEventInfo.event_desc.
+
+            m_enumEventInfo.event_desc = nullptr;
+            if (PERF_RECORD_SAMPLE == BufferDataPosToHeader(bufferData, recordBufferPos)->type)
+            {
+                // TODO: We don't need a full parse here. Could potentially
+                // save a few cycles by inlining ParseSample and removing the
+                // parts we don't need.
+
+                // If this succeeds it will set m_enumEventInfo.
+                if (ParseSample(bufferData, recordSize, recordBufferPos))
+                {
+                    if (options.m_timestampFilterMin > m_enumEventInfo.time ||
+                        options.m_timestampFilterMax < m_enumEventInfo.time)
+                    {
+                        // TODO: Optimization - in some cases, this means we're going
+                        // to skip the rest of the buffer, so perhaps detect those
+                        // cases and stop the enumeration?
+                        return false; // Skip this event.
+                    }
+
+                    if (m_enumEventInfo.time < times.first)
+                    {
+                        times.first = m_enumEventInfo.time;
+                    }
+
+                    if (m_enumEventInfo.time > times.last)
+                    {
+                        times.last = m_enumEventInfo.time;
+                    }
+                }
+            }
+
             // Add event data to vecList.
 
             auto const unmaskedPosEnd = recordBufferPos + recordSize;
@@ -901,29 +959,6 @@ TracepointSession::SavePerfDataFile(
                 vecList.Add(bufferData, unmaskedPosEnd - m_bufferSize);
             }
 
-            // Look up the correct value for m_enumEventInfo.event_desc.
-
-            m_enumEventInfo.event_desc = nullptr;
-            if (PERF_RECORD_SAMPLE == BufferDataPosToHeader(bufferData, recordBufferPos)->type)
-            {
-                // TODO: We don't need a full parse here. Could potentially
-                // save a few cycles by inlining ParseSample and removing the
-                // parts we don't need.
-
-                // If this succeeds it will set m_enumEventInfo.
-                if (ParseSample(bufferData, recordSize, recordBufferPos))
-                {
-                    if (m_enumEventInfo.time < times.first)
-                    {
-                        times.first = m_enumEventInfo.time;
-                    }
-
-                    if (m_enumEventInfo.time > times.last)
-                    {
-                        times.last = m_enumEventInfo.time;
-                    }
-                }
-            }
             return true;
         };
 
@@ -1002,6 +1037,16 @@ TracepointSession::SavePerfDataFile(
         {
             goto Done;
         }
+
+        if (options.m_timestampWrittenRangeFirst)
+        {
+            *options.m_timestampWrittenRangeFirst = times.first;
+        }
+
+        if (options.m_timestampWrittenRangeLast)
+        {
+            *options.m_timestampWrittenRangeLast = times.last;
+        }
     }
 
     // CLOCKID, CLOCK_DATA
@@ -1021,220 +1066,37 @@ Done:
 }
 
 _Success_(return == 0) int
-TracepointSession::DisableTracePointImpl(PerfEventMetadata const& metadata) noexcept
+TracepointSession::DisableTracepointImpl(PerfEventMetadata const& metadata) noexcept
 {
     int error;
 
-    auto const it = m_tracepointInfoByCommonType.find(metadata.Id());
-    if (it == m_tracepointInfoByCommonType.end())
+    auto const existingIt = m_tracepointInfoByCommonType.find(metadata.Id());
+    if (existingIt == m_tracepointInfoByCommonType.end())
     {
         error = ENOENT;
     }
-    else if (it->second.m_enableState == TracepointEnableState::Disabled)
-    {
-        error = 0;
-    }
     else
     {
-        error = IoctlForEachFile(it->second.m_bufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_DISABLE, nullptr);
-        it->second.m_enableState = error
-            ? TracepointEnableState::Unknown
-            : TracepointEnableState::Disabled;
+        error = SetTracepointEnableState(existingIt->second, false);
     }
 
     return error;
 }
 
 _Success_(return == 0) int
-TracepointSession::EnableTracePointImpl(PerfEventMetadata const& metadata) noexcept
+TracepointSession::EnableTracepointImpl(PerfEventMetadata const& metadata) noexcept
 {
     int error;
-    uint32_t cIdsAdded = 0;
-    uint64_t* pIds = nullptr;
 
-    auto existingIt = m_tracepointInfoByCommonType.find(metadata.Id());
-    if (existingIt != m_tracepointInfoByCommonType.end())
+    auto const existingIt = m_tracepointInfoByCommonType.find(metadata.Id());
+    if (existingIt == m_tracepointInfoByCommonType.end())
     {
-        // Event already in list. Make sure it's enabled.
-        if (existingIt->second.m_enableState == TracepointEnableState::Enabled)
-        {
-            error = 0;
-        }
-        else
-        {
-            auto const& tpi = existingIt->second;
-            error = IoctlForEachFile(
-                tpi.m_bufferFiles.get(),
-                tpi.m_bufferFilesCount,
-                PERF_EVENT_IOC_ENABLE,
-                nullptr);
-            existingIt->second.m_enableState = error
-                ? TracepointEnableState::Unknown
-                : TracepointEnableState::Enabled;
-        }
-
-        // Note: skip cleanup, even for error case.
-        goto Done;
+        error = AddTracepoint(metadata, TracepointEnableState::Enabled);
     }
-
-    try
+    else
     {
-        auto const systemName = metadata.SystemName();
-        auto const eventName = metadata.Name();
-        auto const cbEventDescStorage =
-            sizeof(perf_event_attr) +
-            m_bufferCount * sizeof(uint64_t) +
-            systemName.size() + 1 + eventName.size() + 1;
-        auto eventDescStorage = std::make_unique<char unsigned[]>(cbEventDescStorage);
-
-        auto const pAttr = reinterpret_cast<perf_event_attr*>(eventDescStorage.get());
-        pAttr->type = PERF_TYPE_TRACEPOINT;
-        pAttr->size = sizeof(perf_event_attr);
-        pAttr->config = metadata.Id();
-        pAttr->sample_period = 1;
-        pAttr->sample_type = m_sampleType;
-        pAttr->read_format = PERF_FORMAT_ID; // Must match definition of struct ReadFormat.
-        pAttr->watermark = m_wakeupUseWatermark;
-        pAttr->use_clockid = 1;
-        pAttr->write_backward = !IsRealtime();
-        pAttr->wakeup_events = m_wakeupValue;
-        pAttr->clockid = CLOCK_MONOTONIC_RAW;
-
-        // pIds will be initialized after file handle creation.
-        pIds = reinterpret_cast<uint64_t*>(pAttr + 1);
-
-        auto const pName = reinterpret_cast<char*>(pIds + m_bufferCount);
-        {
-            size_t i = 0;
-            memcpy(&pName[i], systemName.data(), systemName.size());
-            i += systemName.size();
-            pName[i] = ':';
-            i += 1;
-            memcpy(&pName[i], eventName.data(), eventName.size());
-            i += eventName.size();
-            pName[i] = '\0';
-        }
-
-        PerfEventDesc const eventDesc = {
-            pAttr,
-            pName,
-            &metadata,
-            pIds,
-            m_bufferCount
-        };
-
-        auto er = m_tracepointInfoByCommonType.try_emplace(metadata.Id(),
-            eventDesc,
-            std::move(eventDescStorage),
-            std::make_unique<unique_fd[]>(m_bufferCount),
-            m_bufferCount);
-        assert(er.second);
-        auto& tpi = er.first->second;
-
-        // Starting from here, if there is an error then we must erase(metadata.Id).
-
-        for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
-        {
-            errno = 0;
-            tpi.m_bufferFiles[bufferIndex].reset(perf_event_open(pAttr, -1, bufferIndex, -1, PERF_FLAG_FD_CLOEXEC));
-            if (!tpi.m_bufferFiles[bufferIndex])
-            {
-                error = errno;
-                if (error == 0)
-                {
-                    error = ENODEV;
-                }
-
-                goto Error;
-            }
-        }
-
-        if (m_bufferLeaderFiles)
-        {
-            // Leader already exists. Add this event to the leader's mmaps.
-            error = IoctlForEachFile(tpi.m_bufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_SET_OUTPUT, m_bufferLeaderFiles);
-            if (error)
-            {
-                goto Error;
-            }
-        }
-        else
-        {
-            auto const mmapSize = m_pageSize + m_bufferSize;
-            auto const prot = IsRealtime()
-                ? PROT_READ | PROT_WRITE
-                : PROT_READ;
-
-            // This is the first event. Make it the "leader".
-            for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
-            {
-                errno = 0;
-                auto cpuMap = mmap(nullptr, mmapSize, prot, MAP_SHARED, tpi.m_bufferFiles[bufferIndex].get(), 0);
-                if (MAP_FAILED == cpuMap)
-                {
-                    error = errno;
-
-                    // Clean up any mmaps that we opened.
-                    for (uint32_t bufferIndex2 = 0; bufferIndex2 != bufferIndex; bufferIndex2 += 1)
-                    {
-                        m_buffers[bufferIndex2].Mmap.reset();
-                    }
-
-                    if (error == 0)
-                    {
-                        error = ENODEV;
-                    }
-
-                    goto Error;
-                }
-
-                m_buffers[bufferIndex].Mmap.reset(cpuMap, mmapSize);
-            }
-        }
-
-        // Find the sample_ids for the new tracepoints.
-        for (; cIdsAdded != m_bufferCount; cIdsAdded += 1)
-        {
-            ReadFormat data;
-            error = tpi.Read(cIdsAdded, &data);
-            if (error != 0)
-            {
-                goto Error;
-            }
-
-            pIds[cIdsAdded] = data.id;
-
-            auto const added = m_tracepointInfoBySampleId.emplace(data.id, &tpi).second;
-            assert(added);
-            (void)added;
-        }
-
-        if (!m_bufferLeaderFiles)
-        {
-            m_bufferLeaderFiles = tpi.m_bufferFiles.get(); // Commit this event as the leader.
-        }
-
-        tpi.m_enableState = TracepointEnableState::Enabled;
-        error = 0;
-        goto Done;
+        error = SetTracepointEnableState(existingIt->second, true);
     }
-    catch (...)
-    {
-        error = ENOMEM;
-        goto Error;
-    }
-
-Error:
-
-    for (uint32_t i = 0; i != cIdsAdded; i += 1)
-    {
-        m_tracepointInfoBySampleId.erase(pIds[i]);
-    }
-
-    // May or may not have been added yet. If not, erase does nothing.
-    m_tracepointInfoByCommonType.erase(metadata.Id());
-
-Done:
 
     return error;
 }
@@ -1736,4 +1598,218 @@ TracepointSession::EnumeratorMoveNext(
     }
 
     return false;
+}
+
+_Success_(return == 0) int
+TracepointSession::SetTracepointEnableState(
+    TracepointInfoImpl & tpi,
+    bool enabled) noexcept
+{
+    int error;
+
+    static auto const UnknownState = TracepointEnableState::Unknown;
+    auto const desiredState = enabled
+        ? TracepointEnableState::Enabled
+        : TracepointEnableState::Disabled;
+
+    if (desiredState == tpi.m_enableState)
+    {
+        error = 0;
+        goto Done;
+    }
+
+    tpi.m_enableState = UnknownState;
+
+    error = IoctlForEachFile(
+        tpi.m_bufferFiles.get(),
+        tpi.m_bufferFilesCount,
+        enabled ? PERF_EVENT_IOC_ENABLE : PERF_EVENT_IOC_DISABLE,
+        nullptr);
+    if (error == 0)
+    {
+        tpi.m_enableState = desiredState;
+    }
+
+Done:
+
+    return error;
+}
+
+_Success_(return == 0) int
+TracepointSession::AddTracepoint(
+    PerfEventMetadata const& metadata,
+    TracepointEnableState enableState) noexcept(false)
+{
+    int error;
+    uint32_t cIdsAdded = 0;
+    uint64_t* pIds = nullptr;
+
+    try
+    {
+        auto const systemName = metadata.SystemName();
+        auto const eventName = metadata.Name();
+        if (systemName.size() > 65535 ||
+            eventName.size() > 65535)
+        {
+            error = E2BIG;
+            goto Error;
+        }
+
+        auto const cbEventDescStorage =
+            sizeof(perf_event_attr) +
+            m_bufferCount * sizeof(uint64_t) +
+            systemName.size() + 1 + eventName.size() + 1;
+        auto eventDescStorage = std::make_unique<char unsigned[]>(cbEventDescStorage);
+
+        auto const pAttr = reinterpret_cast<perf_event_attr*>(eventDescStorage.get());
+        pAttr->type = PERF_TYPE_TRACEPOINT;
+        pAttr->size = sizeof(perf_event_attr);
+        pAttr->config = metadata.Id();
+        pAttr->sample_period = 1;
+        pAttr->sample_type = m_sampleType;
+        pAttr->read_format = PERF_FORMAT_ID; // Must match definition of struct ReadFormat.
+        pAttr->watermark = m_wakeupUseWatermark;
+        pAttr->use_clockid = 1;
+        pAttr->write_backward = !IsRealtime();
+        pAttr->wakeup_events = m_wakeupValue;
+        pAttr->clockid = m_sessionInfo.Clockid();
+
+        // pIds will be initialized after file handle creation.
+        // cIdsAdded tracks initialization.
+        pIds = reinterpret_cast<uint64_t*>(pAttr + 1);
+
+        auto const pName = reinterpret_cast<char*>(pIds + m_bufferCount);
+        {
+            size_t i = 0;
+            memcpy(&pName[i], systemName.data(), systemName.size());
+            i += systemName.size();
+            pName[i] = ':';
+            i += 1;
+            memcpy(&pName[i], eventName.data(), eventName.size());
+            i += eventName.size();
+            pName[i] = '\0';
+        }
+
+        PerfEventDesc const eventDesc = {
+            pAttr,
+            pName,
+            &metadata,
+            pIds,
+            m_bufferCount
+        };
+
+        auto er = m_tracepointInfoByCommonType.try_emplace(metadata.Id(),
+            eventDesc,
+            std::move(eventDescStorage),
+            std::make_unique<unique_fd[]>(m_bufferCount),
+            m_bufferCount);
+        assert(er.second);
+        auto& tpi = er.first->second;
+        tpi.m_enableState = enableState;
+
+        // Starting from here, if there is an error then we must erase(metadata.Id).
+
+        for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
+        {
+            errno = 0;
+            tpi.m_bufferFiles[bufferIndex].reset(perf_event_open(pAttr, -1, bufferIndex, -1, PERF_FLAG_FD_CLOEXEC));
+            if (!tpi.m_bufferFiles[bufferIndex])
+            {
+                error = errno;
+                if (error == 0)
+                {
+                    error = ENODEV;
+                }
+
+                goto Error;
+            }
+        }
+
+        if (m_bufferLeaderFiles)
+        {
+            // Leader already exists. Add this event to the leader's mmaps.
+            error = IoctlForEachFile(tpi.m_bufferFiles.get(), m_bufferCount, PERF_EVENT_IOC_SET_OUTPUT, m_bufferLeaderFiles);
+            if (error)
+            {
+                goto Error;
+            }
+        }
+        else
+        {
+            // This is the first event. Make it the "leader" (the owner of the session buffers).
+            auto const mmapSize = m_pageSize + m_bufferSize;
+            auto const prot = IsRealtime()
+                ? PROT_READ | PROT_WRITE
+                : PROT_READ;
+            for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
+            {
+                errno = 0;
+                auto cpuMap = mmap(nullptr, mmapSize, prot, MAP_SHARED, tpi.m_bufferFiles[bufferIndex].get(), 0);
+                if (MAP_FAILED == cpuMap)
+                {
+                    error = errno;
+
+                    // Clean up any mmaps that we opened.
+                    for (uint32_t bufferIndex2 = 0; bufferIndex2 != bufferIndex; bufferIndex2 += 1)
+                    {
+                        m_buffers[bufferIndex2].Mmap.reset();
+                    }
+
+                    if (error == 0)
+                    {
+                        error = ENODEV;
+                    }
+
+                    goto Error;
+                }
+
+                m_buffers[bufferIndex].Mmap.reset(cpuMap, mmapSize);
+            }
+        }
+
+        // Find the sample_ids for the new tracepoints.
+        for (; cIdsAdded != m_bufferCount; cIdsAdded += 1)
+        {
+            ReadFormat data;
+            error = tpi.Read(cIdsAdded, &data);
+            if (error != 0)
+            {
+                goto Error;
+            }
+
+            pIds[cIdsAdded] = data.id;
+
+            auto const added = m_tracepointInfoBySampleId.emplace(data.id, &tpi).second;
+            assert(added);
+            (void)added;
+        }
+
+        // Success. Commit it. (No exceptions beyond this point.)
+
+        if (!m_bufferLeaderFiles)
+        {
+            m_bufferLeaderFiles = tpi.m_bufferFiles.get(); // Commit this event as the leader.
+        }
+
+        goto Done;
+    }
+    catch (...)
+    {
+        error = ENOMEM;
+        goto Error;
+    }
+
+Error:
+
+    for (uint32_t i = 0; i != cIdsAdded; i += 1)
+    {
+        m_tracepointInfoBySampleId.erase(pIds[i]);
+    }
+
+    // May or may not have been added yet. If not, erase does nothing.
+    m_tracepointInfoByCommonType.erase(metadata.Id());
+
+Done:
+
+    return error;
 }

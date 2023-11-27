@@ -122,7 +122,8 @@ namespace tracepoint_control
         TracepointSession session(
             cache,
             TracepointSessionOptions(TracepointSessionMode::RealTime, 65536) // Required
-                .WakeupWatermark(32768));                                    // Optional
+                .WakeupWatermark(32768)                                      // Optional
+                );
     */
     class TracepointSessionOptions
     {
@@ -245,6 +246,114 @@ namespace tracepoint_control
         bool m_wakeupUseWatermark;
         uint32_t m_wakeupValue;
         uint32_t m_sampleType;
+    };
+
+    /*
+    Configuration settings for TracepointSession::SavePerfDataFile.
+
+    Example:
+
+        error = session.SavePerfDataFile(
+            "perf.data",
+            TracepointSavePerfDataFileOptions().OpenMode(S_IRUSR | S_IWUSR));
+    */
+    class TracepointSavePerfDataFileOptions
+    {
+        friend class TracepointSession;
+
+    public:
+
+        /*
+        Initializes a TracepointSavePerfDataFileOptions to use the default settings.
+
+        - OpenMode = -1 (use default file permissions based on process umask).
+        - TimestampFilter = 0..MAX_UINT64 (no timestamp filtering).
+        - TimestampWrittenRange = nullptr (do not return timestamp range).
+        */
+        constexpr
+        TracepointSavePerfDataFileOptions() noexcept
+            : m_openMode(-1)
+            , m_timestampFilterMin(0)
+            , m_timestampFilterMax(UINT64_MAX)
+            , m_timestampWrittenRangeFirst(nullptr)
+            , m_timestampWrittenRangeLast(nullptr)
+        {
+            return;
+        }
+
+        /*
+        Sets the permissions mode to use when creating the perf.data file. The file will
+        be created as: open(perfDataFileName, O_CREAT|O_WRONLY|O_TRUNC|O_CLOEXEC, OpenMode).
+
+        Default value is -1 (use default file permissions based on process umask).
+        This can be one or more of S_IRUSR, S_IWUSR, S_IRGRP, S_IWGRP, etc.
+        */
+        constexpr TracepointSavePerfDataFileOptions&
+        OpenMode(int openMode) noexcept
+        {
+            m_openMode = openMode;
+            return *this;
+        }
+
+        /*
+        Sets the timestamp filter. Only sample events where
+        timeMin <= event.timestamp <= timeMax will be written to the file. (Timestamp on
+        non-sample events will be ignored.)
+
+        Default value is 0..UINT64_MAX (no timestamp filter).
+
+        For example, to write only events since the last Save:
+
+        uint64_t lastTimestampWritten = 0;
+
+        // First save does not filter-out any events based on timestamp,
+        // and records the timestamp of the last event for use in next save:
+        session.SavePerfDataFile("perf.data.0", TracepointSavePerfDataFileOptions()
+            .TimestampFilter(lastTimestampWritten) // = 0, so no timestamp filter.
+            .TimestampWrittenRange(nullptr, &lastTimestampWritten));
+
+        ...
+
+        // Subsequent saves use last event timestamp from previous save, and
+        // update that timestamp for use in subsequent saves:
+        session.SavePerfDataFile("perf.data.1", TracepointSavePerfDataFileOptions()
+            .TimestampFilter(lastTimestampWritten) // filter out old events
+            .TimestampWrittenRange(nullptr, &lastTimestampWritten));
+
+        Note that in this pattern, the last event saved to file N will also be included
+        in file N+1. If you want to avoid that, use
+        TimestampFilter(lastTimestampWritten + 1), though that risks missing new events
+        with timestamp exactly equal to lastTimestampWritten.
+        */
+        constexpr TracepointSavePerfDataFileOptions&
+        TimestampFilter(uint64_t filterMin, uint64_t filterMax = UINT64_MAX) noexcept
+        {
+            m_timestampFilterMin = filterMin;
+            m_timestampFilterMax = filterMax;
+            return *this;
+        }
+
+        /*
+        Sets the variables that will receive the timestamp range of the events that were
+        written to the file.
+
+        Default value is nullptr (do not return timestamp range).
+        */
+        constexpr TracepointSavePerfDataFileOptions&
+        TimestampWrittenRange(_Out_opt_ uint64_t* first, _Out_opt_ uint64_t* last = nullptr) noexcept
+        {
+            m_timestampWrittenRangeFirst = first;
+            m_timestampWrittenRangeLast = last;
+            return *this;
+        }
+
+    private:
+
+        int m_openMode;
+        uint64_t m_timestampFilterMin;
+        uint64_t m_timestampFilterMax;
+        uint64_t* m_timestampWrittenRangeFirst;
+        uint64_t* m_timestampWrittenRangeLast;
     };
 
     /*
@@ -644,7 +753,7 @@ namespace tracepoint_control
         - ENOMEM: memory allocation failed.
         */
         _Success_(return == 0) int
-        DisableTracePoint(unsigned id) noexcept;
+        DisableTracepoint(unsigned id) noexcept;
 
         /*
         Disables collection of the specified tracepoint.
@@ -666,7 +775,7 @@ namespace tracepoint_control
         - ENOMEM: memory allocation failed.
         */
         _Success_(return == 0) int
-        DisableTracePoint(TracepointName name) noexcept;
+        DisableTracepoint(TracepointName name) noexcept;
 
         /*
         Enables collection of the specified tracepoint.
@@ -687,7 +796,7 @@ namespace tracepoint_control
         - ENOMEM: memory allocation failed.
         */
         _Success_(return == 0) int
-        EnableTracePoint(unsigned id) noexcept;
+        EnableTracepoint(unsigned id) noexcept;
 
         /*
         Enables collection of the specified tracepoint.
@@ -705,7 +814,7 @@ namespace tracepoint_control
         - ENOMEM: memory allocation failed.
         */
         _Success_(return == 0) int
-        EnableTracePoint(TracepointName name) noexcept;
+        EnableTracepoint(TracepointName name) noexcept;
 
         /*
         Returns a range for enumerating the tracepoints in the session (includes
@@ -795,7 +904,7 @@ namespace tracepoint_control
 
         File is created as:
 
-            open(perfDataFileName, O_CREAT|O_WRONLY|O_TRUNC|O_CLOEXEC, mode);
+            open(perfDataFileName, O_CREAT|O_WRONLY|O_TRUNC|O_CLOEXEC, options.OpenMode());
 
         Returns: int error code (errno), or 0 for success.
 
@@ -829,7 +938,7 @@ namespace tracepoint_control
         _Success_(return == 0) int
         SavePerfDataFile(
             _In_z_ char const* perfDataFileName,
-            int mode = -1) noexcept;
+            TracepointSavePerfDataFileOptions const& options = TracepointSavePerfDataFileOptions()) noexcept;
 
         /*
         For each PERF_RECORD_SAMPLE record in the session's buffers, in timestamp
@@ -1054,10 +1163,10 @@ namespace tracepoint_control
     private:
 
         _Success_(return == 0) int
-        DisableTracePointImpl(tracepoint_decode::PerfEventMetadata const& metadata) noexcept;
+        DisableTracepointImpl(tracepoint_decode::PerfEventMetadata const& metadata) noexcept;
 
         _Success_(return == 0) int
-        EnableTracePointImpl(tracepoint_decode::PerfEventMetadata const& metadata) noexcept;
+        EnableTracepointImpl(tracepoint_decode::PerfEventMetadata const& metadata) noexcept;
 
         _Success_(return == 0) static int
         IoctlForEachFile(
@@ -1084,8 +1193,21 @@ namespace tracepoint_control
             uint32_t bufferIndex,
             RecordFn&& recordFn) noexcept(noexcept(recordFn(nullptr, 0, 0)));
 
+        _Success_(return == 0) int
+        SetTracepointEnableState(
+            TracepointInfoImpl& tpi,
+            bool enabled) noexcept;
+
+        _Success_(return == 0) int
+        AddTracepoint(
+            tracepoint_decode::PerfEventMetadata const& metadata,
+            TracepointEnableState enableState) noexcept(false);
+
     private:
 
+        // Constant
+
+        tracepoint_decode::PerfEventSessionInfo const m_sessionInfo;
         TracepointCache& m_cache;
         TracepointSessionMode const m_mode;
         bool const m_wakeupUseWatermark;
@@ -1094,18 +1216,26 @@ namespace tracepoint_control
         uint32_t const m_bufferCount;
         uint32_t const m_pageSize;
         uint32_t const m_bufferSize;
+
+        // State
+
         std::unique_ptr<BufferInfo[]> const m_buffers; // size is m_bufferCount
         std::unordered_map<unsigned, TracepointInfoImpl> m_tracepointInfoByCommonType;
         std::unordered_map<uint64_t, TracepointInfoImpl const*> m_tracepointInfoBySampleId;
-        std::vector<uint8_t> m_eventDataBuffer; // Double-buffer for events that wrap.
-        std::vector<TracepointBookmark> m_enumeratorBookmarks;
-        std::unique_ptr<pollfd[]> m_pollfd;
         unique_fd const* m_bufferLeaderFiles; // == m_tracepointInfoByCommonType[N].BufferFiles.get() for some N, size is m_bufferCount
+
+        // Statistics
+
         uint64_t m_sampleEventCount;
         uint64_t m_lostEventCount;
         uint64_t m_corruptEventCount;
         uint64_t m_corruptBufferCount;
-        tracepoint_decode::PerfEventSessionInfo m_sessionInfo;
+
+        // Transient
+
+        std::vector<uint8_t> m_eventDataBuffer; // Double-buffer for events that wrap.
+        std::vector<TracepointBookmark> m_enumeratorBookmarks;
+        std::unique_ptr<pollfd[]> m_pollfd;
         tracepoint_decode::PerfSampleEventInfo m_enumEventInfo;
     };
 

@@ -1,6 +1,6 @@
 # LinuxTracepoints Change Log
 
-## v1.3.0 (TBD)
+## v1.3.0 (2023-11-27)
 
 - **Breaking changes** to `PerfDataFile`:
   - `dataFile.AttrCount()` method replaced by `EventDescCount()` method.

@@ -14,7 +14,7 @@ if(NOT TARGET tracepoint-decode)
 endif()
 
 if(NOT TARGET eventheader-headers)
-    find_package(eventheader-headers 1.2 REQUIRED)
+    find_package(eventheader-headers 1.3 REQUIRED)
 endif()
 
 if(WIN32)

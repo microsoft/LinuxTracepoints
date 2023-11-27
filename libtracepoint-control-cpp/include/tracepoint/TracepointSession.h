@@ -268,15 +268,15 @@ namespace tracepoint_control
 
         - OpenMode = -1 (use default file permissions based on process umask).
         - TimestampFilter = 0..MAX_UINT64 (no timestamp filtering).
-        - TimestampRange = nullptr (do not return timestamp range).
+        - TimestampWrittenRange = nullptr (do not return timestamp range).
         */
         constexpr
         TracepointSavePerfDataFileOptions() noexcept
             : m_openMode(-1)
             , m_timestampFilterMin(0)
             , m_timestampFilterMax(UINT64_MAX)
-            , m_timestampRangeFirst(nullptr)
-            , m_timestampRangeLast(nullptr)
+            , m_timestampWrittenRangeFirst(nullptr)
+            , m_timestampWrittenRangeLast(nullptr)
         {
             return;
         }
@@ -301,6 +301,29 @@ namespace tracepoint_control
         non-sample events will be ignored.)
 
         Default value is 0..UINT64_MAX (no timestamp filter).
+
+        For example, to write only events since the last Save:
+
+        uint64_t lastTimestampWritten = 0;
+
+        // First save does not filter-out any events based on timestamp,
+        // and records the timestamp of the last event for use in next save:
+        session.SavePerfDataFile("perf.data.0", TracepointSavePerfDataFileOptions()
+            .TimestampFilter(lastTimestampWritten) // = 0, so no timestamp filter.
+            .TimestampWrittenRange(nullptr, &lastTimestampWritten));
+
+        ...
+
+        // Subsequent saves use last event timestamp from previous save, and
+        // update that timestamp for use in subsequent saves:
+        session.SavePerfDataFile("perf.data.1", TracepointSavePerfDataFileOptions()
+            .TimestampFilter(lastTimestampWritten) // filter out old events
+            .TimestampWrittenRange(nullptr, &lastTimestampWritten));
+
+        Note that in this pattern, the last event saved to file N will also be included
+        in file N+1. If you want to avoid that, use
+        TimestampFilter(lastTimestampWritten + 1), though that risks missing new events
+        with timestamp exactly equal to lastTimestampWritten.
         */
         constexpr TracepointSavePerfDataFileOptions&
         TimestampFilter(uint64_t filterMin, uint64_t filterMax = UINT64_MAX) noexcept
@@ -317,10 +340,10 @@ namespace tracepoint_control
         Default value is nullptr (do not return timestamp range).
         */
         constexpr TracepointSavePerfDataFileOptions&
-        TimestampRange(_Out_opt_ uint64_t* first, _Out_opt_ uint64_t* last = nullptr) noexcept
+        TimestampWrittenRange(_Out_opt_ uint64_t* first, _Out_opt_ uint64_t* last = nullptr) noexcept
         {
-            m_timestampRangeFirst = first;
-            m_timestampRangeLast = last;
+            m_timestampWrittenRangeFirst = first;
+            m_timestampWrittenRangeLast = last;
             return *this;
         }
 
@@ -329,8 +352,8 @@ namespace tracepoint_control
         int m_openMode;
         uint64_t m_timestampFilterMin;
         uint64_t m_timestampFilterMax;
-        uint64_t* m_timestampRangeFirst;
-        uint64_t* m_timestampRangeLast;
+        uint64_t* m_timestampWrittenRangeFirst;
+        uint64_t* m_timestampWrittenRangeLast;
     };
 
     /*

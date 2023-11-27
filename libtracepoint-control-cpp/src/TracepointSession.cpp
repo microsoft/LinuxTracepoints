@@ -886,14 +886,14 @@ TracepointSession::SavePerfDataFile(
         uint64_t last;
     } times = { ~uint64_t(0), 0 };
 
-    if (options.m_timestampRangeFirst)
+    if (options.m_timestampWrittenRangeFirst)
     {
-        *options.m_timestampRangeFirst = 0;
+        *options.m_timestampWrittenRangeFirst = 0;
     }
 
-    if (options.m_timestampRangeLast)
+    if (options.m_timestampWrittenRangeLast)
     {
-        *options.m_timestampRangeLast = 0;
+        *options.m_timestampWrittenRangeLast = 0;
     }
 
     error = output.Create(perfDataFileName, options.m_openMode);
@@ -911,21 +911,6 @@ TracepointSession::SavePerfDataFile(
             uint16_t recordSize,
             uint32_t recordBufferPos) noexcept
         {
-            // Add event data to vecList.
-
-            auto const unmaskedPosEnd = recordBufferPos + recordSize;
-            if (unmaskedPosEnd <= m_bufferSize)
-            {
-                // Event does not wrap.
-                vecList.Add(bufferData + recordBufferPos, recordSize);
-            }
-            else
-            {
-                // Event wraps.
-                vecList.Add(bufferData + recordBufferPos, m_bufferSize - recordBufferPos);
-                vecList.Add(bufferData, unmaskedPosEnd - m_bufferSize);
-            }
-
             // Look up the correct value for m_enumEventInfo.event_desc.
 
             m_enumEventInfo.event_desc = nullptr;
@@ -958,6 +943,22 @@ TracepointSession::SavePerfDataFile(
                     }
                 }
             }
+
+            // Add event data to vecList.
+
+            auto const unmaskedPosEnd = recordBufferPos + recordSize;
+            if (unmaskedPosEnd <= m_bufferSize)
+            {
+                // Event does not wrap.
+                vecList.Add(bufferData + recordBufferPos, recordSize);
+            }
+            else
+            {
+                // Event wraps.
+                vecList.Add(bufferData + recordBufferPos, m_bufferSize - recordBufferPos);
+                vecList.Add(bufferData, unmaskedPosEnd - m_bufferSize);
+            }
+
             return true;
         };
 
@@ -1037,14 +1038,14 @@ TracepointSession::SavePerfDataFile(
             goto Done;
         }
 
-        if (options.m_timestampRangeFirst)
+        if (options.m_timestampWrittenRangeFirst)
         {
-            *options.m_timestampRangeFirst = times.first;
+            *options.m_timestampWrittenRangeFirst = times.first;
         }
 
-        if (options.m_timestampRangeLast)
+        if (options.m_timestampWrittenRangeLast)
         {
-            *options.m_timestampRangeLast = times.last;
+            *options.m_timestampWrittenRangeLast = times.last;
         }
     }
 
@@ -1671,7 +1672,7 @@ TracepointSession::AddTracepoint(
         pAttr->use_clockid = 1;
         pAttr->write_backward = !IsRealtime();
         pAttr->wakeup_events = m_wakeupValue;
-        pAttr->clockid = m_sessionInfo.ClockId();
+        pAttr->clockid = m_sessionInfo.Clockid();
 
         // pIds will be initialized after file handle creation.
         // cIdsAdded tracks initialization.

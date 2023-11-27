@@ -62,7 +62,7 @@ namespace tracepoint_decode
         // Returns the clockid of the session timestamp, e.g. CLOCK_MONOTONIC.
         // Returns 0xFFFFFFFF if the session timestamp clockid is unknown.
         constexpr uint32_t
-        ClockId() const noexcept
+        Clockid() const noexcept
         {
             return m_clockId;
         }

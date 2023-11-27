@@ -23,6 +23,7 @@ int
 main(int argc, char* argv[])
 {
     int error = 0;
+    uint64_t lastWritten = UINT64_MAX; // So that lastWritten + 1 == 0
 
     if (argc < 3 ||
         (0 != strcmp(argv[1], "0") && 0 != strcmp(argv[1], "1")))
@@ -95,7 +96,11 @@ main(int argc, char* argv[])
         char outFileName[256];
         snprintf(outFileName, sizeof(outFileName), "%s.%u", argv[2], i);
 
-        error = session.SavePerfDataFile(outFileName);
+        error = session.SavePerfDataFile(
+            outFileName,
+            TracepointSavePerfDataFileOptions()
+            .TimestampFilter(lastWritten + 1)
+            .TimestampWrittenRange(nullptr, &lastWritten));
         printf("SavePerfDataFile(%s) = %u\n", outFileName, error);
     }
 

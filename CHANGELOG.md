@@ -1,5 +1,13 @@
 # LinuxTracepoints Change Log
 
+## v1.3.1 (TBD)
+
+- `TracepointSession` supports per-CPU buffer sizes (including 0) to allow
+  memory usage optimization when trace producers are known to be bound to
+  specific CPUs.
+- `TracepointSession` uses `PERF_ATTR_SIZE_VER3` for the size of
+  `perf_event_attr` to minimize the chance of incompatibilities.
+
 ## v1.3.0 (2023-11-27)
 
 - **Breaking changes** to `PerfDataFile`:

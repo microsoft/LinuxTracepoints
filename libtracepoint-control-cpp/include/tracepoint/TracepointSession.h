@@ -191,14 +191,14 @@ namespace tracepoint_control
 
         - mode: controls whether the buffer is managed as Circular or RealTime.
 
-        - cpuBufferSizes: specifies the size for each buffer in bytes. If a size is 0,
-          no collection will be performed on the corresponding CPU. Other values will be
-          rounded up to a power of 2 that is equal to or greater than the page size. Size
-          may not exceed 2GB.
+        - cpuBufferSizes: Specifies the sizes for the buffers, in bytes. This must not be
+          NULL. If a size is 0, no collection will be performed on the corresponding CPU.
+          Other values will be rounded up to a power of 2 that is equal to or greater
+          than the page size. Size may not exceed 2GB.
 
-        - cpuBufferSizesCount: The number of values provided in cpuBufferSizes. If this
-          is less than the number of CPUs, no collection will be performed on the
-          remaining CPUs.
+        - cpuBufferSizesCount: The number of values provided in cpuBufferSizes. This must
+          be greater than 0. If this is less than the number of CPUs, no collection will
+          be performed on the remaining CPUs.
         */
         constexpr
         TracepointSessionOptions(
@@ -1252,13 +1252,14 @@ namespace tracepoint_control
             tracepoint_decode::PerfEventMetadata const& metadata,
             TracepointEnableState enableState) noexcept(false);
 
+        static uint32_t
+        CalculateBufferCount(TracepointSessionOptions const& options) noexcept;
+
         static std::unique_ptr<BufferInfo[]>
         MakeBufferInfos(
             uint32_t bufferCount,
             uint32_t pageSize,
-            _In_reads_(cpuBufferSizesCount) uint32_t const* cpuBufferSizes,
-            uint32_t cpuBufferSizesCount,
-            uint32_t perCpuBufferSize) noexcept(false);
+            TracepointSessionOptions const& options) noexcept(false);
 
     private:
 

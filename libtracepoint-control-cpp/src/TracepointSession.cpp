@@ -639,14 +639,9 @@ TracepointSession::TracepointSession(
     , m_wakeupUseWatermark(options.m_wakeupUseWatermark)
     , m_wakeupValue(options.m_wakeupValue)
     , m_sampleType(options.m_sampleType)
-    , m_bufferCount(sysconf(_SC_NPROCESSORS_ONLN))
+    , m_bufferCount(CalculateBufferCount(options))
     , m_pageSize(sysconf(_SC_PAGESIZE))
-    , m_buffers(MakeBufferInfos( // may throw bad_alloc.
-        m_bufferCount,
-        m_pageSize,
-        options.m_cpuBufferSizes,
-        options.m_cpuBufferSizesCount,
-        options.m_perCpuBufferSize))
+    , m_buffers(MakeBufferInfos(m_bufferCount, m_pageSize, options)) // may throw bad_alloc.
     , m_tracepointInfoByCommonType() // may throw bad_alloc (but probably doesn't).
     , m_tracepointInfoBySampleId() // may throw bad_alloc (but probably doesn't).
     , m_bufferLeaderFiles(nullptr)
@@ -1898,28 +1893,60 @@ Done:
     return error;
 }
 
+uint32_t
+TracepointSession::CalculateBufferCount(TracepointSessionOptions const& options) noexcept
+{
+    auto const cpuCount = static_cast<uint32_t>(sysconf(_SC_NPROCESSORS_ONLN));
+    assert(cpuCount > 0);
+    assert(cpuCount < 0x10000000);
+
+    uint32_t bufferCount;
+    if (options.m_cpuBufferSizes == nullptr && options.m_cpuBufferSizesCount == UINT32_MAX)
+    {
+        // Either they used the perCpuBufferSize constructor or they passed
+        // garbage parameters to the cpuBufferSizes constructor.
+        // Use one buffer per CPU.
+        bufferCount = cpuCount;
+    }
+    else
+    {
+        // They used the cpuBufferSizes constructor.
+        // Check TracepointSessionOptions constructor preconditions.
+        assert(options.m_cpuBufferSizes != nullptr);
+        assert(options.m_cpuBufferSizesCount > 0);
+        assert(options.m_cpuBufferSizesCount < 0x10000000);
+
+        // Each buffer may have a different size, and some sizes may be zero.
+        // Don't waste space tracking zero-sized buffers.
+        bufferCount = std::min(cpuCount, options.m_cpuBufferSizesCount);
+        while (bufferCount > 1 && options.m_cpuBufferSizes[bufferCount - 1] == 0)
+        {
+            bufferCount -= 1;
+        }
+    }
+
+    return bufferCount;
+}
+
 std::unique_ptr<TracepointSession::BufferInfo[]>
 TracepointSession::MakeBufferInfos(
     uint32_t bufferCount,
     uint32_t pageSize,
-    _In_reads_(cpuBufferSizesCount) uint32_t const* cpuBufferSizes,
-    uint32_t cpuBufferSizesCount,
-    uint32_t perCpuBufferSize) noexcept(false)
+    TracepointSessionOptions const& options) noexcept(false)
 {
-    assert(bufferCount != 0);
-    assert(bufferCount != UINT32_MAX);
+    assert(bufferCount > 0);
+    assert(bufferCount < 0x10000000);
     assert(pageSize != 0);
     assert((pageSize & (pageSize - 1)) == 0);
-    assert(cpuBufferSizesCount == 0 || cpuBufferSizesCount == UINT32_MAX || cpuBufferSizes != nullptr);
 
     auto buffers = std::make_unique<BufferInfo[]>(bufferCount);
 
-    if (cpuBufferSizes == nullptr && cpuBufferSizesCount == UINT32_MAX)
+    if (options.m_cpuBufferSizes == nullptr && options.m_cpuBufferSizesCount == UINT32_MAX)
     {
         // Either they used the perCpuBufferSize constructor or they passed
-        // garbage parameters to the cpuBufferSizes constructor. All buffers
-        // will have the same non-zero size.
-        auto const bufferSize = RoundUpBufferSize(pageSize, perCpuBufferSize);
+        // garbage parameters to the cpuBufferSizes constructor.
+        // All buffers will have the same non-zero size.
+        auto const bufferSize = RoundUpBufferSize(pageSize, options.m_perCpuBufferSize);
         for (auto i = 0u; i != bufferCount; i += 1)
         {
             buffers[i].Size = bufferSize;
@@ -1927,12 +1954,14 @@ TracepointSession::MakeBufferInfos(
     }
     else
     {
-        // They used the cpuBufferSizes constructor. Each buffer may have a
-        // different size, and some sizes may be zero.
+        assert(bufferCount <= options.m_cpuBufferSizesCount); // Ensured by CalculateBufferCount.
+
+        // They used the cpuBufferSizes constructor.
+        // Each buffer may have a different size, and some sizes may be zero.
         for (auto i = 0u; i != bufferCount; i += 1)
         {
-            auto const bufferSize = i < cpuBufferSizesCount && cpuBufferSizes[i] != 0
-                ? RoundUpBufferSize(pageSize, cpuBufferSizes[i])
+            auto const bufferSize = options.m_cpuBufferSizes[i] != 0
+                ? RoundUpBufferSize(pageSize, options.m_cpuBufferSizes[i])
                 : 0u;
             buffers[i].Size = bufferSize;
         }

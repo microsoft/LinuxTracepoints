@@ -332,6 +332,8 @@ TracepointSession::BufferInfo::~BufferInfo()
 
 TracepointSession::BufferInfo::BufferInfo() noexcept
     : Mmap()
+    , Size()
+    , Data()
     , DataPos()
     , DataTail()
     , DataHead64()

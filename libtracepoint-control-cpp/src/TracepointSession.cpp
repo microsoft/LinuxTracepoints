@@ -53,11 +53,10 @@ BufferDataPosToHeader(
 
 // Return the smallest power of 2 that is >= pageSize and >= bufferSize.
 // Assumes pageSize is a power of 2.
-static size_t
-RoundUpBufferSize(uint32_t pageSize, size_t bufferSize) noexcept
+static uint32_t
+RoundUpBufferSize(uint32_t pageSize, uint32_t bufferSize) noexcept
 {
-    static constexpr size_t BufferSizeMax =
-        static_cast<size_t>(1) << (sizeof(size_t) * 8 - 1);
+    static constexpr uint32_t BufferSizeMax = 0x80000000;
 
     assert(0 != pageSize);
     assert(0 == (pageSize & (pageSize - 1)));
@@ -298,13 +297,18 @@ TracepointSession::TracepointInfoImpl::Read(unsigned index, _Out_ ReadFormat* da
 }
 
 _Success_(return == 0) int
-TracepointSession::TracepointInfoImpl::GetEventCountImpl(_Out_ uint64_t * value) const noexcept
+TracepointSession::TracepointInfoImpl::GetEventCountImpl(_Out_ uint64_t* value) const noexcept
 {
     int error = 0;
     uint64_t total = 0;
 
     for (unsigned i = 0; i != m_bufferFilesCount; i += 1)
     {
+        if (!m_bufferFiles[i])
+        {
+            continue;
+        }
+
         ReadFormat data;
         error = Read(i, &data);
         if (error != 0)
@@ -328,6 +332,8 @@ TracepointSession::BufferInfo::~BufferInfo()
 
 TracepointSession::BufferInfo::BufferInfo() noexcept
     : Mmap()
+    , Size()
+    , Data()
     , DataPos()
     , DataTail()
     , DataHead64()
@@ -373,13 +379,13 @@ TracepointSession::UnorderedEnumerator::MoveNext() noexcept
     return session.EnumeratorMoveNext(
         m_bufferIndex,
         [&session](
-            uint8_t const* bufferData,
+            BufferInfo const& buffer,
             uint16_t recordSize,
             uint32_t recordBufferPos)
         {
-            auto const headerType = BufferDataPosToHeader(bufferData, recordBufferPos)->type;
+            auto const headerType = BufferDataPosToHeader(buffer.Data, recordBufferPos)->type;
             return headerType == PERF_RECORD_SAMPLE &&
-                session.ParseSample(bufferData, recordSize, recordBufferPos);
+                session.ParseSample(buffer, recordSize, recordBufferPos);
         });
 }
 
@@ -391,7 +397,10 @@ TracepointSession::OrderedEnumerator::~OrderedEnumerator()
     {
         for (unsigned bufferIndex = 0; bufferIndex != m_session.m_bufferCount; bufferIndex += 1)
         {
-            m_session.EnumeratorEnd(bufferIndex);
+            if (m_session.m_buffers[bufferIndex].Size != 0)
+            {
+                m_session.EnumeratorEnd(bufferIndex);
+            }
         }
     }
 }
@@ -425,7 +434,10 @@ TracepointSession::OrderedEnumerator::LoadAndSort() noexcept
 
         for (uint32_t bufferIndex = 0; bufferIndex != session.m_bufferCount; bufferIndex += 1)
         {
-            session.EnumeratorBegin(bufferIndex);
+            if (session.m_buffers[bufferIndex].Size != 0)
+            {
+                session.EnumeratorBegin(bufferIndex);
+            }
         }
 
         // Circular: If we throw an exception, we need to unpause during cleanup.
@@ -435,6 +447,11 @@ TracepointSession::OrderedEnumerator::LoadAndSort() noexcept
         session.m_enumeratorBookmarks.clear();
         for (uint32_t bufferIndex = 0; bufferIndex != session.m_bufferCount; bufferIndex += 1)
         {
+            if (session.m_buffers[bufferIndex].Size == 0)
+            {
+                continue;
+            }
+
             auto const startSize = session.m_enumeratorBookmarks.size();
 
             // Only need to call EnumeratorMoveNext once per buffer - it will loop until a callback
@@ -442,14 +459,14 @@ TracepointSession::OrderedEnumerator::LoadAndSort() noexcept
             session.EnumeratorMoveNext(
                 bufferIndex,
                 [bufferIndex, bytesBeforeTime, &session](
-                    uint8_t const* bufferData,
+                    BufferInfo const& buffer,
                     uint16_t recordSize,
                     uint32_t recordBufferPos)
                 {
                     assert(0 == (recordSize & 7));
                     assert(0 == (recordBufferPos & 7));
 
-                    if (PERF_RECORD_SAMPLE != BufferDataPosToHeader(bufferData, recordBufferPos)->type)
+                    if (PERF_RECORD_SAMPLE != BufferDataPosToHeader(buffer.Data, recordBufferPos)->type)
                     {
                         return false; // Keep going.
                     }
@@ -460,8 +477,8 @@ TracepointSession::OrderedEnumerator::LoadAndSort() noexcept
                         return false;
                     }
 
-                    auto const timePos = (recordBufferPos + bytesBeforeTime) & (session.m_bufferSize - 1);
-                    auto const timestamp = *reinterpret_cast<uint64_t const*>(bufferData + timePos);
+                    auto const timePos = (recordBufferPos + bytesBeforeTime) & (buffer.Size - 1);
+                    auto const timestamp = *reinterpret_cast<uint64_t const*>(buffer.Data + timePos);
                     session.m_enumeratorBookmarks.emplace_back( // May throw bad_alloc.
                         timestamp,
                         bufferIndex,
@@ -505,7 +522,6 @@ TracepointSession::OrderedEnumerator::MoveNext() noexcept
 {
     auto& session = m_session;
     auto const buffers = session.m_buffers.get();
-    auto const pageSize = session.m_pageSize;
     auto const enumeratorBookmarksData = session.m_enumeratorBookmarks.data();
     auto const enumeratorBookmarksSize = session.m_enumeratorBookmarks.size();
     while (m_index < enumeratorBookmarksSize)
@@ -514,7 +530,7 @@ TracepointSession::OrderedEnumerator::MoveNext() noexcept
         m_index += 1;
 
         if (session.ParseSample(
-            static_cast<uint8_t const*>(buffers[item.BufferIndex].Mmap.get()) + pageSize,
+            buffers[item.BufferIndex],
             item.RecordSize,
             item.RecordBufferPos))
         {
@@ -608,8 +624,8 @@ TracepointSession::~TracepointSession()
 TracepointSession::TracepointSession(
     TracepointCache& cache,
     TracepointSessionMode mode,
-    uint32_t bufferSize) noexcept(false)
-    : TracepointSession(cache, TracepointSessionOptions(mode, bufferSize))
+    uint32_t perCpuBufferSize) noexcept(false)
+    : TracepointSession(cache, TracepointSessionOptions(mode, perCpuBufferSize))
 {
     return;
 }
@@ -625,8 +641,12 @@ TracepointSession::TracepointSession(
     , m_sampleType(options.m_sampleType)
     , m_bufferCount(sysconf(_SC_NPROCESSORS_ONLN))
     , m_pageSize(sysconf(_SC_PAGESIZE))
-    , m_bufferSize(RoundUpBufferSize(m_pageSize, options.m_bufferSize))
-    , m_buffers(std::make_unique<BufferInfo[]>(m_bufferCount)) // may throw bad_alloc.
+    , m_buffers(MakeBufferInfos( // may throw bad_alloc.
+        m_bufferCount,
+        m_pageSize,
+        options.m_cpuBufferSizes,
+        options.m_cpuBufferSizesCount,
+        options.m_perCpuBufferSize))
     , m_tracepointInfoByCommonType() // may throw bad_alloc (but probably doesn't).
     , m_tracepointInfoBySampleId() // may throw bad_alloc (but probably doesn't).
     , m_bufferLeaderFiles(nullptr)
@@ -640,6 +660,9 @@ TracepointSession::TracepointSession(
     , m_enumEventInfo()
 {
     assert(options.m_mode <= TracepointSessionMode::RealTime);
+    assert(m_bufferCount > 0 && m_bufferCount < 0x10000000);
+    assert(m_pageSize >= sizeof(perf_event_mmap_page) && m_pageSize < 0x10000000);
+    assert((m_pageSize & (m_pageSize - 1)) == 0); // power of 2
 }
 
 TracepointCache&
@@ -661,9 +684,10 @@ TracepointSession::IsRealtime() const noexcept
 }
 
 uint32_t
-TracepointSession::BufferSize() const noexcept
+TracepointSession::BufferSize(unsigned bufferIndex) const noexcept
 {
-    return m_bufferSize;
+    assert(bufferIndex < BufferCount());
+    return m_buffers[bufferIndex].Size;
 }
 
 uint32_t
@@ -702,6 +726,7 @@ TracepointSession::Clear() noexcept
     for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
     {
         m_buffers[bufferIndex].Mmap.reset();
+        m_buffers[bufferIndex].Data = nullptr;
     }
 
     m_tracepointInfoByCommonType.clear();
@@ -820,12 +845,17 @@ TracepointSession::WaitForWakeup(
             m_pollfd = std::make_unique<pollfd[]>(m_bufferCount);
         }
 
+        unsigned pollfdCount = 0;
         for (unsigned i = 0; i != m_bufferCount; i += 1)
         {
-            m_pollfd[i] = { m_bufferLeaderFiles[i].get(), POLLIN, 0 };
+            if (m_buffers[i].Size != 0)
+            {
+                m_pollfd[pollfdCount] = { m_bufferLeaderFiles[i].get(), POLLIN, 0 };
+                pollfdCount += 1;
+            }
         }
 
-        activeCount = ppoll(m_pollfd.get(), m_bufferCount, timeout, sigmask);
+        activeCount = ppoll(m_pollfd.get(), pollfdCount, timeout, sigmask);
         if (activeCount < 0)
         {
             activeCount = 0;
@@ -907,21 +937,21 @@ TracepointSession::SavePerfDataFile(
     if (m_bufferLeaderFiles != nullptr)
     {
         auto recordFn = [this, &vecList, &times, &options](
-            uint8_t const* bufferData,
+            BufferInfo const& buffer,
             uint16_t recordSize,
             uint32_t recordBufferPos) noexcept
         {
             // Look up the correct value for m_enumEventInfo.event_desc.
 
             m_enumEventInfo.event_desc = nullptr;
-            if (PERF_RECORD_SAMPLE == BufferDataPosToHeader(bufferData, recordBufferPos)->type)
+            if (PERF_RECORD_SAMPLE == BufferDataPosToHeader(buffer.Data, recordBufferPos)->type)
             {
                 // TODO: We don't need a full parse here. Could potentially
                 // save a few cycles by inlining ParseSample and removing the
                 // parts we don't need.
 
                 // If this succeeds it will set m_enumEventInfo.
-                if (ParseSample(bufferData, recordSize, recordBufferPos))
+                if (ParseSample(buffer, recordSize, recordBufferPos))
                 {
                     if (options.m_timestampFilterMin > m_enumEventInfo.time ||
                         options.m_timestampFilterMax < m_enumEventInfo.time)
@@ -947,16 +977,16 @@ TracepointSession::SavePerfDataFile(
             // Add event data to vecList.
 
             auto const unmaskedPosEnd = recordBufferPos + recordSize;
-            if (unmaskedPosEnd <= m_bufferSize)
+            if (unmaskedPosEnd <= buffer.Size)
             {
                 // Event does not wrap.
-                vecList.Add(bufferData + recordBufferPos, recordSize);
+                vecList.Add(buffer.Data + recordBufferPos, recordSize);
             }
             else
             {
                 // Event wraps.
-                vecList.Add(bufferData + recordBufferPos, m_bufferSize - recordBufferPos);
-                vecList.Add(bufferData, unmaskedPosEnd - m_bufferSize);
+                vecList.Add(buffer.Data + recordBufferPos, buffer.Size - recordBufferPos);
+                vecList.Add(buffer.Data, unmaskedPosEnd - buffer.Size);
             }
 
             return true;
@@ -1112,6 +1142,11 @@ TracepointSession::IoctlForEachFile(
 
     for (unsigned i = 0; i != filesCount; i += 1)
     {
+        if (!files[i])
+        {
+            continue;
+        }
+
         errno = 0;
         auto const value = values ? values[i].get() : 0;
         if (-1 == ioctl(files[i].get(), request, value))
@@ -1129,21 +1164,24 @@ TracepointSession::IoctlForEachFile(
 
 bool
 TracepointSession::ParseSample(
-    uint8_t const* bufferData,
+    BufferInfo const& buffer,
     uint16_t recordSize,
     uint32_t recordBufferPos) noexcept
 {
+    assert(buffer.Mmap);
+    assert(buffer.Mmap.get() == buffer.Data - m_pageSize);
+    assert(buffer.Mmap.get_size() == buffer.Size + m_pageSize);
     assert(0 == (recordSize & 7));
     assert(0 == (recordBufferPos & 7));
-    assert(recordSize <= m_bufferSize);
-    assert(recordBufferPos < m_bufferSize);
+    assert(recordSize <= buffer.Size);
+    assert(recordBufferPos < buffer.Size);
 
     uint8_t const* p;
 
-    if (recordBufferPos + recordSize <= m_bufferSize)
+    if (recordBufferPos + recordSize <= buffer.Size)
     {
         // Event does not wrap.
-        p = bufferData + recordBufferPos;
+        p = buffer.Data + recordBufferPos;
     }
     else
     {
@@ -1162,12 +1200,12 @@ TracepointSession::ParseSample(
             }
         }
 
-        auto const afterWrap = recordBufferPos + recordSize - m_bufferSize;
-        auto const beforeWrap = m_bufferSize - recordBufferPos;
-        auto const buffer = m_eventDataBuffer.data();
-        memcpy(buffer, bufferData + recordBufferPos, beforeWrap);
-        memcpy(buffer + beforeWrap, bufferData, afterWrap);
-        p = buffer;
+        auto const afterWrap = recordBufferPos + recordSize - buffer.Size;
+        auto const beforeWrap = buffer.Size - recordBufferPos;
+        auto const eventDataBuffer = m_eventDataBuffer.data();
+        memcpy(eventDataBuffer, buffer.Data + recordBufferPos, beforeWrap);
+        memcpy(eventDataBuffer + beforeWrap, buffer.Data, afterWrap);
+        p = eventDataBuffer;
     }
 
     auto const pEnd = p + recordSize;
@@ -1431,6 +1469,8 @@ void
 TracepointSession::EnumeratorEnd(uint32_t bufferIndex) const noexcept
 {
     auto const& buffer = m_buffers[bufferIndex];
+    assert(buffer.Size != 0);
+
     if (!IsRealtime())
     {
         // Should not change while collection paused.
@@ -1464,7 +1504,7 @@ TracepointSession::EnumeratorEnd(uint32_t bufferIndex) const noexcept
             newTail64 = buffer.DataHead64 - (static_cast<size_t>(buffer.DataHead64) - buffer.DataPos);
         }
 
-        assert(buffer.DataHead64 - newTail64 <= m_bufferSize);
+        assert(buffer.DataHead64 - newTail64 <= buffer.Size);
 
         auto const bufferHeader = static_cast<perf_event_mmap_page*>(buffer.Mmap.get());
 
@@ -1497,7 +1537,7 @@ TracepointSession::EnumeratorBegin(uint32_t bufferIndex) noexcept
 
     if (0 != (buffer.DataHead64 & 7) ||
         m_pageSize != bufferHeader->data_offset ||
-        m_bufferSize != bufferHeader->data_size)
+        buffer.Size != bufferHeader->data_size)
     {
         // Unexpected - corrupt trace buffer.
         DEBUG_PRINTF("CPU%u bad perf_event_mmap_page: head=%llx offset=%lx size=%lx\n",
@@ -1505,14 +1545,14 @@ TracepointSession::EnumeratorBegin(uint32_t bufferIndex) noexcept
             (unsigned long long)buffer.DataHead64,
             (unsigned long)bufferHeader->data_offset,
             (unsigned long)bufferHeader->data_size);
-        buffer.DataTail = static_cast<size_t>(buffer.DataHead64) - m_bufferSize;
+        buffer.DataTail = static_cast<size_t>(buffer.DataHead64) - buffer.Size;
         buffer.DataPos = static_cast<size_t>(buffer.DataHead64);
         m_corruptBufferCount += 1;
     }
     else if (!realtime)
     {
         // Circular: write_backward == 1
-        buffer.DataTail = static_cast<size_t>(buffer.DataHead64) - m_bufferSize;
+        buffer.DataTail = static_cast<size_t>(buffer.DataHead64) - buffer.Size;
         buffer.DataPos = buffer.DataTail;
     }
     else
@@ -1520,14 +1560,14 @@ TracepointSession::EnumeratorBegin(uint32_t bufferIndex) noexcept
         // Realtime: write_backward == 0
         auto const bufferDataTail64 = bufferHeader->data_tail;
         buffer.DataTail = static_cast<size_t>(bufferDataTail64);
-        if (buffer.DataHead64 - bufferDataTail64 > m_bufferSize)
+        if (buffer.DataHead64 - bufferDataTail64 > buffer.Size)
         {
             // Unexpected - assume bad tail pointer.
             DEBUG_PRINTF("CPU%u bad data_tail: head=%llx tail=%llx\n",
                 bufferIndex,
                 (unsigned long long)buffer.DataHead64,
                 (unsigned long long)bufferDataTail64);
-            buffer.DataTail = static_cast<size_t>(buffer.DataHead64) - m_bufferSize; // Ensure tail gets updated.
+            buffer.DataTail = static_cast<size_t>(buffer.DataHead64) - buffer.Size; // Ensure tail gets updated.
             buffer.DataPos = static_cast<size_t>(buffer.DataHead64);
             m_corruptBufferCount += 1;
         }
@@ -1542,10 +1582,13 @@ template<class RecordFn>
 bool
 TracepointSession::EnumeratorMoveNext(
     uint32_t bufferIndex,
-    RecordFn&& recordFn) noexcept(noexcept(recordFn(nullptr, 0, 0)))
+    RecordFn&& recordFn) noexcept(noexcept(recordFn(std::declval<BufferInfo>(), 0u, 0u)))
 {
     auto& buffer = m_buffers[bufferIndex];
-    auto const bufferData = static_cast<uint8_t const*>(buffer.Mmap.get()) + m_pageSize;
+    assert(buffer.Mmap);
+    assert(buffer.Mmap.get() == buffer.Data - m_pageSize);
+    assert(buffer.Mmap.get_size() == buffer.Size + m_pageSize);
+
     for (;;)
     {
         auto const remaining = static_cast<size_t>(buffer.DataHead64) - buffer.DataPos;
@@ -1554,8 +1597,8 @@ TracepointSession::EnumeratorMoveNext(
             break;
         }
 
-        auto const eventHeaderBufferPos = buffer.DataPos & (m_bufferSize - 1);
-        auto const eventHeader = *BufferDataPosToHeader(bufferData, eventHeaderBufferPos);
+        auto const eventHeaderBufferPos = buffer.DataPos & (buffer.Size - 1);
+        auto const eventHeader = *BufferDataPosToHeader(buffer.Data, eventHeaderBufferPos);
 
         if (eventHeader.size == 0 ||
             eventHeader.size > remaining)
@@ -1587,11 +1630,11 @@ TracepointSession::EnumeratorMoveNext(
         if (eventHeader.type == PERF_RECORD_LOST)
         {
             auto const newEventsLost64 = *reinterpret_cast<uint64_t const*>(
-                bufferData + ((eventHeaderBufferPos + sizeof(perf_event_header) + sizeof(uint64_t)) & (m_bufferSize - 1)));
+                buffer.Data + ((eventHeaderBufferPos + sizeof(perf_event_header) + sizeof(uint64_t)) & (buffer.Size - 1)));
             m_lostEventCount += newEventsLost64;
         }
 
-        if (recordFn(bufferData, eventHeader.size, eventHeaderBufferPos))
+        if (recordFn(buffer, eventHeader.size, eventHeaderBufferPos))
         {
             return true;
         }
@@ -1655,30 +1698,45 @@ TracepointSession::AddTracepoint(
             goto Error;
         }
 
+        uint32_t nonzeroBufferCount = 0;
+        for (uint32_t i = 0; i != m_bufferCount; i += 1)
+        {
+            if (m_buffers[i].Size != 0)
+            {
+                nonzeroBufferCount += 1;
+            }
+        }
+
+        // We don't use the fields that were added after v3. Allocate space for
+        // the full structure (we expose the structure to users) but don't ask
+        // the kernel to look at the new fields.
+        unsigned constexpr PerfEventAttrSizeUsed = PERF_ATTR_SIZE_VER3;
+
         auto const cbEventDescStorage =
             sizeof(perf_event_attr) +
-            m_bufferCount * sizeof(uint64_t) +
+            nonzeroBufferCount * sizeof(uint64_t) +
             systemName.size() + 1 + eventName.size() + 1;
         auto eventDescStorage = std::make_unique<char unsigned[]>(cbEventDescStorage);
 
         auto const pAttr = reinterpret_cast<perf_event_attr*>(eventDescStorage.get());
         pAttr->type = PERF_TYPE_TRACEPOINT;
-        pAttr->size = sizeof(perf_event_attr);
+        pAttr->size = PerfEventAttrSizeUsed;
         pAttr->config = metadata.Id();
         pAttr->sample_period = 1;
         pAttr->sample_type = m_sampleType;
-        pAttr->read_format = PERF_FORMAT_ID; // Must match definition of struct ReadFormat.
+        pAttr->read_format = PERF_FORMAT_ID; // Must align with the definition of struct ReadFormat.
         pAttr->watermark = m_wakeupUseWatermark;
         pAttr->use_clockid = 1;
         pAttr->write_backward = !IsRealtime();
         pAttr->wakeup_events = m_wakeupValue;
         pAttr->clockid = m_sessionInfo.Clockid();
+        static_assert(offsetof(perf_event_attr, clockid) < PerfEventAttrSizeUsed);
 
         // pIds will be initialized after file handle creation.
         // cIdsAdded tracks initialization.
         pIds = reinterpret_cast<uint64_t*>(pAttr + 1);
 
-        auto const pName = reinterpret_cast<char*>(pIds + m_bufferCount);
+        auto const pName = reinterpret_cast<char*>(pIds + nonzeroBufferCount);
         {
             size_t i = 0;
             memcpy(&pName[i], systemName.data(), systemName.size());
@@ -1695,7 +1753,7 @@ TracepointSession::AddTracepoint(
             pName,
             &metadata,
             pIds,
-            m_bufferCount
+            nonzeroBufferCount
         };
 
         auto er = m_tracepointInfoByCommonType.try_emplace(metadata.Id(),
@@ -1711,6 +1769,11 @@ TracepointSession::AddTracepoint(
 
         for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
         {
+            if (m_buffers[bufferIndex].Size == 0)
+            {
+                continue;
+            }
+
             errno = 0;
             tpi.m_bufferFiles[bufferIndex].reset(perf_event_open(pAttr, -1, bufferIndex, -1, PERF_FLAG_FD_CLOEXEC));
             if (!tpi.m_bufferFiles[bufferIndex])
@@ -1737,12 +1800,18 @@ TracepointSession::AddTracepoint(
         else
         {
             // This is the first event. Make it the "leader" (the owner of the session buffers).
-            auto const mmapSize = m_pageSize + m_bufferSize;
             auto const prot = IsRealtime()
                 ? PROT_READ | PROT_WRITE
                 : PROT_READ;
             for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
             {
+                if (m_buffers[bufferIndex].Size == 0)
+                {
+                    continue;
+                }
+
+                auto const mmapSize = m_pageSize + m_buffers[bufferIndex].Size;
+
                 errno = 0;
                 auto cpuMap = mmap(nullptr, mmapSize, prot, MAP_SHARED, tpi.m_bufferFiles[bufferIndex].get(), 0);
                 if (MAP_FAILED == cpuMap)
@@ -1753,6 +1822,7 @@ TracepointSession::AddTracepoint(
                     for (uint32_t bufferIndex2 = 0; bufferIndex2 != bufferIndex; bufferIndex2 += 1)
                     {
                         m_buffers[bufferIndex2].Mmap.reset();
+                        m_buffers[bufferIndex2].Data = nullptr;
                     }
 
                     if (error == 0)
@@ -1764,25 +1834,34 @@ TracepointSession::AddTracepoint(
                 }
 
                 m_buffers[bufferIndex].Mmap.reset(cpuMap, mmapSize);
+                m_buffers[bufferIndex].Data = static_cast<uint8_t*>(cpuMap) + m_pageSize;
             }
         }
 
         // Find the sample_ids for the new tracepoints.
-        for (; cIdsAdded != m_bufferCount; cIdsAdded += 1)
+        for (uint32_t i = 0; i != m_bufferCount; i += 1)
         {
+            if (!tpi.m_bufferFiles[i])
+            {
+                continue;
+            }
+
             ReadFormat data;
-            error = tpi.Read(cIdsAdded, &data);
+            error = tpi.Read(i, &data);
             if (error != 0)
             {
                 goto Error;
             }
 
             pIds[cIdsAdded] = data.id;
+            cIdsAdded += 1;
 
             auto const added = m_tracepointInfoBySampleId.emplace(data.id, &tpi).second;
             assert(added);
             (void)added;
         }
+
+        assert(cIdsAdded == nonzeroBufferCount);
 
         // Success. Commit it. (No exceptions beyond this point.)
 
@@ -1803,6 +1882,11 @@ Error:
 
     for (uint32_t i = 0; i != cIdsAdded; i += 1)
     {
+        if (m_buffers[i].Size == 0)
+        {
+            continue;
+        }
+
         m_tracepointInfoBySampleId.erase(pIds[i]);
     }
 
@@ -1812,4 +1896,47 @@ Error:
 Done:
 
     return error;
+}
+
+std::unique_ptr<TracepointSession::BufferInfo[]>
+TracepointSession::MakeBufferInfos(
+    uint32_t bufferCount,
+    uint32_t pageSize,
+    _In_reads_(cpuBufferSizesCount) uint32_t const* cpuBufferSizes,
+    uint32_t cpuBufferSizesCount,
+    uint32_t perCpuBufferSize) noexcept(false)
+{
+    assert(bufferCount != 0);
+    assert(bufferCount != UINT32_MAX);
+    assert(pageSize != 0);
+    assert((pageSize & (pageSize - 1)) == 0);
+    assert(cpuBufferSizesCount == 0 || cpuBufferSizesCount == UINT32_MAX || cpuBufferSizes != nullptr);
+
+    auto buffers = std::make_unique<BufferInfo[]>(bufferCount);
+
+    if (cpuBufferSizes == nullptr && cpuBufferSizesCount == UINT32_MAX)
+    {
+        // Either they used the perCpuBufferSize constructor or they passed
+        // garbage parameters to the cpuBufferSizes constructor. All buffers
+        // will have the same non-zero size.
+        auto const bufferSize = RoundUpBufferSize(pageSize, perCpuBufferSize);
+        for (auto i = 0u; i != bufferCount; i += 1)
+        {
+            buffers[i].Size = bufferSize;
+        }
+    }
+    else
+    {
+        // They used the cpuBufferSizes constructor. Each buffer may have a
+        // different size, and some sizes may be zero.
+        for (auto i = 0u; i != bufferCount; i += 1)
+        {
+            auto const bufferSize = i < cpuBufferSizesCount && cpuBufferSizes[i] != 0
+                ? RoundUpBufferSize(pageSize, cpuBufferSizes[i])
+                : 0u;
+            buffers[i].Size = bufferSize;
+        }
+    }
+
+    return buffers;
 }

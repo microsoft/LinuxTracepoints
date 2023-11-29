@@ -165,15 +165,49 @@ namespace tracepoint_control
 
         - mode: controls whether the buffer is managed as Circular or RealTime.
 
-        - bufferSize: specifies the size of each buffer in bytes. This value will be
-          rounded up to a power of 2 that is equal to or greater than the page size.
+        - perCpuBufferSize: specifies the size of each buffer in bytes. This value will
+          be rounded up to a power of 2 that is equal to or greater than the page size.
+          Size may not exceed 2GB.
           Note that the session will allocate one buffer for each CPU.
         */
         constexpr
         TracepointSessionOptions(
             TracepointSessionMode mode,
-            uint32_t bufferSize) noexcept
-            : m_bufferSize(bufferSize)
+            uint32_t perCpuBufferSize) noexcept
+            : m_cpuBufferSizes(nullptr)
+            , m_cpuBufferSizesCount(UINT32_MAX)
+            , m_perCpuBufferSize(perCpuBufferSize)
+            , m_mode(mode)
+            , m_wakeupUseWatermark(true)
+            , m_wakeupValue(0)
+            , m_sampleType(SampleTypeDefault)
+        {
+            return;
+        }
+
+        /*
+        Advanced scenarios: Initializes a TracepointSessionOptions to configure a
+        session with the specified mode, using a specified buffer size for each CPU.
+
+        - mode: controls whether the buffer is managed as Circular or RealTime.
+
+        - cpuBufferSizes: specifies the size for each buffer in bytes. If a size is 0,
+          no collection will be performed on the corresponding CPU. Other values will be
+          rounded up to a power of 2 that is equal to or greater than the page size. Size
+          may not exceed 2GB.
+
+        - cpuBufferSizesCount: The number of values provided in cpuBufferSizes. If this
+          is less than the number of CPUs, no collection will be performed on the
+          remaining CPUs.
+        */
+        constexpr
+        TracepointSessionOptions(
+            TracepointSessionMode mode,
+            _In_reads_(cpuBufferSizesCount) uint32_t const* cpuBufferSizes,
+            uint32_t cpuBufferSizesCount) noexcept
+            : m_cpuBufferSizes(cpuBufferSizes)
+            , m_cpuBufferSizesCount(cpuBufferSizesCount)
+            , m_perCpuBufferSize(0)
             , m_mode(mode)
             , m_wakeupUseWatermark(true)
             , m_wakeupValue(0)
@@ -241,7 +275,9 @@ namespace tracepoint_control
 
     private:
 
-        uint32_t const m_bufferSize;
+        uint32_t const* m_cpuBufferSizes;
+        uint32_t const m_cpuBufferSizesCount;
+        uint32_t const m_perCpuBufferSize;
         TracepointSessionMode const m_mode;
         bool m_wakeupUseWatermark;
         uint32_t m_wakeupValue;
@@ -490,7 +526,9 @@ namespace tracepoint_control
 
         struct BufferInfo
         {
-            unique_mmap Mmap;
+            unique_mmap Mmap; // When non-empty: Mmap.get_size() = Size + PAGE_SIZE
+            uint32_t Size; // Set whether or not Mmap is empty.
+            uint8_t const* Data; // NULL if Mmap is empty, else Mmap.ptr + PAGE_SIZE.
             size_t DataPos;
             size_t DataTail;
             uint64_t DataHead64;
@@ -616,8 +654,9 @@ namespace tracepoint_control
 
         - mode: controls whether the buffer is managed as Circular or RealTime.
 
-        - bufferSize: specifies the size of each buffer in bytes. This value will be
-          rounded up to a power of 2 that is equal to or greater than the page size.
+        - perCpuBufferSize: specifies the size of each buffer in bytes. This value will
+          be rounded up to a power of 2 that is equal to or greater than the page size.
+          Size may not exceed 2GB.
           Note that the session will allocate one buffer for each CPU.
 
         Example:
@@ -631,7 +670,7 @@ namespace tracepoint_control
         TracepointSession(
             TracepointCache& cache,
             TracepointSessionMode mode,
-            uint32_t bufferSize) noexcept(false);
+            uint32_t perCpuBufferSize) noexcept(false);
 
         /*
         Constructs a session using TracepointSessionOptions to set advanced options.
@@ -675,10 +714,12 @@ namespace tracepoint_control
         IsRealtime() const noexcept;
 
         /*
-        Returns the size (in bytes) of the buffers used for the session.
+        Returns the size (in bytes) of the specified buffer.
+        Returns 0 if collection is disabled for the specified buffer.
+        Requires: bufferIndex < BufferCount().
         */
         uint32_t
-        BufferSize() const noexcept;
+        BufferSize(unsigned bufferIndex = 0) const noexcept;
 
         /*
         Returns the number of buffers used for the session.
@@ -892,6 +933,9 @@ namespace tracepoint_control
         Clear(), the session will be inactive until a tracepoint is added.
 
         Most users should use WaitForWakeup() instead of GetBufferFiles().
+
+        Note that if a buffer is disabled (buffer size was set to 0), the
+        corresponding file descriptor will be -1.
         */
         _Success_(return == 0) int
         GetBufferFiles(
@@ -1140,6 +1184,11 @@ namespace tracepoint_control
             {
                 for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
                 {
+                    if (m_buffers[bufferIndex].Size == 0)
+                    {
+                        continue;
+                    }
+
                     UnorderedEnumerator enumerator(*this, bufferIndex);
                     while (enumerator.MoveNext())
                     {
@@ -1177,7 +1226,7 @@ namespace tracepoint_control
 
         bool
         ParseSample(
-            uint8_t const* bufferData,
+            BufferInfo const& buffer,
             uint16_t recordSize,
             uint32_t recordBufferPos) noexcept;
 
@@ -1191,7 +1240,7 @@ namespace tracepoint_control
         bool
         EnumeratorMoveNext(
             uint32_t bufferIndex,
-            RecordFn&& recordFn) noexcept(noexcept(recordFn(nullptr, 0, 0)));
+            RecordFn&& recordFn) noexcept(noexcept(recordFn(std::declval<BufferInfo>(), 0u, 0u)));
 
         _Success_(return == 0) int
         SetTracepointEnableState(
@@ -1202,6 +1251,14 @@ namespace tracepoint_control
         AddTracepoint(
             tracepoint_decode::PerfEventMetadata const& metadata,
             TracepointEnableState enableState) noexcept(false);
+
+        static std::unique_ptr<BufferInfo[]>
+        MakeBufferInfos(
+            uint32_t bufferCount,
+            uint32_t pageSize,
+            _In_reads_(cpuBufferSizesCount) uint32_t const* cpuBufferSizes,
+            uint32_t cpuBufferSizesCount,
+            uint32_t perCpuBufferSize) noexcept(false);
 
     private:
 
@@ -1215,7 +1272,6 @@ namespace tracepoint_control
         uint32_t const m_sampleType;
         uint32_t const m_bufferCount;
         uint32_t const m_pageSize;
-        uint32_t const m_bufferSize;
 
         // State
 

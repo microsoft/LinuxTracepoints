@@ -1,6 +1,6 @@
 # LinuxTracepoints Change Log
 
-## v1.3.1 (TBD)
+## v1.3.1 (2024-01-11)
 
 - `TracepointSession` supports per-CPU buffer sizes (including 0) to allow
   memory usage optimization when trace producers are known to be bound to

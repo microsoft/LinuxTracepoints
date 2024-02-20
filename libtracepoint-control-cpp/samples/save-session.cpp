@@ -96,6 +96,7 @@ main(int argc, char* argv[])
         char outFileName[256];
         snprintf(outFileName, sizeof(outFileName), "%s.%u", argv[2], i);
 
+        // CodeQL [SM01937] This is a sample/tool. Using externally-supplied path is intended behavior.
         error = session.SavePerfDataFile(
             outFileName,
             TracepointSavePerfDataFileOptions()

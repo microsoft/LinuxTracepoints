@@ -132,6 +132,7 @@ main(int argc, char* argv[])
             outputPathBuffer += ".rewrite";
             auto const outputPath = outputPathBuffer.c_str();
 
+            // CodeQL [SM01937] This is a sample/tool. Using externally-supplied path is intended behavior.
             err = input.Open(inputPath);
             if (err != 0)
             {
@@ -148,6 +149,7 @@ main(int argc, char* argv[])
                 continue;
             }
 
+            // CodeQL [SM01937] This is a sample/tool. Using externally-supplied path is intended behavior.
             err = output.Create(outputPath);
             if (err != 0)
             {

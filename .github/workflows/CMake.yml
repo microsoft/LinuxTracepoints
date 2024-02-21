@@ -9,6 +9,8 @@ on:
     branches: [ "main" ]
     paths-ignore:
       - 'rust/**'
+  schedule:
+    - cron: '17 17 * * 2'
 
 jobs:
   build:
@@ -18,7 +20,12 @@ jobs:
         preset: ["Release", "Debug"]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: cpp
 
     - name: Configure CMake
       run: cmake --preset ${{matrix.preset}}
@@ -26,11 +33,14 @@ jobs:
     - name: build
       run: cmake --build --preset ${{matrix.preset}}
 
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+
   windows:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Configure CMake
         run: cmake --preset Windows

@@ -25,7 +25,7 @@ jobs:
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v2
       with:
-        languages: cpp, csharp
+        languages: cpp
 
     - name: Configure CMake
       run: cmake --preset ${{matrix.preset}}

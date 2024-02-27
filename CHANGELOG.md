@@ -1,5 +1,9 @@
 # LinuxTracepoints Change Log
 
+## v1.3.2 (2024-02-27)
+
+- Bug fix: Open `user_events_data` for `O_WRONLY` instead of `O_RDWR`.
+
 ## v1.3.1 (2024-01-11)
 
 - `TracepointSession` supports per-CPU buffer sizes (including 0) to allow

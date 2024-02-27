@@ -137,7 +137,7 @@ user_events_data_update(int* staticFileOrError)
     // This improves performance and also makes it simpler to set up a container:
     // The container creator will have to project the user_events_data file but
     // won't need to make a dummy /proc/mounts file for us to parse.
-    newFileOrError = open("/sys/kernel/tracing/user_events_data", O_RDWR);
+    newFileOrError = open("/sys/kernel/tracing/user_events_data", O_WRONLY);
     if (0 <= newFileOrError)
     {
         // Success.
@@ -263,7 +263,7 @@ user_events_data_update(int* staticFileOrError)
         {
             // path is now something like "/sys/kernel/tracing/user_events_data\0" or
             // "/sys/kernel/debug/tracing/user_events_data\0".
-            newFileOrError = open(path, O_RDWR);
+            newFileOrError = open(path, O_WRONLY);
             if (0 > newFileOrError)
             {
                 newFileOrError = -get_failure_errno();

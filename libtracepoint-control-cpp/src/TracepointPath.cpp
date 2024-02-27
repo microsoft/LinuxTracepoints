@@ -202,7 +202,7 @@ UpdateUserEventsDataFile(int* pStaticFile) noexcept
         memcpy(fileName, tracingDir, cchTracingDir);
         memcpy(fileName + cchTracingDir, USER_EVENTS_DATA, sizeof(USER_EVENTS_DATA));
 
-        newFileOrError = open(fileName, O_RDWR);
+        newFileOrError = open(fileName, O_WRONLY);
         if (0 > newFileOrError)
         {
             newFileOrError = -GetFailureErrno();

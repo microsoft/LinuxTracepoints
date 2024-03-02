@@ -30,7 +30,13 @@ This implementation writes directly to user_events.
 #define STRCMP_PREFIX(prefix, str)  strncmp(prefix, str, sizeof(prefix) - 1)
 
 //#include <linux/user_events.h>
-struct user_reg63 {
+
+/*
+ * Describes an event registration and stores the results of the registration.
+ * This structure is passed to the DIAG_IOCSREG ioctl, callers at a minimum
+ * must set the size and name_args before invocation.
+ */
+struct user_reg {
 
     /* Input: Size of the user_reg structure being used */
     __u32 size;
@@ -41,7 +47,7 @@ struct user_reg63 {
     /* Input: Enable size in bytes at address */
     __u8 enable_size;
 
-    /* Input: Flags for future use, set to 0 */
+    /* Input: Flags to use, if any */
     __u16 flags;
 
     /* Input: Address to update when enabled */
@@ -58,7 +64,7 @@ struct user_reg63 {
  * Describes an event unregister, callers must set the size, address and bit.
  * This structure is passed to the DIAG_IOCSUNREG ioctl to disable bit updates.
  */
-struct user_unreg63 {
+struct user_unreg {
     /* Input: Size of the user_unreg structure being used */
     __u32 size;
 
@@ -76,9 +82,15 @@ struct user_unreg63 {
 } __attribute__((__packed__));
 
 #define DIAG_IOC_MAGIC '*'
-#define DIAG_IOCSREG _IOWR(DIAG_IOC_MAGIC, 0, struct user_reg63*)
-#define DIAG_IOCSDEL _IOW(DIAG_IOC_MAGIC, 1, char*)
-#define DIAG_IOCSUNREG _IOW(DIAG_IOC_MAGIC, 2, struct user_unreg63*)
+
+/* Request to register a user_event */
+#define DIAG_IOCSREG _IOWR(DIAG_IOC_MAGIC, 0, struct user_reg *)
+
+/* Request to delete a user_event */
+#define DIAG_IOCSDEL _IOW(DIAG_IOC_MAGIC, 1, char *)
+
+/* Requests to unregister a user_event */
+#define DIAG_IOCSUNREG _IOW(DIAG_IOC_MAGIC, 2, struct user_unreg*)
 
 /*
 Guards all stores to any tracepoint_provider_state or tracepoint_state.
@@ -314,12 +326,12 @@ user_events_data_get()
 }
 
 static void
-event_unregister63(tracepoint_state* tp_state)
+event_unregister(tracepoint_state* tp_state)
 {
     if (tp_state->write_index >= 0)
     {
-        struct user_unreg63 unreg = { 0 };
-        unreg.size = sizeof(struct user_unreg63);
+        struct user_unreg unreg = { 0 };
+        unreg.size = sizeof(struct user_unreg);
         unreg.disable_bit = 0;
         unreg.disable_addr = (uintptr_t)&tp_state->status_word;
         ioctl(tp_state->provider_state->data_file, DIAG_IOCSUNREG, &unreg);
@@ -356,7 +368,7 @@ extern "C" {
                     assert(node->prev == &tp_state->tracepoint_list_link);
 
                     assert(provider_state == tp_state->provider_state);
-                    event_unregister63(tp_state);
+                    event_unregister(tp_state);
                 }
             }
         }
@@ -420,22 +432,24 @@ extern "C" {
     }
 
     int
-    tracepoint_connect(
+    tracepoint_connect2(
         tracepoint_state* tp_state,
         tracepoint_provider_state* provider_state,
-        char const* tp_name_args) _tp_FUNC_ATTRIBUTES;
+        char const* tp_name_args,
+        unsigned flags) _tp_FUNC_ATTRIBUTES;
     int
-    tracepoint_connect(
+    tracepoint_connect2(
         tracepoint_state* tp_state,
         tracepoint_provider_state* provider_state,
-        char const* tp_name_args)
+        char const* tp_name_args,
+        unsigned flags)
     {
         int err;
         int write_index = -1;
 
         pthread_mutex_lock(&s_providers_mutex);
 
-        event_unregister63(tp_state);
+        event_unregister(tp_state);
 
         if (NULL == provider_state ||
             -1 == provider_state->data_file)
@@ -444,10 +458,11 @@ extern "C" {
         }
         else
         {
-            struct user_reg63 reg = { 0 };
+            struct user_reg reg = { 0 };
             reg.size = sizeof(reg);
             reg.enable_bit = 0;
             reg.enable_size = sizeof(tp_state->status_word);
+            reg.flags = (__u16)flags;
             reg.enable_addr = (uintptr_t)&tp_state->status_word;
             reg.name_args = (uintptr_t)tp_name_args;
 
@@ -468,6 +483,20 @@ extern "C" {
 
         pthread_mutex_unlock(&s_providers_mutex);
         return err;
+    }
+
+    int
+    tracepoint_connect(
+        tracepoint_state* tp_state,
+        tracepoint_provider_state* provider_state,
+        char const* tp_name_args) _tp_FUNC_ATTRIBUTES;
+    int
+    tracepoint_connect(
+        tracepoint_state* tp_state,
+        tracepoint_provider_state* provider_state,
+        char const* tp_name_args)
+    {
+        return tracepoint_connect2(tp_state, provider_state, tp_name_args, 0);
     }
 
     int

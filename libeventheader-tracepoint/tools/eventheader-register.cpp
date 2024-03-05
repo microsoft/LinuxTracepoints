@@ -26,6 +26,9 @@ Usage: eventheader-register TracepointName1 [TracepointName2]...
 Pre-registers eventheader tracepoint names so that you can start a trace before
 running the program that generates the events.
 
+Note: This tool is deprecated. Prefer the tracepoint-register tool from
+libtracepoint.
+
 Each TracepointName must be formatted as "<providerName>_L<level>K<keyword>"
 or "<providerName>_L<level>K<keyword>G<providerGroup>". For example,
 "MyProvider_L2K1" or "MyProvider_L5K3ffGmygroup".

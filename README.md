@@ -109,16 +109,18 @@ events and for generating Tracepoint events from user mode using the
 - Note that tracepoints must be registered before you can start collecting
   them. The `perf` command will report an error if the tracepoint is not yet
   registered.
-  - You can usually register tracepoints by running the program that generates
+  - You can usually register tracepoints by starting the program that generates
     them. Most programs will register all of their tracepoints when they start
-    running.
-  - For eventheader-enabled Tracepoint events, you can also use the
-    [`eventheader-register`](libeventheader-tracepoint/tools/eventheader-register.cpp)
-    tool to pre-register an event based on its tracepoint name so you can start
-    collecting it before starting the program that generates it. If writing
-    your own event collection tool that collects eventheader-enabled events,
-    you might do something similar in your own tool to pre-register the events
-    that you need to collect.
+    running. (They will usually unregister when they stop running.)
+  - You can also use the
+    [`tracepoint-register`](libtracepoint/tools/tracepoint-register.cpp)
+    tool to pre-register an event so you can start collecting it before
+    starting the program that generates it.
+  - If writing your own event collection tool, you might do something similar
+    in your tool to pre-register the events that you need to collect. For
+    example, you might use the `PreregisterTracepoint` or
+    `PreregisterEventHeaderTracepoint` methods of the `TracepointCache` class
+    in [`libtracepoint=control`](libtracepoint-control-cpp).
 - Use the [`decode-perf`](libeventheader-decode-cpp/tools/decode-perf.cpp)
   tool to decode the `perf.data` file to JSON text, or write your own decoding
   tool using [libtracepoint-decode-cpp](libtracepoint-decode-cpp) and

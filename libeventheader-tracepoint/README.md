@@ -45,8 +45,7 @@ keyword, etc.) will share one Tracepoint.
   collect but the tracepoints have not been registered yet (because the
   programs that generate the tracepoints haven't run yet), I can just register
   them myself since any registration will be equivalent to the "real"
-  registrations. (Sample tool to pre-register events:
-  [eventheader-register.cpp](samples/eventheader-register.cpp).)
+  registrations.
 
 We define a naming scheme to be used for the shared Tracepoints:
 

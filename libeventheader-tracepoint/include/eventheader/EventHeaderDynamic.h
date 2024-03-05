@@ -216,7 +216,7 @@ namespace ehd
                 auto h = sizeof(size_t) == 8
                     ? static_cast<size_t>(0xcbf29ce484222325)
                     : static_cast<size_t>(0x811c9dc5);
-                auto const p = reinterpret_cast<uint8_t const*>(&a.Keyword);
+                auto const p = reinterpret_cast<uint8_t const*>(&a);
                 assert(&a.Level - p == 8);
                 for (unsigned i = 0; i != 9; i += 1)
                 {
@@ -229,7 +229,7 @@ namespace ehd
             bool
             operator()(EventKey const& a, EventKey const& b) const noexcept
             {
-                return 0 == memcmp(&a.Keyword, &b.Keyword, 9);
+                return 0 == memcmp(&a, &b, 9);
             }
         };
 

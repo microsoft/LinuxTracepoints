@@ -23,6 +23,10 @@ alternative scenarios, e.g. testing with a mock tracing implementation.
 to use a higher-level library implemented on top of this interface, such as
 `tracepoint-provider.h`.
 
+This library includes a `tracepoint-register` tool that can be used to
+pre-register a `user_event` tracepoint. This allows you to start collecting a
+trace before the corresponding scenario starts running.
+
 Alternative implementations of this interface are expected, e.g. a mock
 tracing implementation could be used for testing. A developer would
 select the alternative implementation by linking against a different

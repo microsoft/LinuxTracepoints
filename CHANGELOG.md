@@ -1,5 +1,12 @@
 # LinuxTracepoints Change Log
 
+## v1.3.3 (TBD)
+
+- libtracepoint: new tool `tracepoint-register` for pre-registering
+  tracepoints.
+- libeventheader: existing tool `eventheader-register` is deprecated in
+  favor of `tracepoint-register`.
+
 ## v1.3.2 (2024-02-27)
 
 - Bug fix: Open `user_events_data` for `O_WRONLY` instead of `O_RDWR`.

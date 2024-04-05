@@ -55,7 +55,7 @@ namespace tracepoint_decode
         // to SetClockData, but the difference between them will be the same as the
         // difference between the values provided to SetClockData.
         void
-        GetClockOffset(
+        GetClockData(
             _Out_ uint64_t* wallClockNS,
             _Out_ uint64_t* clockidTimeNS) const noexcept;
 

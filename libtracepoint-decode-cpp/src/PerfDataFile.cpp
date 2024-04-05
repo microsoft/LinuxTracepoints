@@ -260,7 +260,6 @@ PerfDataFile::TracingDataSavedCmdLine() const noexcept
 void
 PerfDataFile::Close() noexcept
 {
-
     m_filePos = 0;
     m_fileLen = 0;
     m_dataBeginFilePos = 0;
@@ -573,7 +572,10 @@ PerfDataFile::ReadEvent(_Outptr_result_maybenull_ perf_event_header const** ppEv
             {
                 auto const pbEventData = m_eventData.data() + sizeof(perf_event_header);
                 auto const len = m_byteReader.ReadAsU32(pbEventData);
+
+                // ReadPostEventData ensures this.
                 assert(sizeof(perf_event_header) + sizeof(uint32_t) + len <= m_eventData.size());
+
                 auto& header = m_headers[PERF_HEADER_TRACING_DATA];
                 header.resize(len);
                 memcpy(header.data(), pbEventData + sizeof(uint32_t), len);
@@ -621,12 +623,14 @@ PerfDataFile::ReadEvent(_Outptr_result_maybenull_ perf_event_header const** ppEv
                     case PERF_HEADER_CLOCK_DATA:
                         ParseHeaderClockData();
                         break;
-                    case PERF_HEADER_LAST_FEATURE:
-                        ParseHeaderEventDesc();
-                        break;
                     }
                 }
             }
+            break;
+        }
+        case PERF_RECORD_FINISHED_INIT:
+        {
+            ParseHeaderEventDesc();
             break;
         }
         default:
@@ -1319,7 +1323,10 @@ PerfDataFile::ParseTracingData() noexcept
                     }
 
                     PerfEventMetadata eventMetadata;
-                    if (eventMetadata.Parse(m_tracingDataLongSize, systemName, formatFileContents))
+                    auto longSize64 = m_tracingDataLongSize == 0
+                        ? sizeof(uintptr_t) == 8
+                        : m_tracingDataLongSize == 8;
+                    if (eventMetadata.Parse(longSize64, systemName, formatFileContents))
                     {
                         int8_t commonTypeOffset = -1;
                         uint8_t commonTypeSize = 0;

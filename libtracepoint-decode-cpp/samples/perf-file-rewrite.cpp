@@ -262,7 +262,7 @@ main(int argc, char* argv[])
             for (size_t iDesc = 0; iDesc != input.EventDescCount(); iDesc += 1)
             {
                 // First, merge data from descriptors that have names.
-                auto const desc = input.EventDesc(iDesc);
+                auto const& desc = input.EventDesc(iDesc);
                 if (desc.name[0] != '\0')
                 {
                     MergeEventDesc(output, outputPath, sampleIdsUsed, sampleIdsBuffer, desc);
@@ -271,7 +271,7 @@ main(int argc, char* argv[])
             for (size_t iDesc = 0; iDesc != input.EventDescCount(); iDesc += 1)
             {
                 // Second, fill gaps (if any) using descriptors that don't have names.
-                auto const desc = input.EventDesc(iDesc);
+                auto const& desc = input.EventDesc(iDesc);
                 if (desc.name[0] == '\0')
                 {
                     MergeEventDesc(output, outputPath, sampleIdsUsed, sampleIdsBuffer, desc);

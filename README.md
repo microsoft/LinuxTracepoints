@@ -47,8 +47,8 @@ events and for generating Tracepoint events from user mode using the
   - `EventEnumerator` class parses an event into fields.
   - `EventFormatter` class converts event data into a string.
   - `decode-perf` tool that decodes `perf.data` files to JSON.
-- [libeventheader-decode-dotnet](libeventheader-decode-dotnet) -
-  .NET library for decoding events that use the `eventheader` envelope.
+- See also: [LinuxTracepoints-Net](https://github.com/microsoft/LinuxTracepoints-Net) -
+  .NET library for decoding perf.data files, including `eventheader` events.
 
 ## General Usage
 

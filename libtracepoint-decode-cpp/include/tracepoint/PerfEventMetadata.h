@@ -74,7 +74,7 @@ namespace tracepoint_decode
             bool longSize64, // true if sizeof(long) == 8, false if sizeof(long) == 4.
             std::string_view formatLine) noexcept;
 
-        // Same as PerfFieldMetadata({}, 0, 0)
+        // Same as PerfFieldMetadata(false, {}, 0, 0)
         constexpr
         PerfFieldMetadata() noexcept
             : m_name(noname)

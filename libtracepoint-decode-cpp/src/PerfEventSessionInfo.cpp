@@ -86,7 +86,7 @@ PerfEventSessionInfo::SetClockData(
 }
 
 void
-PerfEventSessionInfo::GetClockOffset(
+PerfEventSessionInfo::GetClockData(
     _Out_ uint64_t* wallClockNS,
     _Out_ uint64_t* clockidTimeNS) const noexcept
 {

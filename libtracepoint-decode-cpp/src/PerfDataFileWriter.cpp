@@ -498,7 +498,7 @@ PerfDataFileWriter::SetSessionInfoHeaders(PerfEventSessionInfo const& sessionInf
     else
     {
         uint64_t wallClockNS, clockidTimeNS;
-        sessionInfo.GetClockOffset(&wallClockNS, &clockidTimeNS);
+        sessionInfo.GetClockData(&wallClockNS, &clockidTimeNS);
         error = SetClockDataHeader(clockid, wallClockNS, clockidTimeNS);
         if (error != 0)
         {

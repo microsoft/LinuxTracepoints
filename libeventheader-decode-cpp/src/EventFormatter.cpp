@@ -297,7 +297,7 @@ public:
     // Requires: valSize != 0.
     // Writes: valSize * 3 - 1, e.g. [00 11 22].
     void
-    WriteHexBinary(void const* val, size_t valSize) noexcept
+    WriteHexBytes(void const* val, size_t valSize) noexcept
     {
         assert(valSize != 0);
         WriteBegin(valSize * 3 - 1);
@@ -1019,7 +1019,7 @@ TryAppendUtfBomVal(
 }
 
 static void
-AppendHexBinaryVal(
+AppendHexBytesVal(
     StringBuilder& sb,
     void const* val,
     size_t valSize,
@@ -1031,7 +1031,7 @@ AppendHexBinaryVal(
     sb.WriteQuoteIf(json);
     if (valSize != 0)
     {
-        sb.WriteHexBinary(val, valSize);
+        sb.WriteHexBytes(val, valSize);
     }
     sb.WriteQuoteIf(json);
 }
@@ -1130,7 +1130,7 @@ AppendValueImpl(
             case event_field_format_hex_bytes:
                 // ["00"] = 4
                 sb.WriteQuoteIf(json);
-                sb.WriteHexBinary(valData, valSize);
+                sb.WriteHexBytes(valData, valSize);
                 sb.WriteQuoteIf(json);
                 break;
             case event_field_format_string8:
@@ -1179,7 +1179,7 @@ AppendValueImpl(
             case event_field_format_hex_bytes:
                 // ["00 00"] = 7
                 sb.WriteQuoteIf(json);
-                sb.WriteHexBinary(valData, valSize);
+                sb.WriteHexBytes(valData, valSize);
                 sb.WriteQuoteIf(json);
                 break;
             case event_field_format_string_utf:
@@ -1259,7 +1259,7 @@ AppendValueImpl(
             case event_field_format_hex_bytes:
                 // ["00 00 00 00"] = 13
                 sb.WriteQuoteIf(json);
-                sb.WriteHexBinary(valData, valSize);
+                sb.WriteHexBytes(valData, valSize);
                 sb.WriteQuoteIf(json);
                 break;
             case event_field_format_string_utf:
@@ -1330,7 +1330,7 @@ AppendValueImpl(
             case event_field_format_hex_bytes:
                 // ["00 00 00 00 00 00 00 00"] = 25
                 sb.WriteQuoteIf(json);
-                sb.WriteHexBinary(valData, valSize);
+                sb.WriteHexBytes(valData, valSize);
                 sb.WriteQuoteIf(json);
                 break;
             }
@@ -1353,7 +1353,7 @@ AppendValueImpl(
             case event_field_format_hex_bytes:
                 // ["00 00 00 00 ... 00 00 00 00"] = 49
                 sb.WriteQuoteIf(json);
-                sb.WriteHexBinary(valData, valSize);
+                sb.WriteHexBytes(valData, valSize);
                 sb.WriteQuoteIf(json);
                 break;
             case event_field_format_uuid:
@@ -1378,7 +1378,7 @@ AppendValueImpl(
         switch (format)
         {
         case event_field_format_hex_bytes:
-            AppendHexBinaryVal(sb, valData, valSize, json);
+            AppendHexBytesVal(sb, valData, valSize, json);
             break;
         case event_field_format_string8:
             AppendUcsVal<SwapNo>(sb,
@@ -1412,7 +1412,7 @@ AppendValueImpl(
             switch (format)
             {
             case event_field_format_hex_bytes:
-                AppendHexBinaryVal(sb, valData, valSize, json);
+                AppendHexBytesVal(sb, valData, valSize, json);
                 break;
             case event_field_format_string_utf_bom:
             case event_field_format_string_xml:
@@ -1453,7 +1453,7 @@ AppendValueImpl(
             switch (format)
             {
             case event_field_format_hex_bytes:
-                AppendHexBinaryVal(sb, valData, valSize, json);
+                AppendHexBytesVal(sb, valData, valSize, json);
                 break;
             case event_field_format_string_utf_bom:
             case event_field_format_string_xml:
@@ -1837,7 +1837,7 @@ AppendSampleFieldAsJsonImpl(
             fieldMetadata.ElementSize() == PerfFieldElementSize8)
         {
             // Single unknown item, or an array of 8-bit unknown items: Treat as one binary blob.
-            AppendHexBinaryVal(sb, fieldRawDataChars, fieldRawDataSize, true);
+            AppendHexBytesVal(sb, fieldRawDataChars, fieldRawDataSize, true);
             break;
         }
         // Array of unknown items: Treat as hex integers.
@@ -1988,7 +1988,7 @@ EventFormatter::AppendSampleAsJson(
         else if (sampleEventInfoSampleType & PERF_SAMPLE_RAW)
         {
             AppendJsonMemberBegin(sb, 0, "raw"sv, 0);
-            AppendHexBinaryVal(sb,
+            AppendHexBytesVal(sb,
                 sampleEventInfo.raw_data, sampleEventInfo.raw_data_size,
                 true);
         }

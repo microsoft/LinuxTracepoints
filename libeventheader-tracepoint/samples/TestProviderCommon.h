@@ -346,7 +346,7 @@ static bool TestCommon(void)
         TraceLoggingPackedField(&lchar16.l, 10, event_field_encoding_string_length16_char16, "LChar16"),
         TraceLoggingPackedField(&lchar32.l, 18, event_field_encoding_string_length16_char32, "LChar32"));
 
-    TraceLoggingWrite(TestProvider, "HexBinary",
+    TraceLoggingWrite(TestProvider, "HexBytes",
         TraceLoggingPackedFieldEx(&guid, 1, event_field_encoding_value8, event_field_format_hex_bytes, "V8"),
         TraceLoggingPackedFieldEx(&guid, 2, event_field_encoding_value16, event_field_format_hex_bytes, "V16"),
         TraceLoggingPackedFieldEx(&guid, 4, event_field_encoding_value32, event_field_format_hex_bytes, "V32"),

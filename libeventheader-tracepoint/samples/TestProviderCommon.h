@@ -317,14 +317,28 @@ static bool TestCommon(void)
         TraceLoggingPortFixedArray(&u16, 1, "a1"),
         TraceLoggingPortArray(&u16, n1, "s"));
     TraceLoggingWrite(TestProvider, "aerrno",
-        TraceLoggingTime32FixedArray(&i32, 1, "a1"),
-        TraceLoggingTime32Array(&i32, n1, "s"));
+        TraceLoggingErrnoFixedArray(&i32, 1, "a1"),
+        TraceLoggingErrnoArray(&i32, n1, "s"));
     TraceLoggingWrite(TestProvider, "aft",
         TraceLoggingTime32FixedArray(&i32, 1, "a1"),
         TraceLoggingTime32Array(&i32, n1, "s"));
     TraceLoggingWrite(TestProvider, "auft",
         TraceLoggingTime64FixedArray(&i64, 1, "a1"),
         TraceLoggingTime64Array(&i64, n1, "s"));
+
+    TraceLoggingWrite(TestProvider, "ag",
+        TraceLoggingPackedMetadataEx(event_field_encoding_value128 | event_field_encoding_varray_flag, event_field_format_uuid, "s0"),
+        TraceLoggingPackedData(u"\x0", 2), // 0 elements in array
+        TraceLoggingPackedMetadataEx(event_field_encoding_value128 | event_field_encoding_varray_flag, event_field_format_uuid, "s1"),
+        TraceLoggingPackedData(u"\x1", 2), // 1 element in array
+        TraceLoggingPackedData(guid, sizeof(guid)));
+
+    TraceLoggingWrite(TestProvider, "ahexbytes",
+        TraceLoggingPackedMetadataEx(event_field_encoding_value128 | event_field_encoding_varray_flag, event_field_format_hex_bytes, "s0"),
+        TraceLoggingPackedData(u"\x0", 2), // 0 elements in array
+        TraceLoggingPackedMetadataEx(event_field_encoding_value128 | event_field_encoding_varray_flag, event_field_format_hex_bytes, "s1"),
+        TraceLoggingPackedData(u"\x1", 2), // 1 element in array
+        TraceLoggingPackedData(guid, sizeof(guid)));
 
     struct LChar8  { uint16_t x; uint16_t l; char     c[10]; };
     struct LChar16 { uint16_t x; uint16_t l; char16_t c[10]; };
@@ -475,6 +489,15 @@ static bool TestCommon(void)
             TraceLoggingPackedStruct(2, "Struct2"),
                 TraceLoggingPackedMetadataEx(event_field_encoding_value8, event_field_format_string8, "K"),
                 TraceLoggingPackedMetadataEx(event_field_encoding_zstring_char16, event_field_format_hex_bytes, "NChar16"),
+        TraceLoggingInt32(5, "five"));
+    static const char MyStrings3[] = "ABC\0\0XYZ";
+    TraceLoggingWrite(TestProvider, "PackedComplexArray",
+        TraceLoggingInt32(5, "five"),
+        TraceLoggingPackedData(u"\x03", 2), // 3 items in array
+        TraceLoggingPackedField(
+            MyStrings3, sizeof(MyStrings3),
+            event_field_encoding_zstring_char8 | event_field_encoding_varray_flag,
+            "MyStrings3"),
         TraceLoggingInt32(5, "five"));
 
     return true;

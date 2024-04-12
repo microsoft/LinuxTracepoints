@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(tracepoint-control-cpp
-    VERSION 1.3.2
+    VERSION 1.3.3
     DESCRIPTION "Linux tracepoint collection for C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES CXX)

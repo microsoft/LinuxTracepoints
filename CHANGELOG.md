@@ -1,7 +1,11 @@
 # LinuxTracepoints Change Log
 
-## v1.3.3 (TBD)
+## v1.3.3 (2024-04-12)
 
+- BUG FIX: EADDRINUSE returned during TraceLoggingRegister on newer kernels.
+  The "name already in use" detection splits on whitespace, while all other
+  processing splits on semicolon. Fix by adding space after each semicolon
+  in `EVENTHEADER_COMMAND_TYPES`.
 - libtracepoint: new tool `tracepoint-register` for pre-registering
   tracepoints.
 - libeventheader: existing tool `eventheader-register` is deprecated in

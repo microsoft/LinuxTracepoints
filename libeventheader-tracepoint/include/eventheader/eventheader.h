@@ -213,7 +213,7 @@ typedef struct eventheader {
 Type string for use in the DIAG_IOCSREG command string.
 Use EVENTHEADER_FORMAT_COMMAND to generate the full command string.
 */
-#define EVENTHEADER_COMMAND_TYPES "u8 eventheader_flags;u8 version;u16 id;u16 tag;u8 opcode;u8 level"
+#define EVENTHEADER_COMMAND_TYPES "u8 eventheader_flags; u8 version; u16 id; u16 tag; u8 opcode; u8 level"
 
 /*
 eventheader_flags enum: Values for eventheader.flags.

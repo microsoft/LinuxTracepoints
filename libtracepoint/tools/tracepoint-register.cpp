@@ -12,7 +12,7 @@
 #include <forward_list>
 
 // From eventheader/eventheader.h:
-#define EVENTHEADER_COMMAND_TYPES "u8 eventheader_flags;u8 version;u16 id;u16 tag;u8 opcode;u8 level"
+#define EVENTHEADER_COMMAND_TYPES "u8 eventheader_flags; u8 version; u16 id; u16 tag; u8 opcode; u8 level"
 enum {
     // Maximum length of a Tracepoint name "ProviderName_Attributes", including nul termination.
     EVENTHEADER_NAME_MAX = 256,

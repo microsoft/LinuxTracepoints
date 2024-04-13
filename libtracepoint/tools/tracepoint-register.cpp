@@ -105,13 +105,13 @@ Options:
 
 A TracepointDefinition must be formatted as:
 
-    name[:flag1[,flag2...]] [fieldDef1[;fieldDef2...]]
+    name[:flag1[,flag2...]] [fieldDef1[; fieldDef2...]]
 
 For example:
 
 - MyEvent1
 - MyEvent2 u32 MyField1
-- MyEvent3:MyFlag u32 MyField1;struct MyStruct2 MyField2 20
+- MyEvent3:MyFlag u32 MyField1; struct MyStruct2 MyField2 20
 
 Definitions with spaces must be enclosed in quotes when specified as
 command-line arguments, e.g. "MyEvent2 u32 MyField1".

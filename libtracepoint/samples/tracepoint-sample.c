@@ -55,11 +55,11 @@ int main()
     printf("tracepoint_connect(empty_tracepoint): %d\n", err);
 
     tracepoint_state tp_data_loc = TRACEPOINT_STATE_INIT;
-    err = tracepoint_connect(&tp_data_loc, &provider, "tp_data_loc u32 field1;__data_loc char[] field2; u32 field3;");
+    err = tracepoint_connect(&tp_data_loc, &provider, "tp_data_loc u32 field1; __data_loc char[] field2; u32 field3;");
     printf("tracepoint_connect(tp_data_loc): %d\n", err);
 
     tracepoint_state tp_rel_loc = TRACEPOINT_STATE_INIT;
-    err = tracepoint_connect(&tp_rel_loc, &provider, "tp_rel_loc u32 field1;__rel_loc char[] field2; u32 field3;");
+    err = tracepoint_connect(&tp_rel_loc, &provider, "tp_rel_loc u32 field1; __rel_loc char[] field2; u32 field3;");
     printf("tracepoint_connect(tp_rel_loc): %d\n", err);
 
     printf("\n");

@@ -724,9 +724,9 @@ _tppApplyArgsN(macro, n, (handler, ...)) --> macro##handler(n, ...)
 
 // Field type-name strings.
 #define _tppFieldString(n, args) _tppApplyArgs(_tppFieldString, args)
-#define _tppFieldString_tppArgByVal( FieldDeclString, Ctype, Value)               ""           FieldDeclString ";"
-#define _tppFieldString_tppArgByRef( FieldDeclString, Ctype, ConstSize, ValuePtr) ""           FieldDeclString ";"
-#define _tppFieldString_tppArgRelLoc(FieldDeclString, Ctype, ValueSize, ValuePtr) "__rel_loc " FieldDeclString ";"
+#define _tppFieldString_tppArgByVal( FieldDeclString, Ctype, Value)               " "           FieldDeclString ";"
+#define _tppFieldString_tppArgByRef( FieldDeclString, Ctype, ConstSize, ValuePtr) " "           FieldDeclString ";"
+#define _tppFieldString_tppArgRelLoc(FieldDeclString, Ctype, ValueSize, ValuePtr) " __rel_loc " FieldDeclString ";"
 #define _tppFieldString_tppArgRelLocStr _tppFieldString_tppArgRelLoc
 
 // Count the iovecs needed for event field data.
@@ -800,7 +800,7 @@ _tppApplyArgsN(macro, n, (handler, ...)) --> macro##handler(n, ...)
 #define _tppCommonImpl(ProviderSymbol, TracepointNameString, TracepointState, ...) \
     static tracepoint_definition const _tppEvt = { \
         &TracepointState, \
-        "" TracepointNameString " " _tpp_FOREACH(_tppFieldString, __VA_ARGS__) \
+        "" TracepointNameString _tpp_FOREACH(_tppFieldString, __VA_ARGS__) \
     }; \
     static tracepoint_definition const* _tppEvtPtr \
         __attribute__((section("_tppEventPtrs_" _tpp_STRINGIZE(ProviderSymbol)), used)) \

@@ -108,7 +108,7 @@ extern "C" {
 
     - tp_name_args is a nul-terminated string with the tracepoint name, a
       space, and the tracepoint arg spec string e.g.
-      "MyTracepoint u16 MyField1;u8 MyField2".
+      "MyTracepoint u16 MyField1; u8 MyField2".
     */
     int
     tracepoint_connect(

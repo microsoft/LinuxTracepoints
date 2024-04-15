@@ -145,7 +145,7 @@ namespace tracepoint_control
         Given the registration command for a user_events tracepoint, pre-register and
         cache the specified event.
 
-        Example registerCommand: "MyEventName __rel_loc u8[] MyField1;int MyField2"
+        Example registerCommand: "MyEventName __rel_loc u8[] MyField1; int MyField2"
 
         Details:
 

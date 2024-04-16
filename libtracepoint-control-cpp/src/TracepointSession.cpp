@@ -927,6 +927,17 @@ TracepointSession::SavePerfDataFile(
         goto Done;
     }
 
+    // Mark the end of the "synthetic events" section (currently empty).
+
+    static auto constexpr xPERF_RECORD_FINISHED_INIT = static_cast<perf_event_type>(82);
+    static perf_event_header constexpr finishedInit = {
+        xPERF_RECORD_FINISHED_INIT, 0, sizeof(perf_event_header) };
+    error = output.WriteEventData(&finishedInit, sizeof(finishedInit));
+    if (error != 0)
+    {
+        goto Done;
+    }
+
     // Write event data:
 
     if (m_bufferLeaderFiles != nullptr)

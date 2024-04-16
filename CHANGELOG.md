@@ -1,5 +1,10 @@
 # LinuxTracepoints Change Log
 
+## v1.3.4 (TBD)
+
+- libtracepoint-control: TracepointSession SavePerfDataFile adds a
+  `PERF_RECORD_FINISHED_INIT` record to the generated perf.data file.
+
 ## v1.3.3 (2024-04-15)
 
 - BUG FIX: EADDRINUSE returned during TraceLoggingRegister on newer kernels.

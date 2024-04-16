@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
+include(../version.cmake)
 project(tracepoint
-    VERSION 1.3.3
+    VERSION ${LINUXTRACEPOINTS_VERSION}
     DESCRIPTION "Linux tracepoints interface for C/C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES C CXX)

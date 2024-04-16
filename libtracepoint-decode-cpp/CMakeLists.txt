@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
+include(../version.cmake)
 project(tracepoint-decode-cpp
-    VERSION 1.3.0
+    VERSION ${LINUXTRACEPOINTS_VERSION}
     DESCRIPTION "Tracepoint decoding for C/C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES CXX)

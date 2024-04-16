@@ -1,15 +1,20 @@
 # LinuxTracepoints Change Log
 
-## v1.3.3 (2024-04-12)
+## v1.3.3 (2024-04-15)
 
 - BUG FIX: EADDRINUSE returned during TraceLoggingRegister on newer kernels.
   The "name already in use" detection splits on whitespace, while all other
   processing splits on semicolon. Fix by adding space after each semicolon
   in `EVENTHEADER_COMMAND_TYPES`.
+- libtracepoint-decode: In pipe mode, load event names at FinishedInit instead
+  of HeaderLastFeature since not all traces emit HeaderLastFeature.
+- libtracepoint-decode: Recognize files from LP32 systems as 32-bit.
 - libtracepoint: new tool `tracepoint-register` for pre-registering
   tracepoints.
 - libeventheader: existing tool `eventheader-register` is deprecated in
   favor of `tracepoint-register`.
+- libeventheader-decode-dotnet: Moved to separate repository
+  [LinuxTracepoints-Net](https://github.com/microsoft/LinuxTracepoints-Net).
 
 ## v1.3.2 (2024-02-27)
 

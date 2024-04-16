@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
+include(version.cmake)
 project(LinuxTracepoints
-    VERSION 1.3.2)
+    VERSION ${LINUXTRACEPOINTS_VERSION})
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)

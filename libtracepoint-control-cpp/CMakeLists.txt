@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
+include(../version.cmake)
 project(tracepoint-control-cpp
-    VERSION 1.3.3
+    VERSION ${LINUXTRACEPOINTS_VERSION}
     DESCRIPTION "Linux tracepoint collection for C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES CXX)
@@ -11,7 +12,7 @@ set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
 if(NOT WIN32)
 
     if(NOT TARGET tracepoint-decode)
-        find_package(tracepoint-decode 1.3 REQUIRED)
+        find_package(tracepoint-decode ${TRACEPOINT_DECODE_MINVER} REQUIRED)
     endif()
 
     add_compile_options(

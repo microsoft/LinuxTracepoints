@@ -13,8 +13,6 @@ Demonstrates the use of SavePerfDataFile to save session data to a perf file.
 
 #include <unistd.h>
 
-#include <tracepoint/PerfEventAbi.h>
-
 using namespace std::string_view_literals;
 using namespace tracepoint_control;
 using namespace tracepoint_decode;
@@ -23,7 +21,8 @@ int
 main(int argc, char* argv[])
 {
     int error = 0;
-    uint64_t lastWritten = UINT64_MAX; // So that lastWritten + 1 == 0
+    TracepointTimestampRange timestampRange;
+    timestampRange.Last = UINT64_MAX; // So that Last + 1 == 0
 
     if (argc < 3 ||
         (0 != strcmp(argv[1], "0") && 0 != strcmp(argv[1], "1")))
@@ -100,8 +99,8 @@ main(int argc, char* argv[])
         error = session.SavePerfDataFile(
             outFileName,
             TracepointSavePerfDataFileOptions()
-            .TimestampFilter(lastWritten + 1)
-            .TimestampWrittenRange(nullptr, &lastWritten));
+            .TimestampFilter(timestampRange.Last + 1)
+            .TimestampWrittenRange(&timestampRange));
         printf("SavePerfDataFile(%s) = %u\n", outFileName, error);
     }
 

@@ -32,6 +32,8 @@ for its tracepoints.
 
 namespace tracepoint_control
 {
+    class TracepointSpec; // Forward declaration
+
     /*
     Loads, parses, and caches the metadata (format) information for tracepoints.
     */
@@ -142,6 +144,25 @@ namespace tracepoint_control
         PreregisterEventHeaderTracepoint(TracepointName const& name) noexcept;
 
         /*
+        Given a tracepoint definition, pre-register and cache the specified event.
+
+        Details:
+
+        - If spec.Kind is not Definition or EventHeaderDefinition, return EINVAL.
+        - If spec.SystemName is not "user_events", return EINVAL.
+        - If spec.EventName, spec.Flags, or spec.Fields is invalid, return EINVAL.
+        - If metadata for "user_events:eventName" is already cached, return EEXIST.
+        - Try to register a tracepoint with the given tracepoint name, flags, and
+          fields. If this fails, return the error.
+        - Return AddFromSystem("user_events:eventName").
+
+        If this operation succeeds, the event will remain registered as long as this cache
+        object exists.
+        */
+        _Success_(return == 0) int
+        PreregisterTracepointDefinition(TracepointSpec const& spec) noexcept;
+
+        /*
         Given the registration command for a user_events tracepoint, pre-register and
         cache the specified event.
 
@@ -196,6 +217,9 @@ namespace tracepoint_control
             size_t operator()(TracepointName const&) const noexcept; // Hash
             size_t operator()(TracepointName const&, TracepointName const&) const noexcept; // Equal
         };
+
+        _Success_(return == 0) int
+        PreregisterTracepointImpl(_In_z_ char const* registerCommand, unsigned eventNameSize) noexcept;
 
         /*
         systemAndFormat = "SystemName\nFormatFileContents".

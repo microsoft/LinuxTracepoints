@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <tracepoint/tracepoint.h>
+#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -11,14 +12,19 @@
 #include <string_view>
 #include <forward_list>
 
+using namespace std::string_view_literals;
+
 // From eventheader/eventheader.h:
 #define EVENTHEADER_COMMAND_TYPES "u8 eventheader_flags; u8 version; u16 id; u16 tag; u8 opcode; u8 level"
+
+static constexpr std::string_view EventHeaderCommandTypes = EVENTHEADER_COMMAND_TYPES;
+
 enum {
     // Maximum length of a Tracepoint name "ProviderName_Attributes", including nul termination.
     EVENTHEADER_NAME_MAX = 256,
 
     // Maximum length needed for a DIAG_IOCSREG command "ProviderName_Attributes CommandTypes".
-    EVENTHEADER_COMMAND_MAX = EVENTHEADER_NAME_MAX + sizeof(EVENTHEADER_COMMAND_TYPES)
+    EVENTHEADER_COMMAND_MAX = EVENTHEADER_NAME_MAX + 1 + EventHeaderCommandTypes.size(), // +1 for space.
 };
 
 // From tracepoint.c:
@@ -57,78 +63,77 @@ struct TracepointInfo
 struct Options
 {
     bool verbose = false;
-    bool eventHeader = false;
 };
 
-#define EXIT_SIGNALS       SIGQUIT
-#define EXIT_SIGNALS_STR "(SIGQUIT)"
+#define PROGRAM_NAME "tracepoint-register"
+#define EXIT_SIGNALS      SIGTERM, SIGINT
+#define EXIT_SIGNALS_STR "SIGTERM, SIGINT"
 
 static char const* const UsageCommon = R"(
-Usage: tracepoint-register [options...] TracepointDefinitions...
+Usage: )" PROGRAM_NAME R"( [options...] UserEventDefinitions...
 )";
 
 // Usage error: stderr += UsageCommon + UsageShort.
 static char const* const UsageShort = R"(
-Try "tracepoint-register --help" for more information.
+Try ")" PROGRAM_NAME R"( --help" for more information.
 )";
 
 // -h or --help: stdout += UsageCommon + UsageLong.
 static char const* const UsageLong = R"(
-Pre-registers user_events tracepoints so that you can start a trace (i.e. with
-the Linux "perf" tool) before running the program that generates the events.
+Pre-registers user_events tracepoints so you can start recording (e.g. with
+the Linux "perf" tool) before starting the program that generates the events.
+
+Requires write access to /sys/kernel/tracing/user_events_data. The -p option
+requires the CAP_PERFMON capability.
 
 Options:
 
--f, --file        Read tracepoint definitions from a file, "-f MyDefs.txt" or
-                  "--file MyDefs.txt". Each line in the file is a
-                  TracepointDefinition. Lines starting with '#' are ignored.
+-i, --input <file>  Read additional UserEventDefinitions from <file>. Each
+                    line in the file is treated as a UserEventDefinition.
+                    Empty lines and lines starting with '#' are ignored.
 
--p, --persist     Use the USER_EVENT_REG_PERSIST flag when registering each
-                  tracepoint so that the tracepoints remain available after
-                  exit (requires CAP_PERFMON).
+-p, --persist       Use the USER_EVENT_REG_PERSIST flag when registering each
+                    tracepoint so that the tracepoints remain available after
+                    )" PROGRAM_NAME R"( exits (requires CAP_PERFMON).
 
--w, --wait        Do not exit until signalled )" EXIT_SIGNALS_STR R"(.
-                  Keeps tracepoints registered until exit. This is the default
-                  when -p is not specified.
+-w, --wait          Do not exit until signalled ()" EXIT_SIGNALS_STR R"().
+                    Keeps tracepoints registered until exit. This is the
+                    default if -p is not specified.
 
--W, --nowait      Exit immediately. This is the default when -p is specified.
+-W, --nowait        Exit immediately. This is the default if -p is specified.
 
--e, --eventheader Subsequent TracepointDefinitions are EventHeader tracepoints
-                  unless they start with ':' (inverts the default behavior).
+-v, --verbose       Show diagnostic output.
 
--E, --noeventheader Subsequent TracepointDefinitions are normal tracepoints
-                  unless they start with ':' (restores the default behavior).
+-h, --help          Show this help message and exit.
 
--v, --verbose     Show verbose output. Place this before any other options.
+A UserEventDefinition must be formatted as follows (see
+https://docs.kernel.org/trace/user_events.html#command-format for details):
 
--h, --help        Show this help message and exit.
+    EventName[:Flags] Fields...
 
-A TracepointDefinition must be formatted as:
+Fields... is list of fields. Multiple fields are separated by "; ". If an
+event has no fields, use ";" as the Fields... definition. Note that ";" is a
+valid EventName character, so there must be whitespace between EventName and
+the ";".
 
-    name[:flag1[,flag2...]] [fieldDef1[; fieldDef2...]]
+At present, no flags are defined.
 
-For example:
+UserEventDefinition examples:
 
-- MyEvent1
+- MyEvent1 ;
 - MyEvent2 u32 MyField1
-- MyEvent3:MyFlag u32 MyField1; struct MyStruct2 MyField2 20
+- MyEvent3:flag u32 MyField1; struct MyStruct2 MyField2 20
 
-Definitions with spaces must be enclosed in quotes when specified as
-command-line arguments, e.g. "MyEvent2 u32 MyField1".
+As a shortcut, an EventHeader tracepoint may be specified without specifying
+the fields. A UserEventDefinition that contains no whitespace will be treated
+as an EventHeader tracepoint and will be expanded to include the standard
+EventHeader fields.
 
-As a shortcut, an EventHeader tracepoint may be specified without any fields.
-Add a leading ':' to indicate that the definition has omitted the EventHeader
-fields. An EventHeader TracepointDefinition must be formatted as:
+EventHeader UserEventDefinition examples:
 
-    :provider_attributes[:flag1[,flag2...]]
-
-For example:
-
-- :MyProvider_L2K1
-- :MyProvider_L5K3ffGmygroup
-- :MyProvider_L5K3ffGmygroup:MyFlag
-
-EventHeader definitions must include "L" (level) and "K" (keyword) attributes.
+- MyProvider_L2K1
+- MyProvider_L5K3ffGmygroup
+- MyProvider_L5K3ffGmygroup:flag
 )";
 
 static bool
@@ -148,6 +153,23 @@ AsciiIsAlphanumeric(char ch)
         ('a' <= ch && ch <= 'z');
 }
 
+static bool
+AsciiIsSpace(char ch)
+{
+    return ch == ' ' || ('\t' <= ch && ch <= '\r');
+}
+
+// fprintf(stderr, format, args...).
+static void
+PrintStderr(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    fputs(PROGRAM_NAME ": ", stderr);
+    vfprintf(stderr, format, args);
+    va_end(args);
+}
+
 // if (condition) fprintf(stderr, format, args...).
 static void
 PrintStderrIf(bool condition, const char* format, ...)
@@ -156,68 +178,86 @@ PrintStderrIf(bool condition, const char* format, ...)
     {
         va_list args;
         va_start(args, format);
+        fputs(PROGRAM_NAME ": ", stderr);
         vfprintf(stderr, format, args);
         va_end(args);
     }
 }
 
-static bool
-PushFrontDef(Options const& o, std::forward_list<TracepointInfo>& tracepoints, std::string_view def)
+static void
+PushFrontDef(Options const& o, std::forward_list<TracepointInfo>& tracepoints, std::string_view line)
 {
-    std::string command;
-    std::string_view defNoFlag;
-    bool isEventHeader;
-
-    if (def.empty() || def[0] != ':')
+    // Trim trailing whitespace.
+    size_t endPos = line.size();
+    for (; endPos != 0; endPos -= 1)
     {
-        // No leading ':'.
-        defNoFlag = def.substr(0);
-        isEventHeader = o.eventHeader;
-    }
-    else
-    {
-        // Has leading ':'.
-        defNoFlag = def.substr(1);
-        isEventHeader = !o.eventHeader;
-    }
-
-    if (defNoFlag.empty())
-    {
-        PrintStderrIf(o.verbose, "verbose: empty definition\n");
-        return true;
-    }
-
-    if (!isEventHeader)
-    {
-        // Traditional tracepoint definition. No validation.
-        command = defNoFlag;
-    }
-    else
-    {
-        // EventHeader tracepoint definition.
-
-        if (defNoFlag.find(' ') != std::string_view::npos)
+        auto const ch = line[endPos - 1];
+        if (!AsciiIsSpace(ch))
         {
-            fprintf(stderr, "error: eventheader definition \"%.*s\" contains invalid char ' '.\n",
-                (unsigned)defNoFlag.size(), defNoFlag.data());
-            return false;
+            break;
+        }
+    }
+
+    // Trim leading whitespace.
+    size_t startPos = 0;
+    for (; startPos != endPos; startPos += 1)
+    {
+        if (!AsciiIsSpace(line[startPos]))
+        {
+            break;
+        }
+    }
+
+    auto const trimmedDef = line.substr(startPos, endPos - startPos);
+    if (trimmedDef.empty())
+    {
+        return;
+    }
+    else if (trimmedDef[0] == '#')
+    {
+        return;
+    }
+
+    std::string command;
+
+    auto const firstInternalWhitespace = trimmedDef.find_first_of("\t\n\v\f\r "sv);
+    if (std::string_view::npos != firstInternalWhitespace)
+    {
+        // Traditional tracepoint definition.
+        // Trim trailing semicolons and whitespace, e.g. "EventName ;" or "EventName Field; ; ;".
+        // EventName may contain semicolons, so "EventName; ; ;" must trim to "EventName;".
+        size_t trimmedEnd;
+        for (trimmedEnd = trimmedDef.size(); trimmedEnd != firstInternalWhitespace; trimmedEnd -= 1)
+        {
+            auto const ch = trimmedDef[trimmedEnd - 1];
+            if (ch != ';' && !AsciiIsSpace(ch))
+            {
+                break;
+            }
         }
 
-        // name = defNoFlag up to last ':'. If no ':', name = defNoFlag.
-        auto const name = defNoFlag.substr(0, defNoFlag.rfind(':'));
+        assert(trimmedEnd != 0);
+        command = trimmedDef.substr(0, trimmedEnd);
+    }
+    else
+    {
+        // EventHeader tracepoint definition. Needs validation and expansion.
+
+        // name = trimmedDef up to last ':'. If no ':', name = trimmedDef.
+        auto const name = trimmedDef.substr(0, trimmedDef.rfind(':'));
 
         if (name.size() >= EVENTHEADER_NAME_MAX)
         {
             fprintf(stderr, "error: eventheader name \"%.*s\" is too long.\n",
                 (unsigned)name.size(), name.data());
-            return false;
+            return;
         }
 
         if (name.find(':') != std::string_view::npos)
         {
             fprintf(stderr, "error: eventheader name \"%.*s\" contains invalid char ':'.\n",
                 (unsigned)name.size(), name.data());
-            return false;
+            return;
         }
 
         auto pos = name.rfind('_');
@@ -229,7 +269,7 @@ PushFrontDef(Options const& o, std::forward_list<TracepointInfo>& tracepoints, s
         {
             fprintf(stderr, "error: eventheader name \"%.*s\" is missing the required \"_L<level>\" suffix.\n",
                 (unsigned)name.size(), name.data());
-            return false;
+            return;
         }
 
         // Skip "_Lnnn"
@@ -245,7 +285,7 @@ PushFrontDef(Options const& o, std::forward_list<TracepointInfo>& tracepoints, s
         {
             fprintf(stderr, "error: eventheader name \"%.*s\" is missing the required \"K<keyword>\" suffix.\n",
                 (unsigned)name.size(), name.data());
-            return false;
+            return;
         }
 
         // Skip "Knnn..."
@@ -254,24 +294,22 @@ PushFrontDef(Options const& o, std::forward_list<TracepointInfo>& tracepoints, s
         {
             if (!AsciiIsAlphanumeric(name[pos]))
             {
-                fprintf(stderr, "error: eventheader name \"%.*s\" contains non-alphanumeric characters in the suffix.\n",
+                fprintf(stderr, "error: eventheader name \"%.*s\" contains non-alphanumeric characters in the \"_L<level>K<keyword>...\" suffix.\n",
                     (unsigned)name.size(), name.data());
-                return false;
+                return;
             }
         }
 
-        command.reserve(defNoFlag.size() + sizeof(EVENTHEADER_COMMAND_TYPES));
-        command = defNoFlag;
+        command.reserve(trimmedDef.size() + 1 + EventHeaderCommandTypes.size());
+        command = trimmedDef;
         command += ' ';
-        command += EVENTHEADER_COMMAND_TYPES;
+        command += EventHeaderCommandTypes;
     }
 
     PrintStderrIf(o.verbose, "verbose: add \"%s\"\n",
         command.c_str());
 
     tracepoints.emplace_front(std::move(command));
-
-    return true;
 }
 
 static bool
@@ -293,12 +331,7 @@ PushFrontDefsFromFile(Options const& o, std::forward_list<TracepointInfo>& trace
         line += buf;
         if (line.back() == '\n')
         {
-            line.pop_back(); // Remove newline.
-            if (!line.empty() && line[0] != '#')
-            {
-                PushFrontDef(o, tracepoints, line);
-            }
-
+            PushFrontDef(o, tracepoints, line);
             line.clear();
         }
     }
@@ -310,7 +343,7 @@ PushFrontDefsFromFile(Options const& o, std::forward_list<TracepointInfo>& trace
     {
         fprintf(stderr, "error: failed to read file \"%s\".\n", filename);
     }
-    else if (!line.empty() && line[0] != '#')
+    else
     {
         PushFrontDef(o, tracepoints, line);
     }
@@ -348,7 +381,7 @@ main(int argc, char* argv[])
                     auto const flag = flags[flagsPos];
                     switch (flag)
                     {
-                    case 'f':
+                    case 'i':
                         argi += 1;
                         if (argi < argc)
                         {
@@ -356,7 +389,7 @@ main(int argc, char* argv[])
                         }
                         else
                         {
-                            fprintf(stderr, "error: missing filename for flag -f\n");
+                            PrintStderr("error: missing filename for flag -i\n");
                             usageError = true;
                         }
                         break;
@@ -369,12 +402,6 @@ main(int argc, char* argv[])
                     case 'W':
                         waitSetting = WaitNo;
                         break;
-                    case 'e':
-                        o.eventHeader = true;
-                        break;
-                    case 'E':
-                        o.eventHeader = false;
-                        break;
                     case 'v':
                         o.verbose = true;
                         break;
@@ -382,7 +409,7 @@ main(int argc, char* argv[])
                         showHelp = true;
                         break;
                     default:
-                        fprintf(stderr, "error: invalid flag -%c\n", flag);
+                        PrintStderr("error: invalid flag -%c\n", flag);
                         usageError = true;
                         break;
                     }
@@ -391,7 +418,7 @@ main(int argc, char* argv[])
             else
             {
                 auto const flag = &arg[2];
-                if (0 == strcmp(flag, "file"))
+                if (0 == strcmp(flag, "input"))
                 {
                     argi += 1;
                     if (argi < argc)
@@ -400,7 +427,7 @@ main(int argc, char* argv[])
                     }
                     else
                     {
-                        fprintf(stderr, "error: missing filename for flag --file\n");
+                        PrintStderr("error: missing filename for flag --input\n");
                         usageError = true;
                     }
                 }
@@ -416,14 +443,6 @@ main(int argc, char* argv[])
                 {
                     waitSetting = WaitNo;
                 }
-                else if (0 == strcmp(flag, "eventheader"))
-                {
-                    o.eventHeader = true;
-                }
-                else if (0 == strcmp(flag, "noeventheader"))
-                {
-                    o.eventHeader = false;
-                }
                 else if (0 == strcmp(flag, "verbose"))
                 {
                     o.verbose = true;
@@ -434,7 +453,7 @@ main(int argc, char* argv[])
                 }
                 else
                 {
-                    fprintf(stderr, "error: invalid flag --%s\n", flag);
+                    PrintStderr("error: invalid flag --%s\n", flag);
                     usageError = true;
                 }
             }
@@ -454,7 +473,7 @@ main(int argc, char* argv[])
         }
         else if (tracepoints.empty())
         {
-            fprintf(stderr, "error: no tracepoints specified, exiting.\n");
+            PrintStderr("error: no tracepoints specified, exiting.\n");
             error = EINVAL;
         }
         else
@@ -462,7 +481,7 @@ main(int argc, char* argv[])
             error = tracepoint_open_provider(&providerState);
             if (0 != error)
             {
-                fprintf(stderr, "error: tracepoint_open_provider failed (%u).\n",
+                PrintStderr("error: tracepoint_open_provider failed (%u).\n",
                     error);
             }
             else
@@ -474,7 +493,7 @@ main(int argc, char* argv[])
                     int connectResult = tracepoint_connect2(&tracepoint.state, &providerState, tracepoint.command.c_str(), flags);
                     if (connectResult != 0)
                     {
-                        fprintf(stderr, "warning: tracepoint_connect failed (%u) for \"%s\".\n",
+                        PrintStderr("warning: tracepoint_connect failed (%u) for \"%s\".\n",
                             connectResult, tracepoint.command.c_str());
                     }
                 }
@@ -482,20 +501,30 @@ main(int argc, char* argv[])
                 if (waitSetting == WaitYes ||
                     (waitSetting == WaitUnspecified && !persist))
                 {
-                    PrintStderrIf(o.verbose, "verbose: waiting for " EXIT_SIGNALS_STR ".\n");
-
-                    static const int ExitSigs[] = { EXIT_SIGNALS };
                     sigset_t exitSigSet;
                     sigemptyset(&exitSigSet);
+                    static constexpr int ExitSigs[] = { EXIT_SIGNALS };
                     for (auto exitSig : ExitSigs)
                     {
                         sigaddset(&exitSigSet, exitSig);
                     }
 
-                    int sig = 0;
-                    sigwait(&exitSigSet, &sig);
-                    PrintStderrIf(o.verbose, "verbose: signal %u.\n",
-                        sig);
+                    PrintStderrIf(o.verbose, "verbose: waiting for { " EXIT_SIGNALS_STR " }.\n");
+
+                    sigset_t oldSigSet;
+                    if (sigprocmask(SIG_BLOCK, &exitSigSet, &oldSigSet))
+                    {
+                        PrintStderr("error: sigprocmask returned %u\n",
+                            errno);
+                    }
+                    else
+                    {
+                        int sig = 0;
+                        sigwait(&exitSigSet, &sig);
+                        sigprocmask(SIG_SETMASK, &oldSigSet, nullptr);
+                        PrintStderrIf(o.verbose, "verbose: signal %u.\n",
+                            sig);
+                    }
                 }
             }
 
@@ -504,7 +533,7 @@ main(int argc, char* argv[])
     }
     catch (std::exception const& ex)
     {
-        fprintf(stderr, "\nfatal error: %s\n", ex.what());
+        PrintStderr("fatal error: %s\n", ex.what());
         error = ENOMEM;
     }
 

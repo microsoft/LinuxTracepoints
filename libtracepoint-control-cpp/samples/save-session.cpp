@@ -98,7 +98,7 @@ main(int argc, char* argv[])
         error = session.SavePerfDataFile(
             outFileName,
             TracepointSavePerfDataFileOptions()
-            .TimestampFilter(timestampRange.Last) // For circular, filter out old events.
+            .TimestampFilter(writtenRange.Last) // For circular, filter out old events.
             .TimestampWrittenRange(&writtenRange));
         printf("SavePerfDataFile(%s) = %u\n", outFileName, error);
     }

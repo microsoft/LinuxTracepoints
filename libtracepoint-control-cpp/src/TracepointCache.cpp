@@ -313,12 +313,7 @@ TracepointCache::PreregisterTracepointDefinition(TracepointSpec const& spec) noe
 {
     int error;
 
-    if (spec.Kind != TracepointSpecKind::Definition &&
-        spec.Kind != TracepointSpecKind::EventHeaderDefinition)
-    {
-        error = EINVAL;
-    }
-    else if (spec.SystemName != UserEventsSystemName ||
+    if (spec.SystemName != UserEventsSystemName ||
         spec.Flags.size() > 65536 ||
         spec.Fields.size() > 65536)
     {
@@ -361,7 +356,7 @@ TracepointCache::PreregisterTracepointDefinition(TracepointSpec const& spec) noe
                 spec.Fields.empty() ? "" : " ",
                 (unsigned)spec.Fields.size(), spec.Fields.data());
         }
-        else
+        else if (spec.Kind == TracepointSpecKind::EventHeaderDefinition)
         {
             if (!EventHeaderEventNameIsValid(spec.EventName))
             {
@@ -390,6 +385,11 @@ TracepointCache::PreregisterTracepointDefinition(TracepointSpec const& spec) noe
                 spec.Flags.empty() ? "" : ":",
                 (unsigned)spec.Flags.size(), spec.Flags.data(),
                 EVENTHEADER_COMMAND_TYPES);
+        }
+        else
+        {
+            error = EINVAL; // Unexpected spec.Kind.
+            goto Done;
         }
 
         error = PreregisterTracepointImpl(command, eventNameSize);

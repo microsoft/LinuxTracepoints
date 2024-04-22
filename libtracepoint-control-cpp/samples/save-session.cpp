@@ -21,8 +21,7 @@ int
 main(int argc, char* argv[])
 {
     int error = 0;
-    TracepointTimestampRange timestampRange;
-    timestampRange.Last = UINT64_MAX; // So that Last + 1 == 0
+    TracepointTimestampRange writtenRange;
 
     if (argc < 3 ||
         (0 != strcmp(argv[1], "0") && 0 != strcmp(argv[1], "1")))
@@ -99,8 +98,8 @@ main(int argc, char* argv[])
         error = session.SavePerfDataFile(
             outFileName,
             TracepointSavePerfDataFileOptions()
-            .TimestampFilter(timestampRange.Last + 1)
-            .TimestampWrittenRange(&timestampRange));
+            .TimestampFilter(timestampRange.Last) // For circular, filter out old events.
+            .TimestampWrittenRange(&writtenRange));
         printf("SavePerfDataFile(%s) = %u\n", outFileName, error);
     }
 

@@ -4,7 +4,7 @@
 /*
 A TracepointSpec stores a view of the information needed to add a tracepoint to
 a trace collection session. It may or may not have the information needed to
-register the tracepoint.
+pre-register the tracepoint.
 */
 
 #pragma once
@@ -22,9 +22,9 @@ namespace tracepoint_control
     enum class TracepointSpecKind : unsigned char
     {
         Empty,          // Empty spec, all whitespace, or started with "#" (comment).
-        Identifier,     // Field information not provided, event cannot be pre-registered.
-        Definition,     // Field information provided, event can be pre-registered.
-        EventHeaderDefinition, // EventHeader, event can be pre-registered.
+        Identifier,     // Name only, event cannot be pre-registered.
+        Definition,     // Name plus field information, event can be pre-registered.
+        EventHeaderDefinition, // EventHeader name, event can be pre-registered.
 
         ErrorIdentifierCannotHaveFields,
         ErrorIdentifierCannotHaveFlags,
@@ -44,11 +44,12 @@ namespace tracepoint_control
     A TracepointSpec stores the information needed to add a tracepoint to a
     trace collection session.
 
-    The TracepointSpec is either a tracepoint identifier (tracepoint must already
-    be registered) or a tracepoint definition (tracepoint can be registered by the
-    trace collection tool if not already registered). A tracepoint definition can
-    be either a normal tracepoint definition (explicitly-specified fields) or an
-    EventHeader tracepoint definition (implied well-known fields).
+    The TracepointSpec is either a tracepoint identifier (name only, not enough
+    information to pre-register the tracepoint) or a tracepoint definition
+    (enough information to pre-register the tracepoint if not already
+    registered). A tracepoint definition can be either a normal tracepoint
+    definition (explicitly-specified fields) or an EventHeader tracepoint
+    definition (implicit well-known fields).
     */
     struct TracepointSpec
     {

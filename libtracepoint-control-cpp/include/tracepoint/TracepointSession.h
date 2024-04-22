@@ -296,7 +296,7 @@ namespace tracepoint_control
 
     /*
     Records a range of timestamps. If Last > First, the range is invalid.
-    Initialized to an invalid range.
+    Default-initializes to an invalid range (First = UINT64_MAX, Last = 0).
     */
     struct TracepointTimestampRange
     {
@@ -330,7 +330,7 @@ namespace tracepoint_control
         TracepointSavePerfDataFileOptions() noexcept
             : m_openMode(-1)
             , m_filterRange{ 0, UINT64_MAX }
-            , m_timestampWrittenRange()
+            , m_timestampWrittenRange(nullptr)
         {
             return;
         }
@@ -1022,7 +1022,7 @@ namespace tracepoint_control
         /*
         Writes all pending data from the current session's buffers to the specified
         writer. Expands writtenRange to reflect the range of the timestamps seen.
-        
+
         This can be done for all session types but is normally only used with realtime
         sessions.
 

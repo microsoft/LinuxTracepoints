@@ -19,12 +19,12 @@ namespace tracepoint_control
     static constexpr std::string_view UserEventsSystemName = std::string_view("user_events", 11);
 
     /*
-    Maximum length of a SystemName = 255.
+    Maximum length of a SystemName = 255. (Does not count nul-termination.)
     */
     static constexpr unsigned SystemNameMaxSize = 255;
 
     /*
-    Maximum length of an EventName = 255.
+    Maximum length of an EventName = 255. (Does not count nul-termination.)
     */
     static constexpr unsigned EventNameMaxSize = 255;
 

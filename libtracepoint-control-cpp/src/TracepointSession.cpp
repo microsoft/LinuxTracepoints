@@ -672,6 +672,12 @@ TracepointSession::Mode() const noexcept
     return m_mode;
 }
 
+PerfEventSessionInfo const&
+TracepointSession::SessionInfo() const noexcept
+{
+    return m_sessionInfo;
+}
+
 bool
 TracepointSession::IsRealtime() const noexcept
 {
@@ -904,24 +910,16 @@ TracepointSession::SavePerfDataFile(
     TracepointSavePerfDataFileOptions const& options) noexcept
 {
     int error = 0;
-    PerfDataFileWriter output;
-    IovecList vecList;
-    struct {
-        uint64_t first;
-        uint64_t last;
-    } times = { ~uint64_t(0), 0 };
+    PerfDataFileWriter writer;
+    TracepointTimestampRange writtenRange{}; // Start with an invalid range.
+    bool timesValid;
 
-    if (options.m_timestampWrittenRangeFirst)
+    if (options.m_timestampWrittenRange)
     {
-        *options.m_timestampWrittenRangeFirst = 0;
+        *options.m_timestampWrittenRange = writtenRange;
     }
 
-    if (options.m_timestampWrittenRangeLast)
-    {
-        *options.m_timestampWrittenRangeLast = 0;
-    }
-
-    error = output.Create(perfDataFileName, options.m_openMode);
+    error = writer.Create(perfDataFileName, options.m_openMode);
     if (error != 0)
     {
         goto Done;
@@ -929,10 +927,7 @@ TracepointSession::SavePerfDataFile(
 
     // Mark the end of the "synthetic events" section (currently empty).
 
-    static auto constexpr xPERF_RECORD_FINISHED_INIT = static_cast<perf_event_type>(82);
-    static perf_event_header constexpr finishedInit = {
-        xPERF_RECORD_FINISHED_INIT, 0, sizeof(perf_event_header) };
-    error = output.WriteEventData(&finishedInit, sizeof(finishedInit));
+    error = writer.WriteFinishedInit();
     if (error != 0)
     {
         goto Done;
@@ -940,63 +935,108 @@ TracepointSession::SavePerfDataFile(
 
     // Write event data:
 
+    error = FlushToWriter(writer, &writtenRange, options.m_filterRange);
+    if (error != 0)
+    {
+        goto Done;
+    }
+
+    timesValid = (m_sampleType & PERF_SAMPLE_TIME) && writtenRange.First <= writtenRange.Last;
+
+    // Write system information headers:
+
+    error = SetWriterHeaders(writer, timesValid ? &writtenRange : nullptr);
+    if (error != 0)
+    {
+        goto Done;
+    }
+
+    // Flush to disk:
+
+    error = writer.FinalizeAndClose();
+    if (error != 0)
+    {
+        goto Done;
+    }
+
+    // Update output parameters:
+
+    if (timesValid && options.m_timestampWrittenRange)
+    {
+        *options.m_timestampWrittenRange = writtenRange;
+    }
+
+Done:
+
+    return error;
+}
+
+_Success_(return == 0) int
+TracepointSession::FlushToWriter(
+    tracepoint_decode::PerfDataFileWriter & writer,
+    _Inout_ TracepointTimestampRange* writtenRange,
+    TracepointTimestampRange filterRange) noexcept
+{
+    int error = 0;
+    IovecList vecList;
+
     if (m_bufferLeaderFiles != nullptr)
     {
-        auto recordFn = [this, &vecList, &times, &options](
+        auto recordFn = [this, &vecList, writtenRange, filterRange](
             BufferInfo const& buffer,
             uint16_t recordSize,
             uint32_t recordBufferPos) noexcept
-        {
-            // Look up the correct value for m_enumEventInfo.event_desc.
-
-            m_enumEventInfo.event_desc = nullptr;
-            if (PERF_RECORD_SAMPLE == BufferDataPosToHeader(buffer.Data, recordBufferPos)->type)
             {
-                // TODO: We don't need a full parse here. Could potentially
-                // save a few cycles by inlining ParseSample and removing the
-                // parts we don't need.
+                // Look up the correct value for m_enumEventInfo.event_desc.
 
-                // If this succeeds it will set m_enumEventInfo.
-                if (ParseSample(buffer, recordSize, recordBufferPos))
+                m_enumEventInfo.event_desc = nullptr;
+                if (PERF_RECORD_SAMPLE == BufferDataPosToHeader(buffer.Data, recordBufferPos)->type)
                 {
-                    if (options.m_timestampFilterMin > m_enumEventInfo.time ||
-                        options.m_timestampFilterMax < m_enumEventInfo.time)
-                    {
-                        // TODO: Optimization - in some cases, this means we're going
-                        // to skip the rest of the buffer, so perhaps detect those
-                        // cases and stop the enumeration?
-                        return false; // Skip this event.
-                    }
+                    // TODO: We don't need a full parse here. Could potentially
+                    // save a few cycles by inlining ParseSample and removing the
+                    // parts we don't need.
 
-                    if (m_enumEventInfo.time < times.first)
+                    // If this succeeds it will set m_enumEventInfo.
+                    if (ParseSample(buffer, recordSize, recordBufferPos))
                     {
-                        times.first = m_enumEventInfo.time;
-                    }
+                        if (filterRange.First > m_enumEventInfo.time ||
+                            filterRange.Last < m_enumEventInfo.time)
+                        {
+                            // TODO: Optimization - in some cases, this means we're going
+                            // to skip the rest of the buffer, so perhaps detect those
+                            // cases and stop the enumeration?
+                            return false; // Skip this event.
+                        }
 
-                    if (m_enumEventInfo.time > times.last)
-                    {
-                        times.last = m_enumEventInfo.time;
+                        if (m_enumEventInfo.time < writtenRange->First)
+                        {
+                            writtenRange->First = m_enumEventInfo.time;
+                        }
+
+                        if (m_enumEventInfo.time > writtenRange->Last)
+                        {
+                            writtenRange->Last = m_enumEventInfo.time;
+                        }
                     }
                 }
-            }
 
-            // Add event data to vecList.
+                // Add event data to vecList.
 
-            auto const unmaskedPosEnd = recordBufferPos + recordSize;
-            if (unmaskedPosEnd <= buffer.Size)
-            {
-                // Event does not wrap.
-                vecList.Add(buffer.Data + recordBufferPos, recordSize);
-            }
-            else
-            {
-                // Event wraps.
-                vecList.Add(buffer.Data + recordBufferPos, buffer.Size - recordBufferPos);
-                vecList.Add(buffer.Data, unmaskedPosEnd - buffer.Size);
-            }
+                auto const unmaskedPosEnd = recordBufferPos + recordSize;
+                if (unmaskedPosEnd <= buffer.Size)
+                {
+                    // Event does not wrap.
+                    vecList.Add(buffer.Data + recordBufferPos, recordSize);
+                }
+                else
+                {
+                    // Event wraps.
+                    vecList.Add(buffer.Data + recordBufferPos, buffer.Size - recordBufferPos);
+                    vecList.Add(buffer.Data, unmaskedPosEnd - buffer.Size);
+                }
 
-            return true;
-        };
+                return true;
+            };
 
         // Pause one buffer at a time.
         for (uint32_t bufferIndex = 0; bufferIndex != m_bufferCount; bufferIndex += 1)
@@ -1007,7 +1047,7 @@ TracepointSession::SavePerfDataFile(
             {
                 if (m_enumEventInfo.event_desc)
                 {
-                    error = output.AddTracepointEventDesc(*m_enumEventInfo.event_desc);
+                    error = writer.AddTracepointEventDesc(*m_enumEventInfo.event_desc);
                     if (error != EEXIST && error != 0)
                     {
                         EnumeratorEnd(bufferIndex);
@@ -1017,7 +1057,7 @@ TracepointSession::SavePerfDataFile(
 
                 if (vecList.RoomLeft() < 2) // Next recordFn may need up to 2 calls to Add().
                 {
-                    error = vecList.Flush(output);
+                    error = vecList.Flush(writer);
                     if (error != 0)
                     {
                         EnumeratorEnd(bufferIndex);
@@ -1026,7 +1066,7 @@ TracepointSession::SavePerfDataFile(
                 }
             }
 
-            error = vecList.Flush(output);
+            error = vecList.Flush(writer);
 
             EnumeratorEnd(bufferIndex);
 
@@ -1037,13 +1077,23 @@ TracepointSession::SavePerfDataFile(
         }
     }
 
-    // Write system information headers:
+Done:
+
+    return error;
+}
+
+_Success_(return == 0) int
+TracepointSession::SetWriterHeaders(
+    tracepoint_decode::PerfDataFileWriter& writer,
+    _In_opt_ TracepointTimestampRange const* writtenRange) noexcept
+{
+    int error;
 
     utsname uts;
     if (0 == uname(&uts))
     {
         // HOSTNAME, OSRELEASE, ARCH
-        error = output.SetUtsNameHeaders(uts);
+        error = writer.SetUtsNameHeaders(uts);
         if (error != 0)
         {
             goto Done;
@@ -1056,7 +1106,7 @@ TracepointSession::SavePerfDataFile(
         if (conf > 0 && onln > 0)
         {
             // NRCPUS
-            error = output.SetNrCpusHeader(static_cast<uint32_t>(conf), static_cast<uint32_t>(onln));
+            error = writer.SetNrCpusHeader(static_cast<uint32_t>(conf), static_cast<uint32_t>(onln));
             if (error != 0)
             {
                 goto Done;
@@ -1064,37 +1114,22 @@ TracepointSession::SavePerfDataFile(
         }
     }
 
-    if (0 != (m_sampleType & PERF_SAMPLE_TIME) &&
-        times.first <= times.last)
-    {
-        // SAMPLE_TIME
-        error = output.SetSampleTimeHeader(times.first, times.last);
-        if (error != 0)
-        {
-            goto Done;
-        }
-
-        if (options.m_timestampWrittenRangeFirst)
-        {
-            *options.m_timestampWrittenRangeFirst = times.first;
-        }
-
-        if (options.m_timestampWrittenRangeLast)
-        {
-            *options.m_timestampWrittenRangeLast = times.last;
-        }
-    }
-
     // CLOCKID, CLOCK_DATA
-    error = output.SetSessionInfoHeaders(m_sessionInfo);
+    error = writer.SetSessionInfoHeaders(m_sessionInfo);
     if (error != 0)
     {
         goto Done;
     }
 
-    // Flush to disk:
-
-    error = output.FinalizeAndClose();
+    if (writtenRange != nullptr)
+    {
+        // SAMPLE_TIME
+        error = writer.SetSampleTimeHeader(writtenRange->First, writtenRange->Last);
+        if (error != 0)
+        {
+            goto Done;
+        }
+    }
 
 Done:
 

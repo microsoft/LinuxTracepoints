@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <tracepoint/TracepointCache.h>
+#include <tracepoint/TracepointSpec.h>
 #include <tracepoint/TracepointPath.h>
 #include <assert.h>
 #include <errno.h>
@@ -273,8 +274,8 @@ TracepointCache::FindOrAddFromSystem(
     int error;
     PerfEventMetadata const* metadata;
 
-    if (auto it = m_byName.find(name);
-        it != m_byName.end())
+    auto it = m_byName.find(name);
+    if (it != m_byName.end())
     {
         error = 0;
         metadata = &it->second.Metadata;
@@ -292,39 +293,156 @@ TracepointCache::FindOrAddFromSystem(
 _Success_(return == 0) int
 TracepointCache::PreregisterEventHeaderTracepoint(TracepointName const& name) noexcept
 {
-    if (name.SystemName != UserEventsSystemName || !EventHeaderEventNameIsValid(name.EventName))
+    if (name.SystemName != UserEventsSystemName ||
+        !EventHeaderEventNameIsValid(name.EventName))
     {
         return EINVAL;
     }
 
-    char nameArgs[EVENTHEADER_COMMAND_MAX];
-    snprintf(nameArgs, sizeof(nameArgs), "%.*s " EVENTHEADER_COMMAND_TYPES,
-        (unsigned)name.EventName.size(), name.EventName.data());
-    return PreregisterTracepoint(nameArgs);
+    auto const eventNameSize = (unsigned)name.EventName.size();
+    char command[EVENTHEADER_COMMAND_MAX];
+    snprintf(command, sizeof(command), "%.*s %s",
+        eventNameSize, name.EventName.data(),
+        EVENTHEADER_COMMAND_TYPES);
+    auto error = PreregisterTracepointImpl(command, eventNameSize);
+    return error;
+}
+
+_Success_(return == 0) int
+TracepointCache::PreregisterTracepointDefinition(TracepointSpec const& spec) noexcept
+{
+    int error;
+
+    if (spec.SystemName != UserEventsSystemName ||
+        spec.Flags.size() > 65536 ||
+        spec.Fields.size() > 65536)
+    {
+        error = EINVAL;
+    }
+    else try
+    {
+        auto const eventNameSize = (unsigned)spec.EventName.size();
+        char commandStack[EVENTHEADER_COMMAND_MAX];
+        std::vector<char> commandHeap;
+        char* command;
+
+        if (spec.Kind == TracepointSpecKind::Definition)
+        {
+            if (!EventNameIsValid(spec.EventName))
+            {
+                error = EINVAL;
+                goto Done;
+            }
+
+            size_t const commandSize =
+                eventNameSize
+                + 1 + spec.Flags.size()
+                + 1 + spec.Fields.size()
+                + 1;
+            if (commandSize <= sizeof(commandStack))
+            {
+                command = commandStack;
+            }
+            else
+            {
+                commandHeap.reserve(commandSize); // may throw
+                command = commandHeap.data();
+            }
+
+            snprintf(command, commandSize, "%.*s%s%.*s%s%.*s",
+                eventNameSize, spec.EventName.data(),
+                spec.Flags.empty() ? "" : ":",
+                (unsigned)spec.Flags.size(), spec.Flags.data(),
+                spec.Fields.empty() ? "" : " ",
+                (unsigned)spec.Fields.size(), spec.Fields.data());
+        }
+        else if (spec.Kind == TracepointSpecKind::EventHeaderDefinition)
+        {
+            if (!EventHeaderEventNameIsValid(spec.EventName))
+            {
+                error = EINVAL;
+                goto Done;
+            }
+
+            size_t const commandSize =
+                eventNameSize
+                + 1 + spec.Flags.size()
+                + sizeof(EVENTHEADER_COMMAND_TYPES)
+                + 1;
+            if (commandSize <= sizeof(commandStack))
+            {
+                command = commandStack;
+            }
+            else
+            {
+                commandHeap.reserve(commandSize); // may throw
+                command = commandHeap.data();
+            }
+
+
+            snprintf(command, commandSize, "%.*s%s%.*s %s",
+                eventNameSize, spec.EventName.data(),
+                spec.Flags.empty() ? "" : ":",
+                (unsigned)spec.Flags.size(), spec.Flags.data(),
+                EVENTHEADER_COMMAND_TYPES);
+        }
+        else
+        {
+            error = EINVAL; // Unexpected spec.Kind.
+            goto Done;
+        }
+
+        error = PreregisterTracepointImpl(command, eventNameSize);
+    }
+    catch (...)
+    {
+        error = ENOMEM;
+    }
+
+Done:
+
+    return error;
 }
 
 _Success_(return == 0) int
 TracepointCache::PreregisterTracepoint(_In_z_ char const* registerCommand) noexcept
 {
     int error;
-
-    size_t nameEnd;
-    for (nameEnd = 0;; nameEnd += 1)
+    unsigned eventNameSize;
+    for (eventNameSize = 0;; eventNameSize += 1)
     {
-        auto ch = registerCommand[nameEnd];
+        auto ch = registerCommand[eventNameSize];
         if (ch == 0 || ch == ' ' || ch == ':')
         {
             break;
         }
+
+        if (eventNameSize > EventNameMaxSize)
+        {
+            error = EINVAL;
+            goto Done;
+        }
     }
 
-    TracepointName const name(UserEventsSystemName, std::string_view(registerCommand, nameEnd));
-    if (!EventNameIsValid(name.EventName))
+    if (!EventNameIsValid({ registerCommand, eventNameSize }))
     {
         error = EINVAL;
         goto Done;
     }
 
+    error = PreregisterTracepointImpl(registerCommand, eventNameSize);
+
+Done:
+
+    return error;
+}
+
+_Success_(return == 0) int
+TracepointCache::PreregisterTracepointImpl(_In_z_ char const* registerCommand, unsigned eventNameSize) noexcept
+{
+    int error;
+    auto const name = TracepointName(UserEventsSystemName, { registerCommand, eventNameSize });
+    assert(EventNameIsValid(name.EventName)); // Precondition ensured by caller.
     if (m_byName.find(name) != m_byName.end())
     {
         error = EALREADY;

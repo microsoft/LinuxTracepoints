@@ -22,6 +22,9 @@ TracepointSession class that manages a tracepoint collection session.
 
 #include <signal.h> // sigset_t
 
+#ifndef _In_opt_
+#define _In_opt_
+#endif
 #ifndef _In_z_
 #define _In_z_
 #endif
@@ -31,6 +34,9 @@ TracepointSession class that manages a tracepoint collection session.
 #ifndef _In_reads_opt_
 #define _In_reads_opt_(size)
 #endif
+#ifndef _Inout_
+#define _Inout_
+#endif
 #ifndef _Out_opt_
 #define _Out_opt_
 #endif
@@ -39,8 +45,12 @@ TracepointSession class that manages a tracepoint collection session.
 #endif
 
 // Forward declarations:
-struct pollfd; // poll.h
-struct timespec; // time.h
+struct pollfd; // From poll.h
+struct timespec; // From time.h
+namespace tracepoint_decode
+{
+    class PerfDataFileWriter; // From tracepoint/PerfDataFileWriter.h.
+}
 
 namespace tracepoint_control
 {
@@ -285,6 +295,16 @@ namespace tracepoint_control
     };
 
     /*
+    Records a range of timestamps. If Last > First, the range is invalid.
+    Default-initializes to an invalid range (First = UINT64_MAX, Last = 0).
+    */
+    struct TracepointTimestampRange
+    {
+        uint64_t First = UINT64_MAX;
+        uint64_t Last = 0;
+    };
+
+    /*
     Configuration settings for TracepointSession::SavePerfDataFile.
 
     Example:
@@ -309,10 +329,8 @@ namespace tracepoint_control
         constexpr
         TracepointSavePerfDataFileOptions() noexcept
             : m_openMode(-1)
-            , m_timestampFilterMin(0)
-            , m_timestampFilterMax(UINT64_MAX)
-            , m_timestampWrittenRangeFirst(nullptr)
-            , m_timestampWrittenRangeLast(nullptr)
+            , m_filterRange{ 0, UINT64_MAX }
+            , m_timestampWrittenRange(nullptr)
         {
             return;
         }
@@ -364,32 +382,28 @@ namespace tracepoint_control
         constexpr TracepointSavePerfDataFileOptions&
         TimestampFilter(uint64_t filterMin, uint64_t filterMax = UINT64_MAX) noexcept
         {
-            m_timestampFilterMin = filterMin;
-            m_timestampFilterMax = filterMax;
+            m_filterRange = { filterMin, filterMax };
             return *this;
         }
 
         /*
-        Sets the variables that will receive the timestamp range of the events that were
+        Sets the variable that will receive the timestamp range of the events that were
         written to the file.
 
         Default value is nullptr (do not return timestamp range).
         */
         constexpr TracepointSavePerfDataFileOptions&
-        TimestampWrittenRange(_Out_opt_ uint64_t* first, _Out_opt_ uint64_t* last = nullptr) noexcept
+        TimestampWrittenRange(_Out_opt_ TracepointTimestampRange* range = nullptr) noexcept
         {
-            m_timestampWrittenRangeFirst = first;
-            m_timestampWrittenRangeLast = last;
+            m_timestampWrittenRange = range;
             return *this;
         }
 
     private:
 
         int m_openMode;
-        uint64_t m_timestampFilterMin;
-        uint64_t m_timestampFilterMax;
-        uint64_t* m_timestampWrittenRangeFirst;
-        uint64_t* m_timestampWrittenRangeLast;
+        TracepointTimestampRange m_filterRange;
+        TracepointTimestampRange* m_timestampWrittenRange;
     };
 
     /*
@@ -708,6 +722,14 @@ namespace tracepoint_control
         Mode() const noexcept;
 
         /*
+        Returns session information, e.g. clockid and clock offset.
+        At present, clockid is CLOCK_MONOTONIC_RAW and the timestamp offsets are
+        captured when this TracepointSession object is constructed
+        */
+        tracepoint_decode::PerfEventSessionInfo const&
+        SessionInfo() const noexcept;
+
+        /*
         Returns true if Mode() == Realtime, false if Mode() == Circular.
         */
         bool
@@ -944,11 +966,79 @@ namespace tracepoint_control
         /*
         Creates a perf.data-format file and writes all pending data from the
         current session's buffers to the file. This can be done for all session
-        types but is usually used with circular sessions.
+        types but is normally only used with circular sessions.
+
+        This method does the following:
+
+        - Open a new file.
+        - Write a PERF_RECORD_FINISHED_INIT record to the file.
+        - Flush buffers to the file, adding EventDesc records as needed.
+        - Set system information headers as if by SetWriterHeaders().
+        - Close the file.
 
         File is created as:
 
             open(perfDataFileName, O_CREAT|O_WRONLY|O_TRUNC|O_CLOEXEC, options.OpenMode());
+
+        Returns: int error code (errno), or 0 for success.
+
+        *** Circular session flush behavior ***
+
+        For each buffer (usually one per CPU):
+
+        - Pause collection into the buffer.
+        - Write buffer's data to the file.
+        - Unpause the buffer.
+
+        Note that events are lost if they arrive while the buffer is paused. The lost
+        event count indicates how many events were lost during previous pauses that would
+        have been part of a enumeration if there had been no pauses. It does not include
+        the count of events that were lost due to the current enumeration's pause (those
+        will show up after a subsequent enumeration).
+
+        *** Realtime session flush behavior ***
+
+        For each buffer (usually one per CPU):
+
+        - Write buffer's pending (unconsumed) events to the file.
+        - Mark the enumerated events as consumed, making room for subsequent events.
+
+        Note that SavePerfDataFile() is not normally used for realtime sessions because
+        it only flushes the data in the buffers at the time you call SavePerfDataFile().
+        Instead, you would normally want to use FlushToWriter() to flush the buffers
+        multiple times over a long collection period.
+
+        Note that events are lost if they arrive while the buffer is full. The lost
+        event count indicates how many events were lost during previous periods when
+        the buffer was full. It does not include the count of events that were lost
+        due to the buffer being full at the start of the current enumeration (those will
+        show up after a subsequent enumeration).
+        */
+        _Success_(return == 0) int
+        SavePerfDataFile(
+            _In_z_ char const* perfDataFileName,
+            TracepointSavePerfDataFileOptions const& options = TracepointSavePerfDataFileOptions()) noexcept;
+
+        /*
+        Writes all pending data from the current session's buffers to the specified
+        writer. Expands writtenRange to reflect the range of the timestamps seen.
+
+        This can be done for all session types but is normally only used with realtime
+        sessions.
+
+        Typical usage:
+
+        - Create a range to track timestamp: TracepointTimestampRange writtenRange{};
+        - Create a writer: PerfDataFileWriter writer;
+        - Call writer.Create(...) to open the file.
+        - Write system-state events, if any (e.g. non-sample events like
+          PERF_RECORD_MMAP, PERF_RECORD_COMM, PERF_RECORD_ID_INDEX,
+          PERF_RECORD_THREAD_MAP, PERF_RECORD_CPU_MAP).
+        - Call writer.WriteFinishedInit() to write a PERF_RECORD_FINISHED_INIT record.
+        - Call FlushToWriter(writer, &writtenRange) to write the sample events as they
+          arrive (e.g. each time session.WaitForWakeup() returns).
+        - Call SetWriterHeaders(writer, &writtenRange) to write system information headers.
+        - Call writer.FinalizeAndClose() to close the file.
 
         Returns: int error code (errno), or 0 for success.
 
@@ -959,6 +1049,8 @@ namespace tracepoint_control
         - Pause collection into the buffer.
         - Write buffer's data to the file.
         - Unpause the buffer.
+
+        Then write a PERF_RECORD_FINISHED_ROUND record to the file.
 
         Note that events are lost if they arrive while the buffer is paused. The lost
         event count indicates how many events were lost during previous pauses that would
@@ -973,6 +1065,9 @@ namespace tracepoint_control
         - Write buffer's pending (unconsumed) events to the file.
         - Mark the enumerated events as consumed, making room for subsequent events.
 
+        If any events were written the first time, repeat the process a second time.
+        Then write a PERF_RECORD_FINISHED_ROUND record to the file.
+
         Note that events are lost if they arrive while the buffer is full. The lost
         event count indicates how many events were lost during previous periods when
         the buffer was full. It does not include the count of events that were lost
@@ -980,9 +1075,24 @@ namespace tracepoint_control
         show up after a subsequent enumeration).
         */
         _Success_(return == 0) int
-        SavePerfDataFile(
-            _In_z_ char const* perfDataFileName,
-            TracepointSavePerfDataFileOptions const& options = TracepointSavePerfDataFileOptions()) noexcept;
+        FlushToWriter(
+            tracepoint_decode::PerfDataFileWriter& writer,
+            _Inout_ TracepointTimestampRange* writtenRange,
+            TracepointTimestampRange filterRange = { 0, UINT64_MAX }) noexcept;
+
+        /*
+        Sets the headers in the specified writer based on the session's configuration.
+        At present, this sets the following headers:
+
+        - SetUtsNameHeaders() from uname.
+        - SetNrCpusHeader() from sysconf _SC_NPROCESSORS_CONF and _SC_NPROCESSORS_ONLN.
+        - SetSessionInfoHeaders() using data from SessionInfo().
+        - SetSampleTimeHeader() if writtenRange is non-null.
+        */
+        _Success_(return == 0) int
+        SetWriterHeaders(
+            tracepoint_decode::PerfDataFileWriter& writer,
+            _In_opt_ TracepointTimestampRange const* writtenRange) noexcept;
 
         /*
         For each PERF_RECORD_SAMPLE record in the session's buffers, in timestamp

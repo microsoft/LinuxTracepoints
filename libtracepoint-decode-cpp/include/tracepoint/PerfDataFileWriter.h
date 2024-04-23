@@ -170,6 +170,19 @@ namespace tracepoint_decode
 
 #endif // !_WIN32
 
+        // Adds a PERF_RECORD_FINISHED_INIT record to the output file. This should be
+        // called after all "initial system state" data has been written to the file,
+        //  e.g. non-sample events like PERF_RECORD_MMAP, PERF_RECORD_COMM,
+        // PERF_RECORD_ID_INDEX, PERF_RECORD_THREAD_MAP, PERF_RECORD_CPU_MAP.
+        _Success_(return == 0) int
+        WriteFinishedInit() noexcept;
+
+        // Adds a PERF_RECORD_FINISHED_ROUND record to the output file. This should be
+        // called each time you completely flush all buffers. This indicates that no
+        // events older than this point will be written to the file after this point.
+        _Success_(return == 0) int
+        WriteFinishedRound() noexcept;
+
         // Returns the number of bytes set for the specified header.
         size_t
         GetHeaderSize(PerfHeaderIndex index) const noexcept;

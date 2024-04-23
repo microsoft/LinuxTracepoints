@@ -328,6 +328,22 @@ PerfDataFileWriter::WriteEventDataIovecs(
 
 #endif // !_WIN32
 
+_Success_(return == 0) int
+PerfDataFileWriter::WriteFinishedInit() noexcept
+{
+    static perf_event_header const finishedInit = {
+        PERF_RECORD_FINISHED_INIT, 0, sizeof(perf_event_header) };
+    return WriteEventData(&finishedInit, sizeof(finishedInit));
+}
+
+_Success_(return == 0) int
+PerfDataFileWriter::WriteFinishedRound() noexcept
+{
+    static perf_event_header const finishedRound = {
+        PERF_RECORD_FINISHED_ROUND, 0, sizeof(perf_event_header) };
+    return WriteEventData(&finishedRound, sizeof(finishedRound));
+}
+
 size_t
 PerfDataFileWriter::GetHeaderSize(PerfHeaderIndex index) const noexcept
 {

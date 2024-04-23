@@ -8,7 +8,6 @@ project(eventheader-tracepoint
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
-set(BUILD_TOOLS ON CACHE BOOL "Build tool code")
 
 if(WIN32)
     add_compile_options(/W4 /WX /permissive-)
@@ -42,10 +41,6 @@ if(NOT WIN32)
 
     if(BUILD_SAMPLES)
         add_subdirectory(samples)
-    endif()
-
-    if(BUILD_TOOLS)
-        add_subdirectory(tools)
     endif()
 
 endif()

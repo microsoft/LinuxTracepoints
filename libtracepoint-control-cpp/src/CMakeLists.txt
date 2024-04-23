@@ -3,6 +3,7 @@ add_library(tracepoint-control
     "TracepointCache.cpp"
     "TracepointPath.cpp"
     "TracepointSession.cpp"
+    "TracepointSpec.cpp"
     "UniqueHandles.cpp")
 target_include_directories(tracepoint-control
     PUBLIC
@@ -14,7 +15,8 @@ set(CONTROL_HEADERS
     "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointCache.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointName.h"
     "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointPath.h"
-    "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointSession.h")
+    "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointSession.h"
+    "${PROJECT_SOURCE_DIR}/include/tracepoint/TracepointSpec.h")
 set_target_properties(tracepoint-control PROPERTIES
     PUBLIC_HEADER "${CONTROL_HEADERS}")
 target_compile_features(tracepoint-control

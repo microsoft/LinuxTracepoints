@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 /*
-TracepointName is a SystemName and EventName.
+TracepointName is a view of a SystemName and an EventName.
 */
 
 #pragma once
@@ -19,18 +19,28 @@ namespace tracepoint_control
     static constexpr std::string_view UserEventsSystemName = std::string_view("user_events", 11);
 
     /*
+    Maximum length of a SystemName = 255. (Does not count nul-termination.)
+    */
+    static constexpr unsigned SystemNameMaxSize = 255;
+
+    /*
+    Maximum length of an EventName = 255. (Does not count nul-termination.)
+    */
+    static constexpr unsigned EventNameMaxSize = 255;
+
+    /*
     Returns true if the specified string is a valid tracepoint system name.
 
     At present, this returns true if:
     - systemName is not empty.
-    - systemName is less than 256 chars in length.
+    - systemName.size() <= SystemNameMaxSize.
     - systemName does not contain nul, space, slash, or colon.
     */
     constexpr bool
     SystemNameIsValid(std::string_view systemName) noexcept
     {
         return systemName.size() > 0
-            && systemName.size() < 256
+            && systemName.size() <= SystemNameMaxSize
             && systemName.find('\0') == std::string_view::npos
             && systemName.find(' ') == std::string_view::npos
             && systemName.find('/') == std::string_view::npos
@@ -42,14 +52,14 @@ namespace tracepoint_control
 
     At present, this returns true if:
     - eventName is not empty.
-    - eventName is less than 256 chars in length.
+    - eventName.size() <= EventNameMaxSize.
     - eventName does not contain nul, space, slash, or colon.
     */
     constexpr bool
     EventNameIsValid(std::string_view eventName) noexcept
     {
         return eventName.size() > 0
-            && eventName.size() < 256
+            && eventName.size() <= EventNameMaxSize
             && eventName.find('\0') == std::string_view::npos
             && eventName.find(' ') == std::string_view::npos
             && eventName.find('/') == std::string_view::npos

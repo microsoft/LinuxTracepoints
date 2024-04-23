@@ -53,6 +53,7 @@ namespace tracepoint_control
     */
     struct TracepointSpec
     {
+        std::string_view Trimmed = {};    // Input with leading/trailing whitespace removed = Trim(specString).
         std::string_view SystemName = {}; // e.g. "user_events".
         std::string_view EventName = {};  // e.g. "MyEvent" or "MyProvider_L2K1Gmygroup".
         std::string_view Flags = {};      // e.g. "" or "flag1,flag2".
@@ -90,7 +91,14 @@ namespace tracepoint_control
           Examples: "ProviderName_L1K1", or "SystemName:ProviderName_L1KffGgroup:Flags".
         */
         explicit
-        TracepointSpec(std::string_view const specString);
+        TracepointSpec(std::string_view const specString) noexcept;
+
+        /*
+        Returns specString with all leading and trailing whitespace removed.
+        Uses the same definition of whitespace as the TracepointSpec constructor.
+        */
+        static std::string_view
+        Trim(std::string_view const specString) noexcept;
     };
 }
 // namespace tracepoint_control

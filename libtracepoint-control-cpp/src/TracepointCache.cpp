@@ -379,7 +379,6 @@ TracepointCache::PreregisterTracepointDefinition(TracepointSpec const& spec) noe
                 command = commandHeap.data();
             }
 
-
             snprintf(command, commandSize, "%.*s%s%.*s %s",
                 eventNameSize, spec.EventName.data(),
                 spec.Flags.empty() ? "" : ":",

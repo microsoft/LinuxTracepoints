@@ -27,7 +27,7 @@ CountLeadingWhitespace(std::string_view str)
     return pos;
 }
 
-TracepointSpec::TracepointSpec(std::string_view const specString)
+TracepointSpec::TracepointSpec(std::string_view const specString) noexcept
 {
     bool identifier;
     bool hasFields = false;
@@ -42,18 +42,10 @@ TracepointSpec::TracepointSpec(std::string_view const specString)
     6. SystemName ':' EventName (':' Flags)? (WS Fields*)?
     */
 
-    // Trim trailing whitespace and semicolons.
-    size_t trimmedSize;
-    for (trimmedSize = specString.size(); trimmedSize != 0; trimmedSize -= 1)
-    {
-        if (!AsciiIsSpace(specString[trimmedSize - 1]))
-        {
-            break;
-        }
-    }
+    auto const trimmed = Trim(specString);
+    Trimmed = trimmed;
 
-    auto const trimmed = specString.substr(0, trimmedSize);
-    size_t pos = CountLeadingWhitespace(trimmed);
+    size_t pos = 0;
     if (pos == trimmed.size())
     {
         Kind = TracepointSpecKind::Empty;
@@ -286,4 +278,29 @@ Done:
     {
         Kind = TracepointSpecKind::EventHeaderDefinition;
     }
+}
+
+std::string_view
+TracepointSpec::Trim(std::string_view const str) noexcept
+{
+    size_t startPos;
+    size_t endPos;
+
+    for (startPos = 0; startPos != str.size(); startPos += 1)
+    {
+        if (!AsciiIsSpace(str[startPos]))
+        {
+            break;
+        }
+    }
+
+    for (endPos = str.size(); endPos != startPos; endPos -= 1)
+    {
+        if (!AsciiIsSpace(str[endPos - 1]))
+        {
+            break;
+        }
+    }
+
+    return str.substr(startPos, endPos - startPos);
 }

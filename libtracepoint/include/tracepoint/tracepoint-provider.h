@@ -146,7 +146,6 @@ A symbol declared by TPP_DECLARE_PROVIDER must later be defined in a
     _tpp_EXTERN_C struct _tpp_provider_symbol ProviderSymbol __attribute__((visibility("hidden"))); /* Empty provider variable to help with code navigation. */ \
     _tpp_EXTERN_C tracepoint_provider_state _tpp_PASTE2(_tppProvState_, ProviderSymbol) __attribute__((visibility("hidden")))  /* Actual provider variable is hidden behind prefix. */
 
-
 /*
 Macro TPP_DEFINE_PROVIDER(ProviderSymbol):
 Invoke this macro to define the symbol for a provider. A provider is a

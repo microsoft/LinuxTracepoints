@@ -121,39 +121,28 @@ using namespace std::string_view_literals;
 using namespace tracepoint_control;
 using namespace tracepoint_decode;
 
-struct Tracepoint
+class Tracepoint
 {
     std::vector<char> storage;
+
+public:
+
     TracepointSpec spec;
 
     Tracepoint(Tracepoint&&) = default;
     Tracepoint& operator=(Tracepoint&&) = default;
 
     explicit
-        Tracepoint(std::string_view line)
+    Tracepoint(std::string_view line)
     {
-        size_t start = 0;
-        while (start != line.size() && AsciiIsSpace(line[start]))
+        auto const trimmedLine = TracepointSpec::Trim(line);
+
+        if (!trimmedLine.empty())
         {
-            start += 1;
+            storage.assign(trimmedLine.begin(), trimmedLine.end());
         }
 
-        size_t end = line.size();
-        while (end != start && AsciiIsSpace(line[end - 1]))
-        {
-            end -= 1;
-        }
-
-        storage.assign(line.begin() + start, line.begin() + end);
         spec = TracepointSpec({ storage.data(), storage.size() });
-    }
-
-private:
-
-    static bool
-        AsciiIsSpace(char ch)
-    {
-        return ch == ' ' || ('\t' <= ch && ch <= '\r');
     }
 };
 
@@ -189,10 +178,10 @@ PrintStderrIf(bool condition, const char* format, ...)
 }
 
 static void
-PushFrontDef(Options const& o, std::vector<Tracepoint>& tracepoints, Tracepoint tp)
+PushFrontDef(Options const& o, std::vector<Tracepoint>& tracepoints, Tracepoint&& tp)
 {
     auto const& spec = tp.spec;
-    auto const& storage = tp.storage;
+    auto const trimmed = spec.Trimmed;
     switch (tp.spec.Kind)
     {
     case TracepointSpecKind::Empty:
@@ -206,9 +195,9 @@ PushFrontDef(Options const& o, std::vector<Tracepoint>& tracepoints, Tracepoint 
     case TracepointSpecKind::Definition:
         if (spec.SystemName != UserEventsSystemName)
         {
-            PrintStderr("error: definition system name \"%.*s\" must be 'user_events': \"%.*s\".\n",
+            PrintStderr("error: definition system name \"%.*s\" must be 'user_events' (from \"%.*s\").\n",
                 (unsigned)spec.SystemName.size(), spec.SystemName.data(),
-                (unsigned)storage.size(), storage.data());
+                (unsigned)trimmed.size(), trimmed.data());
         }
         else
         {
@@ -225,9 +214,9 @@ PushFrontDef(Options const& o, std::vector<Tracepoint>& tracepoints, Tracepoint 
     case TracepointSpecKind::EventHeaderDefinition:
         if (spec.SystemName != UserEventsSystemName)
         {
-            PrintStderr("error: eventheader system name \"%.*s\" must be 'user_events': \"%.*s\".\n",
+            PrintStderr("error: eventheader system name \"%.*s\" must be 'user_events' (from \"%.*s\").\n",
                 (unsigned)spec.SystemName.size(), spec.SystemName.data(),
-                (unsigned)storage.size(), storage.data());
+                (unsigned)trimmed.size(), trimmed.data());
         }
         else
         {
@@ -240,60 +229,60 @@ PushFrontDef(Options const& o, std::vector<Tracepoint>& tracepoints, Tracepoint 
         }
         break;
     case TracepointSpecKind::ErrorIdentifierCannotHaveFields:
-        PrintStderr("error: identifier cannot have fields: \"%.*s\".\n",
-            (unsigned)storage.size(), storage.data());
+        PrintStderr("error: identifier cannot have fields (from \"%.*s\").\n",
+            (unsigned)trimmed.size(), trimmed.data());
         break;
     case TracepointSpecKind::ErrorIdentifierCannotHaveFlags:
-        PrintStderr("error: identifier cannot have flags: \"%.*s\".\n",
-            (unsigned)storage.size(), storage.data());
+        PrintStderr("error: identifier cannot have flags (from \"%.*s\").\n",
+            (unsigned)trimmed.size(), trimmed.data());
         break;
     case TracepointSpecKind::ErrorDefinitionCannotHaveColonAfterFlags:
-        PrintStderr("error: definition cannot have colon after flags: \"%.*s\".\n",
-            (unsigned)storage.size(), storage.data());
+        PrintStderr("error: definition cannot have colon after flags (from \"%.*s\").\n",
+            (unsigned)trimmed.size(), trimmed.data());
         break;
     case TracepointSpecKind::ErrorIdentifierEventNameEmpty:
-        PrintStderr("error: identifier event name is empty: \"%.*s\".\n",
-            (unsigned)storage.size(), storage.data());
+        PrintStderr("error: identifier event name is empty (from \"%.*s\").\n",
+            (unsigned)trimmed.size(), trimmed.data());
         break;
     case TracepointSpecKind::ErrorDefinitionEventNameEmpty:
-        PrintStderr("error: definition event name is empty: \"%.*s\".\n",
-            (unsigned)storage.size(), storage.data());
+        PrintStderr("error: definition event name is empty (from \"%.*s\").\n",
+            (unsigned)trimmed.size(), trimmed.data());
         break;
     case TracepointSpecKind::ErrorIdentifierEventNameInvalid:
-        PrintStderr("error: identifier event name \"%.*s\" is invalid: \"%.*s\".\n",
+        PrintStderr("error: identifier event name \"%.*s\" is invalid (from \"%.*s\").\n",
             (unsigned)spec.EventName.size(), spec.EventName.data(),
-            (unsigned)storage.size(), storage.data());
+            (unsigned)trimmed.size(), trimmed.data());
         break;
     case TracepointSpecKind::ErrorDefinitionEventNameInvalid:
-        PrintStderr("error: definition event name \"%.*s\" is invalid: \"%.*s\".\n",
+        PrintStderr("error: definition event name \"%.*s\" is invalid (from \"%.*s\").\n",
             (unsigned)spec.EventName.size(), spec.EventName.data(),
-            (unsigned)storage.size(), storage.data());
+            (unsigned)trimmed.size(), trimmed.data());
         break;
     case TracepointSpecKind::ErrorEventHeaderDefinitionEventNameInvalid:
-        PrintStderr("error: eventheader event name \"%.*s\" is invalid: \"%.*s\".\n",
+        PrintStderr("error: eventheader event name \"%.*s\" is invalid (from \"%.*s\").\n",
             (unsigned)spec.EventName.size(), spec.EventName.data(),
-            (unsigned)storage.size(), storage.data());
+            (unsigned)trimmed.size(), trimmed.data());
         PrintStderr("(error) If this was meant to be the name of an existing non-eventheader event, add a leading ':'.\n");
         PrintStderr("(error) If this was meant to be the definition of a non-eventheader event, a Fields... section must be provided.\n");
         PrintStderr("(error) If a non-eventheader event has no fields, use \" ;\" for Fields..., e.g. \"MyEvent ;\".\n");
         break;
     case TracepointSpecKind::ErrorIdentifierSystemNameEmpty:
-        PrintStderr("error: identifier system name is empty: \"%.*s\".\n",
-            (unsigned)storage.size(), storage.data());
+        PrintStderr("error: identifier system name is empty (from \"%.*s\").\n",
+            (unsigned)trimmed.size(), trimmed.data());
         break;
     case TracepointSpecKind::ErrorDefinitionSystemNameEmpty:
-        PrintStderr("error: definition system name is empty: \"%.*s\".\n",
-            (unsigned)storage.size(), storage.data());
+        PrintStderr("error: definition system name is empty (from \"%.*s\").\n",
+            (unsigned)trimmed.size(), trimmed.data());
         break;
     case TracepointSpecKind::ErrorIdentifierSystemNameInvalid:
-        PrintStderr("error: identifier system name \"%.*s\" is invalid: \"%.*s\".\n",
+        PrintStderr("error: identifier system name \"%.*s\" is invalid (from \"%.*s\").\n",
             (unsigned)spec.SystemName.size(), spec.SystemName.data(),
-            (unsigned)storage.size(), storage.data());
+            (unsigned)trimmed.size(), trimmed.data());
         break;
     case TracepointSpecKind::ErrorDefinitionSystemNameInvalid:
-        PrintStderr("error: definition system name \"%.*s\" is invalid: \"%.*s\".\n",
+        PrintStderr("error: definition system name \"%.*s\" is invalid (from \"%.*s\").\n",
             (unsigned)spec.SystemName.size(), spec.SystemName.data(),
-            (unsigned)storage.size(), storage.data());
+            (unsigned)trimmed.size(), trimmed.data());
         break;
     }
 }

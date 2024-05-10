@@ -1878,10 +1878,9 @@ EventFormatter::AppendSampleAsJson(
     EventEnumerator enumerator;
     EventInfo eventInfo;
     bool eventInfoValid;
-    char const* sampleEventName;
-    size_t sampleProviderNameLength;
+    std::string_view sampleEventName;
+    std::string_view sampleProviderName;
     auto const sampleEventInfoSampleType = sampleEventInfo.SampleType();
-    auto const sampleEventInfoName = sampleEventInfo.Name();
     auto const sampleEventInfoMetadata = sampleEventInfo.Metadata();
 
     if (sampleEventInfoMetadata &&
@@ -1904,8 +1903,6 @@ EventFormatter::AppendSampleAsJson(
 
         eventInfo = enumerator.GetEventInfo();
         eventInfoValid = true;
-        sampleEventName = nullptr;
-        sampleProviderNameLength = 0;
 
         (jsonFlags & EventFormatterJsonFlags_Name)
             ? AppendJsonMemberBegin(sb, 0, eventInfo.Name, 1)
@@ -1940,13 +1937,35 @@ EventFormatter::AppendSampleAsJson(
     {
     NotEventHeader:
 
+        auto const sampleEventInfoName = sampleEventInfo.Name();
+        if (sampleEventInfoName[0] == 0 && sampleEventInfoMetadata != nullptr)
+        {
+            // No name from PERF_HEADER_EVENT_DESC, but metadata is present so use that.
+            sampleProviderName = sampleEventInfoMetadata->SystemName();
+            sampleEventName = sampleEventInfoMetadata->Name();
+        }
+        else
+        {
+            auto const sampleEventNameColon = strchr(sampleEventInfoName, ':');
+            if (sampleEventNameColon == nullptr)
+            {
+                // No colon in name.
+                // Put everything into provider name (probably "" anyway).
+                sampleProviderName = sampleEventInfoName;
+                sampleEventName = "";
+            }
+            else
+            {
+                // Name contained a colon.
+                // Provider name is everything before colon, event name is everything after.
+                sampleProviderName = { sampleEventInfoName, static_cast<size_t>(sampleEventNameColon - sampleEventInfoName) };
+                sampleEventName = sampleEventNameColon + 1;
+            }
+        }
+
         PerfByteReader const byteReader(fileBigEndian);
-        auto const sampleEventNameColon = strchr(sampleEventInfoName, ':');
+
         eventInfoValid = false;
-        sampleEventName = sampleEventNameColon ? sampleEventNameColon + 1 : "";
-        sampleProviderNameLength = sampleEventNameColon
-            ? sampleEventNameColon - sampleEventInfoName
-            : 0;
 
         (jsonFlags & EventFormatterJsonFlags_Name)
             ? AppendJsonMemberBegin(sb, 0, sampleEventName, 1)
@@ -1958,13 +1977,13 @@ EventFormatter::AppendSampleAsJson(
             AppendJsonMemberBegin(sb, 0, "n"sv, 1);
             sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
             AppendUcsJsonEscaped<SwapNo>(sb,
-                reinterpret_cast<uint8_t const*>(sampleEventInfoName),
-                sampleProviderNameLength,
+                reinterpret_cast<uint8_t const*>(sampleProviderName.data()),
+                sampleProviderName.size(),
                 1);
             sb.WriteUtf8Byte(':'); // 1 extra byte reserved above.
             AppendUcsJsonEscaped<SwapNo>(sb,
-                reinterpret_cast<uint8_t const*>(sampleEventName),
-                strlen(sampleEventName),
+                reinterpret_cast<uint8_t const*>(sampleEventName.data()),
+                sampleEventName.size(),
                 1);
             sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
         }
@@ -2041,15 +2060,15 @@ EventFormatter::AppendSampleAsJson(
         }
         else
         {
-            if ((metaFlags & EventFormatterMetaFlags_provider) && sampleProviderNameLength)
+            if ((metaFlags & EventFormatterMetaFlags_provider) && !sampleProviderName.empty())
             {
                 AppendJsonMemberBegin(sb, 0, "provider"sv, 1);
                 sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
-                AppendUtf8JsonEscaped(sb, { sampleEventInfoName, sampleProviderNameLength }, 1);
+                AppendUtf8JsonEscaped(sb, sampleProviderName, 1);
                 sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
             }
 
-            if ((metaFlags & EventFormatterMetaFlags_event) && sampleEventName[0] != 0)
+            if ((metaFlags & EventFormatterMetaFlags_event) && !sampleEventName.empty())
             {
                 AppendJsonMemberBegin(sb, 0, "event"sv, 1);
                 sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.

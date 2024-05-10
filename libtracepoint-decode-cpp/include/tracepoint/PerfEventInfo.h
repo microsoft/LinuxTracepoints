@@ -65,6 +65,8 @@ namespace tracepoint_decode
 
         // Requires: GetSampleEventInfo() succeeded.
         // Returns: event_desc->name.
+        // May be "", e.g. if no PERF_HEADER_EVENT_DESC header. In that case,
+        // caller should check for a name in Metadata().
         _Ret_z_ char const*
         Name() const noexcept;
 

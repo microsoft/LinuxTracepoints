@@ -68,7 +68,7 @@ namespace tracepoint_decode
     struct PerfEventDesc
     {
         perf_event_attr const* attr;    // NULL for unknown id.
-        _Field_z_ char const* name;     // "" if no name available.
+        _Field_z_ char const* name;     // "" if no name available, e.g. if no PERF_HEADER_EVENT_DESC header.
         PerfEventMetadata const* metadata; // NULL if no metadata available.
         _Field_size_(ids_count) uint64_t const* ids; // The sample_ids that share this descriptor.
         uint32_t ids_count;

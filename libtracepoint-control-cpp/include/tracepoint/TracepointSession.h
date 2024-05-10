@@ -1036,7 +1036,8 @@ namespace tracepoint_control
           PERF_RECORD_THREAD_MAP, PERF_RECORD_CPU_MAP).
         - Call writer.WriteFinishedInit() to write a PERF_RECORD_FINISHED_INIT record.
         - Call FlushToWriter(writer, &writtenRange) to write the sample events as they
-          arrive (e.g. each time session.WaitForWakeup() returns).
+          arrive (e.g. each time session.WaitForWakeup() returns) and call
+          writer.WriteFinishedRound() each time flush is complete.
         - Call SetWriterHeaders(writer, &writtenRange) to write system information headers.
         - Call writer.FinalizeAndClose() to close the file.
 
@@ -1050,8 +1051,6 @@ namespace tracepoint_control
         - Write buffer's data to the file.
         - Unpause the buffer.
 
-        Then write a PERF_RECORD_FINISHED_ROUND record to the file.
-
         Note that events are lost if they arrive while the buffer is paused. The lost
         event count indicates how many events were lost during previous pauses that would
         have been part of a enumeration if there had been no pauses. It does not include
@@ -1064,9 +1063,6 @@ namespace tracepoint_control
 
         - Write buffer's pending (unconsumed) events to the file.
         - Mark the enumerated events as consumed, making room for subsequent events.
-
-        If any events were written the first time, repeat the process a second time.
-        Then write a PERF_RECORD_FINISHED_ROUND record to the file.
 
         Note that events are lost if they arrive while the buffer is full. The lost
         event count indicates how many events were lost during previous periods when

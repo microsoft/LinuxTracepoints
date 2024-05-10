@@ -14,6 +14,7 @@ Simple tool for collecting tracepoints into perf.data files.
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <unistd.h>
 
 #include <vector>
 

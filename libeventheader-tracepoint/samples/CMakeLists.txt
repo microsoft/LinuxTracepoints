@@ -9,6 +9,8 @@ add_executable(eventheader-sample
     sample.cpp)
 target_link_libraries(eventheader-sample
     PUBLIC eventheader-tracepoint tracepoint)
+target_compile_features(eventheader-sample
+    PRIVATE cxx_std_11)
 
 add_executable(eventheader-tracepoint-sample
     tracepoint-sample.cpp
@@ -17,7 +19,7 @@ add_executable(eventheader-tracepoint-sample
 target_link_libraries(eventheader-tracepoint-sample
     PUBLIC eventheader-tracepoint tracepoint)
 target_compile_features(eventheader-tracepoint-sample
-    PRIVATE cxx_std_17)
+    PRIVATE cxx_std_17 c_std_11)
 
 add_executable(eventheader-interceptor-sample
     interceptor-sample.cpp
@@ -27,4 +29,4 @@ add_executable(eventheader-interceptor-sample
 target_link_libraries(eventheader-interceptor-sample
     PUBLIC eventheader-tracepoint)
 target_compile_features(eventheader-interceptor-sample
-    PRIVATE cxx_std_17)
+    PRIVATE cxx_std_17 c_std_11)

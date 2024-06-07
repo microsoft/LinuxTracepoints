@@ -5,6 +5,10 @@
 #ifndef _included_EventEnumerator_h
 #define _included_EventEnumerator_h 1
 
+#if __cplusplus < 201100L && (!defined(_MSVC_LANG) || _MSVC_LANG < 201100L)
+#error EventEnumerator.h requires C++11 or later.
+#endif
+
 #include <eventheader/eventheader.h>
 #include <stdint.h>
 #include <errno.h>

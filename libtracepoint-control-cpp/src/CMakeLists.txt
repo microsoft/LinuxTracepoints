@@ -20,7 +20,7 @@ set(CONTROL_HEADERS
 set_target_properties(tracepoint-control PROPERTIES
     PUBLIC_HEADER "${CONTROL_HEADERS}")
 target_compile_features(tracepoint-control
-    PRIVATE cxx_std_17)
+    PUBLIC cxx_std_17)
 install(TARGETS tracepoint-control
     EXPORT tracepoint-controlTargets
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tracepoint)

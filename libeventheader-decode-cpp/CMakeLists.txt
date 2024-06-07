@@ -7,6 +7,7 @@ project(eventheader-decode-cpp
     LANGUAGES CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+set(CMAKE_CXX_STANDARD 98)  # Ensure projects declare minimum C++ requirement.
 set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
 set(BUILD_TOOLS ON CACHE BOOL "Build tool code")
 

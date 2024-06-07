@@ -102,6 +102,10 @@ The following features are specific to Linux UserEvents (not present for ETW):
 #ifndef _included_TraceLoggingProvider_h
 #define _included_TraceLoggingProvider_h 1
 
+#if defined(__cplusplus) && __cplusplus < 201100L
+#error TraceLoggingProvider.h for C++ requires C++11 or later.
+#endif
+
 #include "eventheader-tracepoint.h"
 #include <assert.h>
 #include <stdlib.h>
@@ -187,7 +191,7 @@ TraceLoggingRegister to register the provider.
 */
 #define TRACELOGGING_DEFINE_PROVIDER(providerSymbol, providerName, providerId, ...) \
     TRACELOGGING_DECLARE_PROVIDER(providerSymbol); \
-    static_assert( \
+    _tlg_STATIC_ASSERT( \
         EVENTHEADER_NAME_MAX >= sizeof("" providerName "_LnnKnnnnnnnnnnnnnnnn" _tlgProviderOptions(__VA_ARGS__)), \
         "TRACELOGGING_DEFINE_PROVIDER providerName + options is too long"); \
     _tlgParseProviderId(providerId) \
@@ -313,8 +317,8 @@ enabled.
 */
 #define TraceLoggingProviderEnabled(providerSymbol, eventLevel, eventKeyword)  ({ \
     enum { \
-        _tlgKeywordVal = (uint64_t)(eventKeyword), \
-        _tlgLevelVal = (uint64_t)(eventLevel) \
+        _tlgKeywordEnum = (uint64_t)(eventKeyword), \
+        _tlgLevelEnum = (uint64_t)(eventLevel) \
     }; \
     static tracepoint_state _tlgEvtState = TRACEPOINT_STATE_INIT; \
     static eventheader_tracepoint const _tlgEvt = { \
@@ -326,9 +330,9 @@ enabled.
             0, \
             0, \
             0, \
-            _tlgLevelVal \
+            _tlgLevelEnum \
         }, \
-        _tlgKeywordVal \
+        _tlgKeywordEnum \
     }; \
     static eventheader_tracepoint const* const _tlgEvtPtr \
         __attribute__((section("_tlgEventPtrs_" _tlg_STRINGIZE(providerSymbol)), used)) \
@@ -1185,6 +1189,14 @@ Notes on serializing data:
 #endif // __cplusplus
 #endif // _tlg_NOEXCEPT
 
+#ifndef _tlg_STATIC_ASSERT
+#if defined(static_assert) || defined(__cplusplus)
+#define _tlg_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
+#else
+#define _tlg_STATIC_ASSERT(cond, msg)
+#endif
+#endif // _tlg_STATIC_ASSERT
+
 #ifndef _tlg_WEAK_ATTRIBUTES
 #define _tlg_WEAK_ATTRIBUTES __attribute__((weak, visibility("hidden")))
 #endif // _tlg_WEAK_ATTRIBUTES
@@ -1197,7 +1209,7 @@ Notes on serializing data:
 #ifdef __cplusplus
 #define _tlg_NULL nullptr
 #else // __cplusplus
-#define _tlg_NULL NULL
+#define _tlg_NULL ((void*)0)
 #endif // __cplusplus
 #endif // _tlg_NULL
 
@@ -1710,12 +1722,12 @@ _tlgTypeMapBaseDecl(false, wchar_t const*, event_field_encoding_zstring_wchar);
 #define _tlgParseProviderId_impN(n, providerId) \
     _tlg_PASTE2(_tlgParseProviderId_imp, n)(providerId)
 #define _tlgParseProviderId_imp0(...) /* parameter not provided - error case */ \
-    static_assert(0, "TRACELOGGING_DEFINE_PROVIDER providerId must be specified as eleven integers, e.g. (1,2,3,4,5,6,7,8,9,10,11).");
+    _tlg_STATIC_ASSERT(0, "TRACELOGGING_DEFINE_PROVIDER providerId must be specified as eleven integers, e.g. (1,2,3,4,5,6,7,8,9,10,11).");
 #define _tlgParseProviderId_imp1(providerId) \
     _tracelogging_SyntaxError_ProviderIdMustBeEnclosedInParentheses providerId
 #define _tracelogging_SyntaxError_ProviderIdMustBeEnclosedInParentheses(...)                                                                          \
-    static_assert(_tlg_NARGS(__VA_ARGS__) == 11, "TRACELOGGING_DEFINE_PROVIDER providerId must be eleven integers, e.g. (1,2,3,4,5,6,7,8,9,10,11)."); \
-    static_assert(1 _tlg_FOREACH(_tlgParseProviderId_CheckInt, __VA_ARGS__), "TRACELOGGING_DEFINE_PROVIDER providerId must be eleven integers, e.g. (1,2,3,4,5,6,7,8,9,10,11).");
+    _tlg_STATIC_ASSERT(_tlg_NARGS(__VA_ARGS__) == 11, "TRACELOGGING_DEFINE_PROVIDER providerId must be eleven integers, e.g. (1,2,3,4,5,6,7,8,9,10,11)."); \
+    _tlg_STATIC_ASSERT(1 _tlg_FOREACH(_tlgParseProviderId_CheckInt, __VA_ARGS__), "TRACELOGGING_DEFINE_PROVIDER providerId must be eleven integers, e.g. (1,2,3,4,5,6,7,8,9,10,11).");
 #define _tlgParseProviderId_CheckInt(n, val) +(val)
 
 #define _tlgProviderOptions(...)             _tlgProviderOptions_impA(_tlg_NARGS(__VA_ARGS__), __VA_ARGS__)
@@ -1922,15 +1934,15 @@ _tlgApplyArgsN(macro, n, (handler, ...)) --> macro##handler(n, ...)
 #define _tlgInfoVars_tlgBin(        n, ctype, pValue,   cbValue,  encoding, format, hasFmt, ndt) char _tlgName##n[sizeof(_tlgNdtName(ndt))]; uint8_t _tlgEnc##n; _tlg_PASTE3(_tlgInfoVars_, hasFmt, _tlgNdtHasTag(ndt))(n)
 #define _tlgInfoVars_tlgVArray(     n, ctype, pValues,  cValues,  encoding, format, hasFmt, ndt) char _tlgName##n[sizeof(_tlgNdtName(ndt))]; uint8_t _tlgEnc##n; _tlg_PASTE3(_tlgInfoVars_, hasFmt, _tlgNdtHasTag(ndt))(n)
 #define _tlgInfoVars_tlgCArray(     n, ctype, pValues,  cValues,  encoding, format, hasFmt, ndt) char _tlgName##n[sizeof(_tlgNdtName(ndt))]; uint8_t _tlgEnc##n; _tlg_PASTE3(_tlgInfoVars_, hasFmt, _tlgNdtHasTag(ndt))(n) uint16_t _tlgValCount##n; \
-    static_assert((cValues) > 0, "TraceLoggingFixedArray count must be greater than 0.");
+    _tlg_STATIC_ASSERT((cValues) > 0, "TraceLoggingFixedArray count must be greater than 0.");
 #define _tlgInfoVars_tlgPackedField(n, ctype, pValue,   cbValue,  encoding, format, hasFmt, ndt) char _tlgName##n[sizeof(_tlgNdtName(ndt))]; uint8_t _tlgEnc##n; _tlg_PASTE3(_tlgInfoVars_, hasFmt, _tlgNdtHasTag(ndt))(n) \
     _tlg_AssertValidPackedMetadataEncoding(encoding);
 #define _tlgInfoVars_tlgPackedMeta( n,                            encoding, format, hasFmt, ndt) char _tlgName##n[sizeof(_tlgNdtName(ndt))]; uint8_t _tlgEnc##n; _tlg_PASTE3(_tlgInfoVars_, hasFmt, _tlgNdtHasTag(ndt))(n) \
     _tlg_AssertValidPackedMetadataEncoding(encoding);
 #define _tlgInfoVars_tlgPackedData( n, ctype, pValue,   cbValue                                )
 #define _tlgInfoVars_tlgStruct(     n,        fieldCount,         encoding,                 ndt) char _tlgName##n[sizeof(_tlgNdtName(ndt))]; uint8_t _tlgEnc##n; _tlg_PASTE3(_tlgInfoVars_, 1,      _tlgNdtHasTag(ndt))(n) \
-    static_assert((fieldCount) > 0, "TraceLoggingStruct fieldCount must be greater than 0."); \
-    static_assert((fieldCount) < 128, "TraceLoggingStruct fieldCount must be less than 128.");
+    _tlg_STATIC_ASSERT((fieldCount) > 0, "TraceLoggingStruct fieldCount must be greater than 0."); \
+    _tlg_STATIC_ASSERT((fieldCount) < 128, "TraceLoggingStruct fieldCount must be less than 128.");
 #define _tlgInfoVars_0(n)
 #define _tlgInfoVars_1(n)  uint16_t _tlgTag##n;
 #define _tlgInfoVars_00(n)
@@ -2089,7 +2101,7 @@ _tlgApplyArgsN(macro, n, (handler, ...)) --> macro##handler(n, ...)
 #endif // __cplusplus
 
 #define _tlg_AssertValidPackedMetadataEncoding(encoding) \
-    static_assert( \
+    _tlg_STATIC_ASSERT( \
         ((encoding)&event_field_encoding_value_mask) > event_field_encoding_struct && \
         ((encoding)&event_field_encoding_value_mask) < event_field_encoding_max && \
         ((encoding)|event_field_encoding_value_mask|event_field_encoding_varray_flag) == (event_field_encoding_value_mask|event_field_encoding_varray_flag), \
@@ -2097,11 +2109,11 @@ _tlgApplyArgsN(macro, n, (handler, ...)) --> macro##handler(n, ...)
 
 #define _tlgWriteImp(providerSymbol, eventName, pActivityId, pRelatedActivityId, ...) ({ \
     enum { \
-        _tlgKeywordVal = (uint64_t)(0u _tlg_FOREACH(_tlgKeywordVal, __VA_ARGS__)), \
-        _tlgOpcodeVal = (uint64_t)(0u _tlg_FOREACH(_tlgOpcodeVal, __VA_ARGS__)), \
-        _tlgEventTagVal = (uint64_t)(0u _tlg_FOREACH(_tlgEventTagVal, __VA_ARGS__)), \
-        _tlgIdVersionVal = (uint64_t)(0u _tlg_FOREACH(_tlgIdVersionVal, __VA_ARGS__)), \
-        _tlgLevelVal = (uint64_t)(5u _tlg_FOREACH(_tlgLevelVal, __VA_ARGS__)) \
+        _tlgKeywordEnum = (uint64_t)(0u _tlg_FOREACH(_tlgKeywordVal, __VA_ARGS__)), \
+        _tlgOpcodeEnum = (uint64_t)(0u _tlg_FOREACH(_tlgOpcodeVal, __VA_ARGS__)), \
+        _tlgEventTagEnum = (uint64_t)(0u _tlg_FOREACH(_tlgEventTagVal, __VA_ARGS__)), \
+        _tlgIdVersionEnum = (uint64_t)(0u _tlg_FOREACH(_tlgIdVersionVal, __VA_ARGS__)), \
+        _tlgLevelEnum = (uint64_t)(5u _tlg_FOREACH(_tlgLevelVal, __VA_ARGS__)) \
     }; \
     static tracepoint_state _tlgEvtState = TRACEPOINT_STATE_INIT; \
     static struct { \
@@ -2119,13 +2131,13 @@ _tlgApplyArgsN(macro, n, (handler, ...)) --> macro##handler(n, ...)
         &_tlgMeta._tlgExt, \
         { \
             eventheader_flag_default, \
-            (uint64_t)(_tlgIdVersionVal) >> 32, \
-            _tlgIdVersionVal & 0xFFFFFFFF, \
-            _tlgEventTagVal, \
-            _tlgOpcodeVal, \
-            _tlgLevelVal \
+            (uint64_t)(_tlgIdVersionEnum) >> 32, \
+            _tlgIdVersionEnum & 0xFFFFFFFF, \
+            _tlgEventTagEnum, \
+            _tlgOpcodeEnum, \
+            _tlgLevelEnum \
         }, \
-        _tlgKeywordVal \
+        _tlgKeywordEnum \
     }; \
     static eventheader_tracepoint const* const _tlgEvtPtr \
         __attribute__((section("_tlgEventPtrs_" _tlg_STRINGIZE(providerSymbol)), used)) \

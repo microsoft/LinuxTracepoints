@@ -438,7 +438,7 @@ corresponding function parameter.
 #endif
 
 #ifndef _tpp_NOEXCEPT
-#ifdef __cplusplus
+#if defined(__cplusplus) && __cplusplus > 201100
 #define _tpp_NOEXCEPT noexcept
 #else // __cplusplus
 #define _tpp_NOEXCEPT

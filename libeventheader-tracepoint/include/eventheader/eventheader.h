@@ -569,7 +569,7 @@ typedef enum event_field_encoding {
 
 } event_field_encoding;
 
-#if defined(__cplusplus) || defined(static_assert)
+#if defined(static_assert) || (defined(__cplusplus) && __cplusplus >= 200410) || defined(_MSVC_LANG)
 static_assert(event_field_encoding_max <= event_field_encoding_carray_flag, "Too many encodings.");
 static_assert(event_field_encoding_invalid != event_field_encoding_value_long, "Unsupported sizeof(long).");
 static_assert(event_field_encoding_invalid != event_field_encoding_value_ptr, "Unsupported sizeof(void*).");

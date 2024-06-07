@@ -64,6 +64,10 @@ Notes:
 #ifndef _included_EventHeaderDynamic_h
 #define _included_EventHeaderDynamic_h 1
 
+#if __cplusplus < 201703L && (!defined(_MSVC_LANG) || _MSVC_LANG < 201703L)
+#error EventHeaderDynamic.h requires C++17 or later.
+#endif
+
 #include "eventheader-tracepoint.h"
 #include <assert.h>
 #include <string.h>

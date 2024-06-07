@@ -63,7 +63,8 @@ extern "C" {
             tracepoint_fix_array((void const**)pEventsStart, (void const**)pEventsStop);
 
         int const eventCount = (int)(adjustedEventPtrsStop - pEventsStart);
-        for (int i = 0; i < eventCount; i += 1)
+        int i;
+        for (i = 0; i < eventCount; i += 1)
         {
             eventheader_tracepoint const* const pEvent = pEventsStart[i];
 

@@ -5,6 +5,10 @@
 #ifndef _included_EventFormatter_h
 #define _included_EventFormatter_h 1
 
+#if __cplusplus < 201100L && (!defined(_MSVC_LANG) || _MSVC_LANG < 201100L)
+#error EventFormatter.h requires C++11 or later.
+#endif
+
 #include "EventEnumerator.h"
 #include <string>
 

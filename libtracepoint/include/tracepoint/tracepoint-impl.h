@@ -110,7 +110,8 @@ tracepoint_open_provider_with_tracepoints_impl(
     tracepoint_definition const** adjusted_stop = (tracepoint_definition const**)
         tracepoint_fix_array((void const**)tp_definition_start, (void const**)tp_definition_stop);
     int const count = (int)(adjusted_stop - tp_definition_start);
-    for (int i = 0; i < count; i += 1)
+    int i;
+    for (i = 0; i < count; i += 1)
     {
         (void)tracepoint_connect(
             tp_definition_start[i]->state,

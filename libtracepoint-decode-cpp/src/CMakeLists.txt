@@ -23,7 +23,7 @@ set(DECODE_HEADERS
 set_target_properties(tracepoint-decode PROPERTIES
     PUBLIC_HEADER "${DECODE_HEADERS}")
 target_compile_features(tracepoint-decode
-    PRIVATE cxx_std_17)
+    PUBLIC cxx_std_17)
 install(TARGETS tracepoint-decode
     EXPORT tracepoint-decodeTargets
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tracepoint)

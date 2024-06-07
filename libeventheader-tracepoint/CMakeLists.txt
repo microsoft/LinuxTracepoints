@@ -7,6 +7,8 @@ project(eventheader-tracepoint
     LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+set(CMAKE_C_STANDARD 90)    # Ensure projects declare minimum C requirement.
+set(CMAKE_CXX_STANDARD 98)  # Ensure projects declare minimum C++ requirement.
 set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
 
 if(WIN32)

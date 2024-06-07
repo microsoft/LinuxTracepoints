@@ -19,9 +19,18 @@ void PrintErr(char const* operation, int err)
     printf("%s: %d\n", operation, err);
 }
 
+#include <errno.h>
+
 int main()
 {
     TestC();
     TestCpp();
+
+    if (EBADF != 9)
+    {
+        printf("ERROR: EBADF != 9\n");
+        return 1;
+    }
+
     return 0;
 }

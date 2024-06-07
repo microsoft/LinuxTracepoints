@@ -15,6 +15,7 @@ set(DECODE_HEADERS
 set_target_properties(eventheader-decode PROPERTIES
     PUBLIC_HEADER "${DECODE_HEADERS}")
 target_compile_features(eventheader-decode
+    INTERFACE cxx_std_11
     PRIVATE cxx_std_17)
 install(TARGETS eventheader-decode
     EXPORT eventheader-decodeTargets

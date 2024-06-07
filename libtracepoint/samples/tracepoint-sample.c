@@ -63,7 +63,8 @@ int main()
     printf("tracepoint_connect(tp_rel_loc): %d\n", err);
 
     printf("\n");
-    for (int iteration = 1;; iteration += 1)
+    int iteration;
+    for (iteration = 1;; iteration += 1)
     {
         printf("Writing tracepoints:\n");
 

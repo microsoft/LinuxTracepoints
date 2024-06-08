@@ -1,3 +1,19 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+/*
+Demonstrates creating a circular session, adding events to it, and when the
+session needs to be flushed:
+
+- Writing ALL events into a perf.dat file.
+- Writing NEW events to stdout (formatted as JSON).
+
+This shows how to start and configure a session, flush a session to a file with
+precise control over the events (when you need more precise control than
+`SavePerfDataFile` or `FlushToWriter` allow), filter new events from the
+circular buffer, and format events to JSON for stdout.
+*/
+
 #include <tracepoint/PerfDataFileWriter.h>
 #include <tracepoint/PerfEventAbi.h>
 #include <tracepoint/TracepointSession.h>

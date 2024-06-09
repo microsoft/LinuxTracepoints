@@ -1,6 +1,6 @@
 # LinuxTracepoints Change Log
 
-## v1.3.4 (TBD)
+## v1.4.0 (TBD)
 
 - libtracepoint-control: New `tracepoint-collect` tool that records tracepoint
   events into a perf.data file.
@@ -8,6 +8,20 @@
   `PERF_RECORD_FINISHED_INIT` record to the generated perf.data file.
 - libeventheader: tool `eventheader-register` deleted. Instead, use
   `tracepoint-register` from libtracepoint.
+- New field encoding `event_field_encoding_binary_length16_char8`. Same as
+  `event_field_encoding_string_length16_char8` except that its default format
+  is `hex_bytes`.
+- New semantics for `event_field_encoding_binary_length16_char8` and
+  `event_field_encoding_string_length16_char8` encodings to support nullable
+  and variable-length fields. These encodings can now be used with any format.
+  When used with a fixed-size format, this indicates a nullable field. For
+  example, a field with encoding `binary_length16_char8` and format
+  `signed_int` with length 1, 2, 4, or 8 would be formatted as a signed
+  integer. The same field with length 0 would be formatted as a `null`. Any
+  other length would be formatted as `hex_bytes`.
+- New semantics for `ipv4` and `ipv6` formats. These should both be treated as
+  "IP Address". If used applied to a 4-byte field, both should format as IPv4,
+  and if applied to a 16-byte field, both should format as IPv6.
 
 ## v1.3.3 (2024-04-15)
 

@@ -672,10 +672,10 @@ typedef enum event_field_format {
     event_field_format_uuid,        // UUID, network byte order (RFC 4122 format). Use with Value128 encoding.
     event_field_format_port,        // IP port, network byte order (in_port_t layout). Use with Value16 encoding.
     event_field_format_ip_address,  // IP address, network byte order (in_addr/in6_addr layout). Use with Value32 or Value128 encoding.
-    event_field_format_ip_address_alt,// Do not produce this format. Decode the same as event_field_format_ip_address.
+    event_field_format_ip_address_obsolete,// Do not produce this format. Decode the same as event_field_format_ip_address.
 
-    event_field_format_ipv4 = event_field_format_ip_address,     // Deprecated alias for event_field_format_ip_address.
-    event_field_format_ipv6 = event_field_format_ip_address_alt, // Deprecated alias for event_field_format_ip_address_alt.
+    event_field_format_ipv4 = event_field_format_ip_address, // Deprecated alias for event_field_format_ip_address.
+    event_field_format_ipv6 = event_field_format_ip_address_obsolete, // Deprecated alias for event_field_format_ip_address_obsolete.
 } event_field_format;
 
 enum {

@@ -19,9 +19,9 @@
   `signed_int` with length 1, 2, 4, or 8 would be formatted as a signed
   integer. The same field with length 0 would be formatted as a `null`. Any
   other length would be formatted as `hex_bytes`.
-- New semantics for `ipv4` and `ipv6` formats. These should both be treated as
-  "IP Address". If used applied to a 4-byte field, both should format as IPv4,
-  and if applied to a 16-byte field, both should format as IPv6.
+- Deprecated `ipv4` and `ipv6` formats. New code should use the `ip_address`
+  format. When applied to a 4-byte field, `ip_address` should format as IPv4,
+  and when applied to a 16-byte field, `ip_address` should format as IPv6.
 
 ## v1.3.3 (2024-04-15)
 

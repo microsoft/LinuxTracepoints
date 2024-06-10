@@ -405,11 +405,12 @@ indicates the following information about the field:
   binary_length16_char8 encoding with default or unrecognized format should be
   treated as if it had hex_bytes format.
 
-The string_length16_char8 and binary_length16_char8 are special. These
-encodings can be used with both variable-length (e.g. hex_bytes and string)
-formats as well as with fixed-length (e.g. unsigned_int, float, ipv6) formats.
-When used with fixed-length formats, the semantics depend on the field's
-variable Length (as determined from the first 16 bits of the field):
+The string_length16_char8 and binary_length16_char8 encodings are special.
+These encodings can be used with both variable-length (e.g. hex_bytes and
+string) formats as well as with fixed-length (e.g. unsigned_int, float,
+ip_address) formats.  When used with fixed-length formats, the semantics depend
+on the field's variable Length (as determined from the first 16 bits of the
+field):
 
 - If the Length is 0, the field is formatted as 'null'. For example, a field
   with encoding = binary_length16_char8, format = signed_int, and Length = 0
@@ -482,7 +483,7 @@ typedef enum event_field_encoding {
     // 4-byte value, default format unsigned_int.
     //
     // Usable formats: unsigned_int, signed_int, hex_int, errno, pid, time,
-    // boolean, float, hex_bytes, string_utf, IPv4.
+    // boolean, float, hex_bytes, string_utf, ip_address.
     event_field_encoding_value32,
 
     // 8-byte value, default format unsigned_int.
@@ -493,7 +494,7 @@ typedef enum event_field_encoding {
 
     // 16-byte value, default format hex_bytes.
     //
-    // Usable formats: hex_bytes, uuid, ipv6.
+    // Usable formats: hex_bytes, uuid, ip_address.
     event_field_encoding_value128,
 
     // zero-terminated uint8[], default format string_utf.

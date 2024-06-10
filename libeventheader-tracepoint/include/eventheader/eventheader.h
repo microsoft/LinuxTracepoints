@@ -393,38 +393,40 @@ indicates the following information about the field:
   event_field_encoding_value32 indicates a 4-byte field,
   event_field_encoding_value128 indicates a 16-byte field,
   event_field_encoding_zstring_char8 indicates that the field ends at the first
-  0 byte, and event_field_encoding_binary_length16_char8 indicates that the
-  first 16 bits of the field are the uint16 Length and that the subsequent
-  Length bytes of field are the field data.
+  char8 unit with value 0, and event_field_encoding_binary_length16_char8
+  indicates that the first 16 bits of the field are the uint16 Length and that
+  the subsequent Length char8 units of the field are the field data.
 
 - How the field should be formatted if the field's format is
   event_field_format_default (0), unrecognized, or unsupported. For example, a
   value32 encoding with default or unrecognized format should be treated as if
-  it had unsigned_int format. A string_length16_char8 encoding with 0 or
+  it had unsigned_int format. A string_length16_char8 encoding with default or
   unrecognized format should be treated as if it had string_utf format. A
-  binary_length16_char8 encoding with 0 or unrecognized format should be
+  binary_length16_char8 encoding with default or unrecognized format should be
   treated as if it had hex_bytes format.
 
 The string_length16_char8 and binary_length16_char8 are special. These
 encodings can be used with both variable-length (e.g. hex_bytes and string)
 formats as well as with fixed-length (e.g. unsigned_int, float, ipv6) formats.
-When used with fixed-length formats, the semantics depend on the field's Length
-(as determined from the first 16 bits of the field):
+When used with fixed-length formats, the semantics depend on the field's
+variable Length (as determined from the first 16 bits of the field):
 
-- If the Length is 0, the field is formatted as a 'null' value. For example, a
-  field with encoding = binary_length16_char8, format = signed_int, and
-  Length = 0 would be formatted as a null field.
+- If the Length is 0, the field is formatted as 'null'. For example, a field
+  with encoding = binary_length16_char8, format = signed_int, and Length = 0
+  would be formatted as a null value.
 
 - If the Length is appropriate for the format, the field is formatted as if it
-  had the value8, value16, value32, value64, or value128 encoding corresponding
-  to its size. For example, a field with encoding = binary_length16_char8,
-  format = signed_int, and Length = 4 would be formatted as an int32 field.
+  had the value8, value16, value32, value64, or value128 encoding
+  corresponding to its size. For example, a field with encoding =
+  binary_length16_char8, format = signed_int, and Length = 4 would be
+  formatted as an int32 field.
 
 - If the Length is not appropriate for the format, the field is formatted as
-  if it had the hex_bytes format. For example, a field with
+  if it had the default format for the encoding. For example, a field with
   encoding = binary_length16_char8, format = signed_int, and Length = 16 would
   be formatted as a hex_bytes field since 16 is not a supported size for the
-  signed_int format.
+  signed_int format and the default format for binary_length16_char8 is
+  hex_bytes.
 
 The top 3 bits of the field encoding byte are flags:
 

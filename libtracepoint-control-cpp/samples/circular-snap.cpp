@@ -38,8 +38,7 @@ public:
     CircularSession(unsigned perCpuBufferSize)
         : _tracepointCache()
         , _tracepointSession(_tracepointCache, TracepointSessionMode::Circular, perCpuBufferSize)
-        , _lastWritten0()
-        , _lastWritten1()
+        , _lastWritten()
         , _lastWrittenSelect()
     {
         fprintf(stderr,
@@ -151,8 +150,10 @@ public:
     {
         int err;
 
-        _lastWritten0.resize(_tracepointSession.BufferCount());
-        _lastWritten1.resize(_tracepointSession.BufferCount());
+        for (auto& vec : _lastWritten)
+        {
+            vec.resize(_tracepointSession.BufferCount());
+        }
 
         struct EnumState
         {
@@ -198,25 +199,31 @@ public:
                 int error;
 
                 auto const metadata = eventInfo.event_desc->metadata;
-                if (metadata == nullptr)
+                if (metadata == nullptr || eventInfo.cpu > 0x100000)
                 {
-                    // Unexpected - event with no metadata.
+                    // Unexpected - event with no metadata or invalid CPU.
                     assert(false);
                     return 0;
                 }
 
-                if (_lastWritten0.size() <= eventInfo.cpu)
+                if (_lastWritten[0].size() <= eventInfo.cpu)
                 {
                     // Unexpected - CPU count != buffer count.
                     assert(false);
-                    _lastWritten0.resize(eventInfo.cpu + 1);
-                    _lastWritten1.resize(eventInfo.cpu + 1);
+                    for (auto& vec : _lastWritten)
+                    {
+                        vec.reserve(eventInfo.cpu + 1);
+                    }
+                    for (auto& vec : _lastWritten)
+                    {
+                        vec.resize(eventInfo.cpu + 1);
+                    }
                 }
 
                 // Update the range of time covered by the events in this snap.
 
-                LastWritten const& prevSnapLast = (_lastWrittenSelect ? _lastWritten0 : _lastWritten1)[eventInfo.cpu];
-                LastWritten& currSnapLast = (_lastWrittenSelect ? _lastWritten1 : _lastWritten0)[eventInfo.cpu];
+                LastWritten const& prevSnapLast = _lastWritten[!_lastWrittenSelect][eventInfo.cpu];
+                LastWritten& currSnapLast = _lastWritten[_lastWrittenSelect][eventInfo.cpu];
 
                 state.writtenRange.First = std::min(state.writtenRange.First, eventInfo.time);
                 state.writtenRange.Last = std::max(state.writtenRange.Last, eventInfo.time);
@@ -372,19 +379,18 @@ private:
 
     struct LastWritten
     {
-        uint64_t time;
+        uint64_t time = 0;
 
         // Heuristic: If we see the same timestamp again, it's probably the same
         // event, but it could be a different event. If it has both the same timestamp
         // and is at the same address in the buffer, it's almost certainly the same
         // event.
-        perf_event_header const* header;
+        perf_event_header const* header = nullptr;
     };
 
     TracepointCache _tracepointCache;
     TracepointSession _tracepointSession;
-    std::vector<LastWritten> _lastWritten0;
-    std::vector<LastWritten> _lastWritten1;
+    std::vector<LastWritten> _lastWritten[2];
     bool _lastWrittenSelect; // determines which _lastWritten we read and which we write.
 };
 

@@ -18,3 +18,20 @@ target_link_libraries(save-session
     PUBLIC tracepoint-control tracepoint-decode)
 target_compile_features(save-session
     PRIVATE cxx_std_17)
+
+if(TARGET eventheader-decode)
+    set(eventheader-decode_FOUND TRUE)
+else()
+    find_package(eventheader-decode)
+endif()
+
+if(eventheader-decode_FOUND)
+
+    add_executable(circular-snap
+        circular-snap.cpp)
+    target_link_libraries(circular-snap
+        PUBLIC tracepoint-control tracepoint-decode eventheader-decode)
+    target_compile_features(circular-snap
+        PRIVATE cxx_std_17)
+
+endif()

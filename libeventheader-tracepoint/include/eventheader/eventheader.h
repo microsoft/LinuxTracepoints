@@ -387,9 +387,47 @@ typedef enum eventheader_extension_kind {
 event_field_encoding enum: Values for the encoding byte of a field definition.
 
 The low 5 bits of the encoding byte contain the field's encoding. The encoding
-indicates how a decoder should determine the size of the field. It also
-indicates a default format behavior that should be used if the field has no
-format specified or if the specified format is 0, unrecognized, or unsupported.
+indicates the following information about the field:
+
+- How the decoder should determine the size of the field. For example,
+  event_field_encoding_value32 indicates a 4-byte field,
+  event_field_encoding_value128 indicates a 16-byte field,
+  event_field_encoding_zstring_char8 indicates that the field ends at the first
+  char8 unit with value 0, and event_field_encoding_binary_length16_char8
+  indicates that the first 16 bits of the field are the uint16 Length and that
+  the subsequent Length char8 units of the field are the field data.
+
+- How the field should be formatted if the field's format is
+  event_field_format_default (0), unrecognized, or unsupported. For example, a
+  value32 encoding with default or unrecognized format should be treated as if
+  it had unsigned_int format. A string_length16_char8 encoding with default or
+  unrecognized format should be treated as if it had string_utf format. A
+  binary_length16_char8 encoding with default or unrecognized format should be
+  treated as if it had hex_bytes format.
+
+The string_length16_char8 and binary_length16_char8 encodings are special.
+These encodings can be used with both variable-length (e.g. hex_bytes and
+string) formats as well as with fixed-length (e.g. unsigned_int, float,
+ip_address) formats.  When used with fixed-length formats, the semantics depend
+on the field's variable Length (as determined from the first 16 bits of the
+field):
+
+- If the Length is 0, the field is formatted as 'null'. For example, a field
+  with encoding = binary_length16_char8, format = signed_int, and Length = 0
+  would be formatted as a null value.
+
+- If the Length is appropriate for the format, the field is formatted as if it
+  had the value8, value16, value32, value64, or value128 encoding
+  corresponding to its size. For example, a field with encoding =
+  binary_length16_char8, format = signed_int, and Length = 4 would be
+  formatted as an int32 field.
+
+- If the Length is not appropriate for the format, the field is formatted as
+  if it had the default format for the encoding. For example, a field with
+  encoding = binary_length16_char8, format = signed_int, and Length = 16 would
+  be formatted as a hex_bytes field since 16 is not a supported size for the
+  signed_int format and the default format for binary_length16_char8 is
+  hex_bytes.
 
 The top 3 bits of the field encoding byte are flags:
 
@@ -445,7 +483,7 @@ typedef enum event_field_encoding {
     // 4-byte value, default format unsigned_int.
     //
     // Usable formats: unsigned_int, signed_int, hex_int, errno, pid, time,
-    // boolean, float, hex_bytes, string_utf, IPv4.
+    // boolean, float, hex_bytes, string_utf, ip_address.
     event_field_encoding_value32,
 
     // 8-byte value, default format unsigned_int.
@@ -456,7 +494,7 @@ typedef enum event_field_encoding {
 
     // 16-byte value, default format hex_bytes.
     //
-    // Usable formats: hex_bytes, uuid, ipv6.
+    // Usable formats: hex_bytes, uuid, ip_address.
     event_field_encoding_value128,
 
     // zero-terminated uint8[], default format string_utf.
@@ -478,10 +516,9 @@ typedef enum event_field_encoding {
     event_field_encoding_zstring_char32,
 
     // uint16 Length followed by uint8 Data[Length], default format string_utf.
-    // Also used for binary data (format hex_bytes).
+    // Used for string and binary data. Also used for nullable fields.
     //
-    // Usable formats: hex_bytes, String8, string_utf, string_utf_bom,
-    // string_xml, string_json.
+    // Usable formats: any.
     event_field_encoding_string_length16_char8,
 
     // uint16 Length followed by uint16 Data[Length], default format
@@ -497,6 +534,12 @@ typedef enum event_field_encoding {
     // Usable formats: hex_bytes, string_utf, string_utf_bom, string_xml,
     // string_json.
     event_field_encoding_string_length16_char32,
+
+    // uint16 Length followed by uint8 Data[Length], default format hex_bytes.
+    // Used for string and binary data. Also used for nullable fields.
+    //
+    // Usable formats: any.
+    event_field_encoding_binary_length16_char8,
 
     // Invalid encoding value. Value will change in future versions of this
     // header.
@@ -585,6 +628,25 @@ The low 7 bits of the format byte contain the field's format.
 In the case of the Struct encoding, the low 7 bits of the format byte contain
 the number of logical fields in the struct (which must not be 0).
 
+Most formats can be used with a limited subset of encodings. However, all
+formats can be used with the variable-length
+event_field_encoding_string_length16_char8 and
+event_field_encoding_binary_length16_char8 encodings. If a format is declared
+as working only with fixed-length encodings (i.e. value8, value16, etc.), then
+it can also be used with the variable-length string_length16_char8 and
+binary_length16_char8 encodings as follows:
+
+- If the actual length of the field is 0, the field is formatted as 'null'.
+
+- If the actual length of the field matches a supported ValueN encoding for the
+  format, the field is formatted as if it used that encoding. For example, a
+  field with encoding binary_length16_char8, format hex_int, and length 8 would
+  be formatted as a 64-bit hex integer.
+
+- Otherwise, the field is formatted as hex_bytes. For example, a field with
+  encoding binary_length16_char8, format hex_int, and length 11 would be
+  formatted as hex bytes.
+
 The top bit of the field format byte is the FlagChain. If set, it indicates
 that a field tag (uint16) is present after the format byte. If not set, the
 field tag is not present and is assumed to be 0.
@@ -594,9 +656,9 @@ typedef enum event_field_format {
     event_field_format_chain_flag = 0x80, // A field tag (uint16) follows the format byte.
 
     event_field_format_default = 0, // Use the default format of the encoding.
-    event_field_format_unsigned_int,    // unsigned integer, event byte order. Use with Value8..Value64 encodings.
-    event_field_format_signed_int,      // signed integer, event byte order. Use with Value8..Value64 encodings.
-    event_field_format_hex_int,         // hex integer, event byte order. Use with Value8..Value64 encodings.
+    event_field_format_unsigned_int,// unsigned integer, event byte order. Use with Value8..Value64 encodings.
+    event_field_format_signed_int,  // signed integer, event byte order. Use with Value8..Value64 encodings.
+    event_field_format_hex_int,     // hex integer, event byte order. Use with Value8..Value64 encodings.
     event_field_format_errno,       // errno, event byte order. Use with Value32 encoding.
     event_field_format_pid,         // process id, event byte order. Use with Value32 encoding.
     event_field_format_time,        // signed integer, event byte order, seconds since 1970. Use with Value32 or Value64 encodings.
@@ -604,14 +666,17 @@ typedef enum event_field_format {
     event_field_format_float,       // floating point, event byte order. Use with Value32..Value64 encodings.
     event_field_format_hex_bytes,   // binary, decoded as hex dump of bytes. Use with any encoding.
     event_field_format_string8,     // 8-bit char string, unspecified character set (usually treated as ISO-8859-1 or CP-1252). Use with Value8 and Char8 encodings.
-    event_field_format_string_utf,   // UTF string, event byte order, code unit size based on encoding. Use with Value16..Value32 and Char8..Char32 encodings.
+    event_field_format_string_utf,  // UTF string, event byte order, code unit size based on encoding. Use with Value16..Value32 and Char8..Char32 encodings.
     event_field_format_string_utf_bom,// UTF string, BOM used if present, otherwise behaves like string_utf. Use with Char8..Char32 encodings.
-    event_field_format_string_xml,   // XML string, otherwise behaves like string_utf_bom. Use with Char8..Char32 encodings.
-    event_field_format_string_json,  // JSON string, otherwise behaves like string_utf_bom. Use with Char8..Char32 encodings.
+    event_field_format_string_xml,  // XML string, otherwise behaves like string_utf_bom. Use with Char8..Char32 encodings.
+    event_field_format_string_json, // JSON string, otherwise behaves like string_utf_bom. Use with Char8..Char32 encodings.
     event_field_format_uuid,        // UUID, network byte order (RFC 4122 format). Use with Value128 encoding.
     event_field_format_port,        // IP port, network byte order (in_port_t layout). Use with Value16 encoding.
-    event_field_format_ipv4,        // IPv4 address, network byte order (in_addr layout). Use with Value32 encoding.
-    event_field_format_ipv6,        // IPv6 address, in6_addr layout. Use with Value128 encoding.
+    event_field_format_ip_address,  // IP address, network byte order (in_addr/in6_addr layout). Use with Value32 or Value128 encoding.
+    event_field_format_ip_address_obsolete,// Do not produce this format. Decode the same as event_field_format_ip_address.
+
+    event_field_format_ipv4 = event_field_format_ip_address, // Deprecated alias for event_field_format_ip_address.
+    event_field_format_ipv6 = event_field_format_ip_address_obsolete, // Deprecated alias for event_field_format_ip_address_obsolete.
 } event_field_format;
 
 enum {

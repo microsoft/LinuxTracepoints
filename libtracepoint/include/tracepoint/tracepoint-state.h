@@ -95,7 +95,7 @@ Basic usage:
 More precise description of usage requirements:
 
 - Caller may assume that a call to tracepoint_write will be a no-op if
-  0 == (status_mask & *status_byte).
+  0 == status_word.
 - Caller may assume that provider_state is a pointer to the provider state of
   the connected provider, or NULL if the tracepoint is disconnected.
 - Caller should make no other assumptions about the semantics of any of the

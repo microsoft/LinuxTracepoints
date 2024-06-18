@@ -1120,9 +1120,9 @@ namespace ehd
         - Usable formats include: hex_bytes, string_utf_bom, string_xml, string_json.
         - For 8-bit char types, you may also use format string8, indicating a non-Unicode
           string (usually treated as Latin-1).
-        - All formats can be used with this method, i.e. this can be used with
-          binary formats (e.g. hex_bytes), string formats (e.g. string_utf),
-          and fixed-length formats (e.g. signed_int). When used with a
+        - When using an 8-bit char type, all formats can be used with this method, i.e.
+          this can be used with binary formats (e.g. hex_bytes), string formats (e.g.
+          string_utf), and fixed-length formats (e.g. signed_int). When used with a
           fixed-length format, this encoding can be used to indicate a nullable
           field (a value with 0 bytes of data will be treated as a null).
 

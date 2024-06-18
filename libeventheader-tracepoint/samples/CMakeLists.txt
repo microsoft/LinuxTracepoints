@@ -14,6 +14,7 @@ target_compile_features(eventheader-sample
 
 add_executable(eventheader-tracepoint-sample
     tracepoint-sample.cpp
+    TestDynamic.cpp
     TestProviderC.c
     TestProviderCpp.cpp)
 target_link_libraries(eventheader-tracepoint-sample
@@ -23,6 +24,7 @@ target_compile_features(eventheader-tracepoint-sample
 
 add_executable(eventheader-interceptor-sample
     interceptor-sample.cpp
+    TestDynamic.cpp
     TestProviderC.c
     TestProviderCpp.cpp
     tracepoint-file.cpp)

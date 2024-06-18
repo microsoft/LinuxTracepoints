@@ -71,13 +71,16 @@
         },
         {
             "name": "Windows",
-            "displayName": "Debug VS",
-            "description": "Compile project with VS",
             "generator": "Visual Studio 17 2022",
             "architecture": "x64",
             "binaryDir": "${sourceDir}/out/build/${presetName}",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_FLAGS_DEBUG": "    -MDd -Zi -Od -RTC1",
+                "CMAKE_CXX_FLAGS_DEBUG": "  -MDd -Zi -Od -RTC1",
+                "CMAKE_C_FLAGS_RELEASE": "  -MD  -Zi -O2s -GL -DNDEBUG",
+                "CMAKE_CXX_FLAGS_RELEASE": "-MD  -Zi -O2s -GL -DNDEBUG",
+                "CMAKE_EXE_LINKER_FLAGS_DEBUG": "  -debug -incremental",
+                "CMAKE_EXE_LINKER_FLAGS_RELEASE": "-debug -incremental:no -ltcg -opt:ref -opt:icf",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
             },
             "condition": {
@@ -95,23 +98,21 @@
     "buildPresets": [
         {
             "name": "Release",
-            "description": "",
-            "displayName": "",
             "configurePreset": "Release"
         },
         {
             "name": "Debug",
-            "description": "",
-            "displayName": "",
             "configurePreset": "Debug"
         },
         {
-            "name": "Windows",
-            "description": "",
-            "displayName": "",
+            "name": "Windows-Debug",
             "configurePreset": "Windows",
-            "configuration": "Debug",
-            "targets": ["ALL_BUILD"]
+            "configuration": "Debug"
+        },
+        {
+            "name": "Windows-Release",
+            "configurePreset": "Windows",
+            "configuration": "Release"
         }
     ]
 }

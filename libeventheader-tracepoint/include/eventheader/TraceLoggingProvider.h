@@ -43,6 +43,10 @@ may be changed or removed in future versions of this header.
 TraceLoggingProvider.h for Linux UserEvents behaves differently from the ETW
 (Windows) version:
 
+- TraceLoggingWrite, TraceLoggingWriteActivity, and TraceLoggingProviderEnabled
+  may cause compile or link errors if used in inline functions.
+- TraceLoggingProviderEnabled requires compile-time constant parameters, i.e.
+  the level and keyword must be compile-time constants.
 - TRACELOGGING_DEFINE_PROVIDER requires a provider name that is less than
   EVENTHEADER_NAME_MAX (256) characters in length and contains no ' '
   or ':' characters. (Decoding tools may impose additional restrictions; for
@@ -369,6 +373,17 @@ not contain any ';' or '\0' characters. The name will be treated as utf-8.
 Supports up to 99 args (subject to compiler limitations). Each arg must be a
 wrapper macro such as TraceLoggingLevel, TraceLoggingKeyword, TraceLoggingInt32,
 TraceLoggingString, etc.
+
+Returns:
+
+- 0 for success.
+- EBADF if the tracepoint is unregistered or if nobody is listening for this
+  tracepoint.
+- Other errno value for failure.
+
+Note that the return value is primarily for debugging and diagnostics. Most
+users will ignore the return value in production code since most components
+should continue to operate normally even if the logging is not hooked-up.
 */
 #define TraceLoggingWrite(providerSymbol, eventName, ...) \
     _tlgWriteImp(providerSymbol, eventName, _tlg_NULL, _tlg_NULL, ##__VA_ARGS__)
@@ -392,6 +407,17 @@ contain any ';' or '\0' characters. The name will be treated as utf-8.
 Supports up to 99 args (subject to compiler limitations). Each arg must be a
 wrapper macro such as TraceLoggingLevel, TraceLoggingKeyword, TraceLoggingInt32,
 TraceLoggingString, etc.
+
+Returns:
+
+- 0 for success.
+- EBADF if the tracepoint is unregistered or if nobody is listening for this
+  tracepoint.
+- Other errno value for failure.
+
+Note that the return value is primarily for debugging and diagnostics. Most
+users will ignore the return value in production code since most components
+should continue to operate normally even if the logging is not hooked-up.
 */
 #define TraceLoggingWriteActivity(providerSymbol, eventName, pActivityId, pRelatedActivityId, ...) \
     _tlgWriteImp(providerSymbol, eventName, pActivityId, pRelatedActivityId, ##__VA_ARGS__)

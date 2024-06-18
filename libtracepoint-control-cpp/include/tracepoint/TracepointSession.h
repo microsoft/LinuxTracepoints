@@ -764,6 +764,11 @@ namespace tracepoint_control
         - Memory allocation failure during buffer enumeration.
         - Event received while session is paused (circular mode only).
         - Event received while buffer is full (realtime mode only).
+
+        Note that in circular mode, the same lost event may be counted multiple
+        times if the session is enumerated multiple times. "Lost event" is a marker
+        within the buffer and this LostEventCount property is incremented each time
+        the marker is enumerated.
         */
         uint64_t
         LostEventCount() const noexcept;

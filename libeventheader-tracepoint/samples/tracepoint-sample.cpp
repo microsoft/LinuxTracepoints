@@ -20,6 +20,8 @@ extern "C" {
 
 } // extern "C"
 
+bool TestDynamic();
+
 int main()
 {
     bool allOk = true;
@@ -40,11 +42,15 @@ int main()
     TraceLoggingUnregister(LongProvider);
 
     oneOk = TestC();
-    printf("TestProvider: %s\n", oneOk ? "ok" : "ERROR");
+    printf("TestC: %s\n", oneOk ? "ok" : "ERROR");
     allOk &= oneOk;
 
     oneOk = TestCpp();
-    printf("TestProvider: %s\n", oneOk ? "ok" : "ERROR");
+    printf("TestCpp: %s\n", oneOk ? "ok" : "ERROR");
+    allOk &= oneOk;
+
+    oneOk = TestDynamic();
+    printf("TestDynamic: %s\n", oneOk ? "ok" : "ERROR");
     allOk &= oneOk;
 
     return !allOk;

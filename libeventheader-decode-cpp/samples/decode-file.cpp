@@ -41,13 +41,15 @@ ReadFromFile(FILE* file, void* buffer, uint32_t size)
     if (err)
     {
         char errBuf[80];
-        printf("\n- fread error %u %s",
+        fprintf(stderr, "\n- fread error %u %s",
             err,
             strerror_r(err, errBuf, sizeof(errBuf)));
     }
     else if (actual != 0)
     {
-        printf("\n- fread early eof (asked for %u, got %u)", size, static_cast<unsigned>(actual));
+        fprintf(stderr, "\n- fread early eof (asked for %u, got %u)",
+            size,
+            static_cast<unsigned>(actual));
     }
 
     return false;
@@ -58,7 +60,7 @@ int main(int argc, char* argv[])
     int err;
     if (argc <= 1)
     {
-        printf("\nUsage: %s [InterceptorSampleFileName1] ...\n", argv[0]);
+        fprintf(stderr, "\nUsage: %s [InterceptorSampleFileName1] ...\n", argv[0]);
         err = 1;
         goto Done;
     }
@@ -71,10 +73,13 @@ int main(int argc, char* argv[])
         EventFormatter formatter;
         bool comma = false;
 
+        // Output is UTF-8. Emit a BOM.
+        fputs("\xEF\xBB\xBF", stdout);
+
         for (int argi = 1; argi < argc; argi += 1)
         {
             char const* const filename = argv[argi];
-            printf("%s\n\"%s\": [",
+            fprintf(stdout, "%s\n\"%s\": [",
                 comma ? "," : "",
                 filename);
             comma = false;
@@ -84,7 +89,7 @@ int main(int argc, char* argv[])
             {
                 err = errno;
                 char errBuf[80];
-                printf("\n- fopen(%s) error %u %s",
+                fprintf(stderr, "\n- fopen(%s) error %u %s",
                     filename,
                     err,
                     strerror_r(err, errBuf, sizeof(errBuf)));
@@ -101,7 +106,7 @@ int main(int argc, char* argv[])
 
                 if (recordSize <= sizeof(recordSize))
                 {
-                    printf("\n- Unexpected recordSize %u", recordSize);
+                    fprintf(stderr, "\n- Unexpected recordSize %u", recordSize);
                     break;
                 }
 
@@ -121,7 +126,7 @@ int main(int argc, char* argv[])
                 auto const nameSize = static_cast<uint32_t>(strnlen(buffer.data(), recordSize));
                 if (nameSize == recordSize)
                 {
-                    printf("\n- TracepointName not nul-terminated.");
+                    fprintf(stderr, "\n- TracepointName not nul-terminated.");
                     continue;
                 }
 
@@ -134,7 +139,7 @@ int main(int argc, char* argv[])
                     buffer.data() + nameSize + 1, // event data
                     recordSize - nameSize - 1))   // event data length
                 {
-                    printf("\n- StartEvent error %d.", enumerator.LastError());
+                    fprintf(stderr, "\n- StartEvent error %d.", enumerator.LastError());
                 }
                 else
                 {
@@ -145,7 +150,7 @@ int main(int argc, char* argv[])
                             EventFormatterJsonFlags_FieldTag));
                     if (err != 0)
                     {
-                        printf("\n- AppendEvent error.");
+                        fprintf(stderr, "\n- AppendEvent error.");
                     }
                     else
                     {
@@ -158,12 +163,12 @@ int main(int argc, char* argv[])
             comma = true;
         }
 
-        printf("\n");
+        fputs("\n", stdout);
         err = 0;
     }
     catch (std::exception const& ex)
     {
-        printf("\nException: %s\n", ex.what());
+        fprintf(stderr, "\nException: %s\n", ex.what());
         err = 1;
     }
 

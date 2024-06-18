@@ -40,6 +40,9 @@ int main(int argc, char* argv[])
         goto Done;
     }
 
+    // Output is UTF-8. Emit a BOM.
+    fputs("\xEF\xBB\xBF", stdout);
+
     try
     {
         std::multimap<uint64_t, std::string> events;

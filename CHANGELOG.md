@@ -22,6 +22,22 @@
 - Deprecated `ipv4` and `ipv6` formats. New code should use the `ip_address`
   format. When applied to a 4-byte field, `ip_address` should format as IPv4,
   and when applied to a 16-byte field, `ip_address` should format as IPv6.
+- Decoding: When converting UTF-16 field values to UTF-8 output, treat the
+  value as UTF-16 (previously treated as UCS-2). To aid in debugging, unmatched
+  surrogate pairs still pass-through.
+- Decoding: When processing UTF-8 fields, check for valid UTF-8 input. To aid
+  in debugging, unmatched surrogate pairs still pass-through. Treat all other
+  invalid UTF-8 sequences as Latin-1 sequences, i.e. if input is
+  "valid UTF-8 A|non-UTF-8 B|valid UTF-8 C" the output will be
+  "valid UTF-8 A|ConvertLatin1ToUtf8(B)|valid UTF-8 C".
+- Decoding: Windows decoder now generates fully-normalized IPv6 strings for
+  IPv6 fields, matching existing behavior of the Linux decoder.
+- Decoding: Use `std::to_chars` instead of `snprintf` to convert floating-point
+  field values to strings. This typically results in shorter strings, e.g. a
+  float32 value might now decode to "3.14" instead of "3.1400001" because
+  `std::from_chars<float>("3.14") == std::from_chars<float>("3.1400001")`.
+- EventHeaderDynamic.h: Add support for generating fields with  `binary`
+  encoding.
 
 ## v1.3.3 (2024-04-15)
 

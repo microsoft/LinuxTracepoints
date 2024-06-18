@@ -512,8 +512,7 @@ public:
     void
     WriteIPv4(void const* val) noexcept
     {
-        auto constexpr DestWriteMax = 15u;
-        WriteBegin(DestWriteMax);
+        WriteBegin(15u);
 
         auto const p = static_cast<uint8_t const*>(val);
         WriteNumber(3, p[0]);

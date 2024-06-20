@@ -25,6 +25,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <charconv>
+#include <type_traits>
 
 #ifdef _WIN32
 
@@ -891,6 +892,12 @@ WriteUcsVal(
     }
 }
 
+// Detect whether std::to_chars supports a given number type.
+template<class T, class = void>
+struct ToCharsDetect : std::false_type {};
+template<class T>
+struct ToCharsDetect<T, std::void_t<decltype(std::to_chars(nullptr, nullptr, T()))> > : std::true_type {};
+
 // Requires: there is room for 18 chars.
 static void
 WriteFloat32(
@@ -898,12 +905,24 @@ WriteFloat32(
     uint32_t valSwapped,
     bool json)
 {
+    unsigned const DestWriteMax = 18 - 2; // Remove 2 for JSON quotes.
+
     float valFloat;
     static_assert(sizeof(valFloat) == sizeof(valSwapped), "Expected 32-bit float");
     memcpy(&valFloat, &valSwapped, sizeof(valSwapped));
     bool const needQuote = json && !isfinite(valFloat);
     sb.WriteQuoteIf(needQuote);
-    sb.WriteNumber(18 - 2, valFloat);
+
+    // Use std::to_chars<float> if available.
+    if constexpr (ToCharsDetect<float>::value)
+    {
+        sb.WriteNumber(DestWriteMax, valFloat);
+    }
+    else
+    {
+        sb.WritePrintf(DestWriteMax, "%.9g", valFloat);
+    }
+
     sb.WriteQuoteIf(needQuote);
 }
 
@@ -914,12 +933,24 @@ WriteFloat64(
     uint64_t valSwapped,
     bool json)
 {
+    unsigned const DestWriteMax = 27 - 2; // Remove 2 for JSON quotes.
+
     double valFloat;
     static_assert(sizeof(valFloat) == sizeof(valSwapped), "Expected 64-bit double");
     memcpy(&valFloat, &valSwapped, sizeof(valSwapped));
     bool const needQuote = json && !isfinite(valFloat);
     sb.WriteQuoteIf(needQuote);
-    sb.WriteNumber(27 - 2, valFloat);
+
+    // Use std::to_chars<double> if available.
+    if constexpr (ToCharsDetect<double>::value)
+    {
+        sb.WriteNumber(DestWriteMax, valFloat);
+    }
+    else
+    {
+        sb.WritePrintf(DestWriteMax, "%.17g", valFloat);
+    }
+
     sb.WriteQuoteIf(needQuote);
 }
 

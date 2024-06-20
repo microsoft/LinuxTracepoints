@@ -32,9 +32,10 @@
   "valid UTF-8 A|ConvertLatin1ToUtf8(B)|valid UTF-8 C".
 - Decoding: Windows decoder now generates fully-normalized IPv6 strings for
   IPv6 fields, matching existing behavior of the Linux decoder.
-- Decoding: Use `std::to_chars` instead of `snprintf` to convert floating-point
-  field values to strings. This typically results in shorter strings, e.g. a
-  float32 value might now decode to "3.14" instead of "3.1400001" because
+- Decoding: If supported by the available C++ standard library, use
+  `std::to_chars` instead of `snprintf` to convert floating-point field values
+  to strings. This typically results in shorter strings, e.g. a float32 value
+  might now decode to "3.14" instead of "3.1400001" because
   `std::from_chars<float>("3.14") == std::from_chars<float>("3.1400001")`.
 - EventHeaderDynamic.h: Add support for generating fields with  `binary`
   encoding.

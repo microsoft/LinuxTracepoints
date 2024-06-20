@@ -49,4 +49,4 @@ jobs:
         run: cmake --preset Windows
   
       - name: build
-        run: cmake --build --preset Windows
+        run: cmake --build --preset Windows-Release

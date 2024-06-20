@@ -645,6 +645,10 @@ namespace ehd
                 : Size == 2 ? event_field_encoding_zstring_char16
                 : Size == 4 ? event_field_encoding_zstring_char32
                 : event_field_encoding_invalid;
+
+            static event_field_encoding const BinaryEncoding =
+                Size == 1 ? event_field_encoding_binary_length16_char8
+                : event_field_encoding_invalid;
         };
 
         /*
@@ -672,6 +676,21 @@ namespace ehd
                 ExtraCondition &&
                 std::is_trivially_copyable<CharTy>::value &&
                 TypeInfo<sizeof(CharTy)>::StringEncoding != event_field_encoding_invalid,
+                EventBuilder&>
+            , TypeInfo<sizeof(CharTy)>
+        {};
+
+        /*
+        Detects whether the specified char type has a supported size
+        (1) and is trivially-copyable. If so, supplies the BinaryEncoding
+        (char8).
+        */
+        template<class CharTy, bool ExtraCondition = true>
+        struct BinaryEnabled
+            : std::enable_if<
+                ExtraCondition &&
+                std::is_trivially_copyable<CharTy>::value &&
+                TypeInfo<sizeof(CharTy)>::BinaryEncoding != event_field_encoding_invalid,
                 EventBuilder&>
             , TypeInfo<sizeof(CharTy)>
         {};
@@ -990,7 +1009,7 @@ namespace ehd
         - If fieldValue is a 16-byte type (e.g. ehd::Value128 or your own
           trivially-copyable 16-byte struct), the field will be encoded as value128. For
           16-byte types, if format is default, the field will be formatted as hex_bytes.
-          Usable formats for 16-byte types include: hex_bytes, uuid, ipv6.
+          Usable formats for 16-byte types include: hex_bytes, uuid, ip_address.
 
         Notes:
 
@@ -1087,7 +1106,7 @@ namespace ehd
 
         - format indicates how the decoder should interpret the field data. For example,
           if the field value is a Unicode string, you would likely set format to
-          default (resulting in the field decoding as string_utf, and if the field value
+          default (resulting in the field decoding as string_utf), and if the field value
           is a binary blob, you would likely set format to hex_bytes.
 
         - fieldTag is a 16-bit integer that will be recorded in the field and can be
@@ -1101,6 +1120,11 @@ namespace ehd
         - Usable formats include: hex_bytes, string_utf_bom, string_xml, string_json.
         - For 8-bit char types, you may also use format string8, indicating a non-Unicode
           string (usually treated as Latin-1).
+        - When using an 8-bit char type, all formats can be used with this method, i.e.
+          this can be used with binary formats (e.g. hex_bytes), string formats (e.g.
+          string_utf), and fixed-length formats (e.g. signed_int). When used with a
+          fixed-length format, this encoding can be used to indicate a nullable
+          field (a value with 0 bytes of data will be treated as a null).
 
         Note that event_field_format_default saves 1 byte in the trace. For string/binary
         encodings, event_field_format_default is treated as event_field_format_string_utf,
@@ -1141,7 +1165,7 @@ namespace ehd
 
         - format indicates how the decoder should interpret the field data. For example,
           if the field value contains Unicode strings, you would likely set format to
-          default (resulting in the field decoding as string_utf, and if the field value
+          default (resulting in the field decoding as string_utf), and if the field value
           contains binary blobs, you would likely set format to hex_bytes.
 
         - fieldTag is a 16-bit integer that will be recorded in the field and can be
@@ -1193,7 +1217,7 @@ namespace ehd
 
         - format indicates how the decoder should interpret the field data. For example,
           if the field value is a Unicode string, you would likely set format to
-          default (resulting in the field decoding as string_utf, and if the field value
+          default (resulting in the field decoding as string_utf), and if the field value
           is a binary blob, you would likely set format to hex_bytes.
 
         - fieldTag is a 16-bit integer that will be recorded in the field and can be
@@ -1247,7 +1271,7 @@ namespace ehd
 
         - format indicates how the decoder should interpret the field data. For example,
           if the field value contains Unicode strings, you would likely set format to
-          default (resulting in the field decoding as string_utf, and if the field value
+          default (resulting in the field decoding as string_utf), and if the field value
           contains binary blobs, you would likely set format to hex_bytes.
 
         - fieldTag is a 16-bit integer that will be recorded in the field and can be
@@ -1280,6 +1304,103 @@ namespace ehd
                 [](EventBuilder* pThis, std::basic_string_view<CharTy> value)
                 {
                     pThis->RawAddDataNulTerminated(value);
+                });
+            return *this;
+        }
+
+        /*
+        Adds a field containing a nullable value or a binary blob.
+
+        - fieldName should be a short and distinct string that describes the field.
+
+        - fieldValue provides the data for the field as a std::string_view.
+
+          Note: you can either provide an actual std::string_view for this parameter or you
+          can explicitly specify the char type, e.g. AddBinary<char>(), and then you can
+          take advantage of string_view's implicit conversions.
+
+        - format indicates how the decoder should interpret the field data. For example,
+          if the field value is a binary blob, you would likely set format to
+          default (resulting in the field decoding as hex_bytes), and if the field data
+          is a nullable value, you would likely set format to the value's format e.g.
+          ip_address or signed_int.
+
+        - fieldTag is a 16-bit integer that will be recorded in the field and can be
+          used for any provider-defined purpose. Use 0 if you are not using field tags.
+
+        Types:
+
+        - The field will be encoded as binary_length16_char8.
+        - If format is default, the field will be formatted as hex_bytes.
+        - All formats can be used with this method, i.e. this can be used with
+          binary formats (e.g. hex_bytes), string formats (e.g. string_utf),
+          and fixed-length formats (e.g. signed_int). When used with a
+          fixed-length format, this encoding can be used to indicate a nullable
+          field (a value with 0 bytes of data will be treated as a null).
+
+        Note that event_field_format_default saves 1 byte in the trace. For binary
+        encodings, event_field_format_default is treated as event_field_format_hex_bytes,
+        so you can save 1 byte in the trace by using event_field_format_default instead of
+        event_field_format_hex_bytes for binary fields.
+        */
+        template<class CharTy>
+        auto // Returns EventBuilder&
+        AddBinary(
+            std::string_view fieldName,
+            std::basic_string_view<CharTy> fieldValue,
+            event_field_format format,
+            uint16_t fieldTag = 0) noexcept
+            -> typename BinaryEnabled<CharTy>::type // enable_if
+        {
+            RawAddMeta(fieldName, BinaryEnabled<CharTy>::BinaryEncoding, format, fieldTag);
+            RawAddDataCounted(fieldValue);
+            return *this;
+        }
+
+        /*
+        Adds a field containing a sequence of nullable values or binary blobs.
+        Note that you must provide the char type as the first template parameter, e.g.
+        AddBinaryRange<char>.
+
+        - fieldName should be a short and distinct string that describes the field.
+
+        - fieldBeginIterator..fieldEndIterator provide the data for the field as a
+          beginIterator-endIterator pair (can be beginPtr and endPtr if values are in a
+          contiguous range). The iterators must return a value that is
+          implicitly-convertible to std::basic_string_view<CharTy>, e.g.
+          *fieldBeginIterator must return something like a std::string_view.
+
+        - format indicates how the decoder should interpret the field data. For example,
+          if the field values are binary blobs, you would likely set format to
+          default (resulting in the field decoding as hex_bytes), and if the field
+          contains nullable values, you would likely set format to the appropriate
+          format e.g. ip_address or signed_int.
+
+        - fieldTag is a 16-bit integer that will be recorded in the field and can be
+          used for any provider-defined purpose. Use 0 if you are not using field tags.
+        */
+        template<class CharTy, class BeginItTy, class EndItTy>
+        auto // Returns EventBuilder&
+        AddBinaryRange(
+            std::string_view fieldName,
+            BeginItTy fieldBeginIterator,
+            EndItTy fieldEndIterator,
+            event_field_format format,
+            uint16_t fieldTag = 0) noexcept
+            -> typename BinaryEnabled<
+                CharTy,
+                std::is_convertible<decltype(*fieldBeginIterator), std::basic_string_view<CharTy>>::value
+                >::type // enable_if
+        {
+            RawAddMeta(
+                fieldName,
+                BinaryEnabled<CharTy>::BinaryEncoding | event_field_encoding_varray_flag,
+                format,
+                fieldTag);
+            RawAddDataRange(fieldBeginIterator, fieldEndIterator,
+                [](EventBuilder* pThis, std::basic_string_view<CharTy> value)
+                {
+                    pThis->RawAddDataCounted(value);
                 });
             return *this;
         }
@@ -1574,7 +1695,7 @@ namespace ehd
 
     - eb.AddValueRange("IPv6 addresses",
           (Value128 const*)pMyAddressesBegin, (Value128 const*)pMyAddressesEnd,
-          event_field_format_ipv6);
+          event_field_format_ip_address);
     */
     struct Value128
     {

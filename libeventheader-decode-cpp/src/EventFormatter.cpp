@@ -24,10 +24,12 @@
 #include <time.h>
 #include <inttypes.h>
 #include <stdint.h>
+#include <charconv>
 
 #ifdef _WIN32
 
 #include <windows.h>
+#include <ip2string.h>
 #include <sal.h>
 #define bswap_16(u16) _byteswap_ushort(u16)
 #define bswap_32(u32) _byteswap_ulong(u32)
@@ -56,6 +58,171 @@
 #ifndef __fallthrough
 #define __fallthrough __attribute__((__fallthrough__))
 #endif
+
+static std::string_view const ErrnoStrings[] = {
+    "ERRNO(0)",
+    "EPERM(1)",
+    "ENOENT(2)",
+    "ESRCH(3)",
+    "EINTR(4)",
+    "EIO(5)",
+    "ENXIO(6)",
+    "E2BIG(7)",
+    "ENOEXEC(8)",
+    "EBADF(9)",
+    "ECHILD(10)",
+    "EAGAIN(11)",
+    "ENOMEM(12)",
+    "EACCES(13)",
+    "EFAULT(14)",
+    "ENOTBLK(15)",
+    "EBUSY(16)",
+    "EEXIST(17)",
+    "EXDEV(18)",
+    "ENODEV(19)",
+    "ENOTDIR(20)",
+    "EISDIR(21)",
+    "EINVAL(22)",
+    "ENFILE(23)",
+    "EMFILE(24)",
+    "ENOTTY(25)",
+    "ETXTBSY(26)",
+    "EFBIG(27)",
+    "ENOSPC(28)",
+    "ESPIPE(29)",
+    "EROFS(30)",
+    "EMLINK(31)",
+    "EPIPE(32)",
+    "EDOM(33)",
+    "ERANGE(34)",
+    "EDEADLK(35)",
+    "ENAMETOOLONG(36)",
+    "ENOLCK(37)",
+    "ENOSYS(38)",
+    "ENOTEMPTY(39)",
+    "ELOOP(40)",
+    "ERRNO(41)", // ???
+    "ENOMSG(42)",
+    "EIDRM(43)",
+    "ECHRNG(44)",
+    "EL2NSYNC(45)",
+    "EL3HLT(46)",
+    "EL3RST(47)",
+    "ELNRNG(48)",
+    "EUNATCH(49)",
+    "ENOCSI(50)",
+    "EL2HLT(51)",
+    "EBADE(52)",
+    "EBADR(53)",
+    "EXFULL(54)",
+    "ENOANO(55)",
+    "EBADRQC(56)",
+    "EBADSLT(57)",
+    "ERRNO(58)", // ???
+    "EBFONT(59)",
+    "ENOSTR(60)",
+    "ENODATA(61)",
+    "ETIME(62)",
+    "ENOSR(63)",
+    "ENONET(64)",
+    "ENOPKG(65)",
+    "EREMOTE(66)",
+    "ENOLINK(67)",
+    "EADV(68)",
+    "ESRMNT(69)",
+    "ECOMM(70)",
+    "EPROTO(71)",
+    "EMULTIHOP(72)",
+    "EDOTDOT(73)",
+    "EBADMSG(74)",
+    "EOVERFLOW(75)",
+    "ENOTUNIQ(76)",
+    "EBADFD(77)",
+    "EREMCHG(78)",
+    "ELIBACC(79)",
+    "ELIBBAD(80)",
+    "ELIBSCN(81)",
+    "ELIBMAX(82)",
+    "ELIBEXEC(83)",
+    "EILSEQ(84)",
+    "ERESTART(85)",
+    "ESTRPIPE(86)",
+    "EUSERS(87)",
+    "ENOTSOCK(88)",
+    "EDESTADDRREQ(89)",
+    "EMSGSIZE(90)",
+    "EPROTOTYPE(91)",
+    "ENOPROTOOPT(92)",
+    "EPROTONOSUPPORT(93)",
+    "ESOCKTNOSUPPORT(94)",
+    "EOPNOTSUPP(95)",
+    "EPFNOSUPPORT(96)",
+    "EAFNOSUPPORT(97)",
+    "EADDRINUSE(98)",
+    "EADDRNOTAVAIL(99)",
+    "ENETDOWN(100)",
+    "ENETUNREACH(101)",
+    "ENETRESET(102)",
+    "ECONNABORTED(103)",
+    "ECONNRESET(104)",
+    "ENOBUFS(105)",
+    "EISCONN(106)",
+    "ENOTCONN(107)",
+    "ESHUTDOWN(108)",
+    "ETOOMANYREFS(109)",
+    "ETIMEDOUT(110)",
+    "ECONNREFUSED(111)",
+    "EHOSTDOWN(112)",
+    "EHOSTUNREACH(113)",
+    "EALREADY(114)",
+    "EINPROGRESS(115)",
+    "ESTALE(116)",
+    "EUCLEAN(117)",
+    "ENOTNAM(118)",
+    "ENAVAIL(119)",
+    "EISNAM(120)",
+    "EREMOTEIO(121)",
+    "EDQUOT(122)",
+    "ENOMEDIUM(123)",
+    "EMEDIUMTYPE(124)",
+    "ECANCELED(125)",
+    "ENOKEY(126)",
+    "EKEYEXPIRED(127)",
+    "EKEYREVOKED(128)",
+    "EKEYREJECTED(129)",
+    "EOWNERDEAD(130)",
+    "ENOTRECOVERABLE(131)",
+    "ERFKILL(132)",
+    "EHWPOISON(133)",
+};
+static constexpr unsigned ErrnoStringsCount = sizeof(ErrnoStrings) / sizeof(ErrnoStrings[0]);
+
+template<class T>
+static T
+bswap16_if(bool needsByteSwap, void const* valData)
+{
+    static_assert(sizeof(T) == 2, "Expected 16-bit return type");
+    auto const val = *static_cast<uint16_t const UNALIGNED*>(valData);
+    return static_cast<T>(needsByteSwap ? bswap_16(val) : val);
+}
+
+template<class T>
+static T
+bswap32_if(bool needsByteSwap, void const* valData)
+{
+    static_assert(sizeof(T) == 4, "Expected 32-bit return type");
+    auto const val = *static_cast<uint32_t const UNALIGNED*>(valData);
+    return static_cast<T>(needsByteSwap ? bswap_32(val) : val);
+}
+
+template<class T>
+static T
+bswap64_if(bool needsByteSwap, void const* valData)
+{
+    static_assert(sizeof(T) == 8, "Expected 64-bit return type");
+    auto const val = *static_cast<uint64_t const UNALIGNED*>(valData);
+    return static_cast<T>(needsByteSwap ? bswap_64(val) : val);
+}
 
 using namespace std::string_view_literals;
 using namespace eventheader_decode;
@@ -152,8 +319,9 @@ public:
     }
 
     // Requires: there is room for utf8.size() chars.
+    // Assumes: utf8 is valid UTF-8.
     void
-    WriteUtf8(std::string_view utf8) noexcept
+    WriteUtf8Unchecked(std::string_view utf8) noexcept
     {
         WriteBegin(utf8.size());
         memcpy(m_pDest, utf8.data(), utf8.size());
@@ -162,8 +330,9 @@ public:
     }
 
     // Requires: there is room for 1 char.
+    // Assumes: utf8Byte is part of a valid UTF-8 sequence.
     void
-    WriteUtf8Byte(uint8_t utf8Byte) noexcept
+    WriteUtf8ByteUnchecked(uint8_t utf8Byte) noexcept
     {
         assert(m_pDest < m_pDestEnd);
         *m_pDest++ = utf8Byte;
@@ -200,7 +369,12 @@ public:
 
     // Requires: there is room for 7 chars.
     // Requires: nonAsciiUcs4 >= 0x80.
-    // Writes: 2..7 UTF-8 bytes.
+    // Writes: 2..7 byte UTF-8-encoded sequence.
+    //
+    // Unicode (non)conformance:
+    // - Accepts code points in the surrogate range (generating 3-byte UTF-8 sequences
+    //   encoding the surrogate).
+    // - Accepts code points above 0x10FFFF (generating 4..7-byte sequences).
     void
     WriteUcsNonAsciiChar(uint32_t nonAsciiUcs4) noexcept
     {
@@ -208,8 +382,8 @@ public:
         assert(nonAsciiUcs4 >= 0x80);
 
         // Note that this algorithm intentionally accepts non-compliant data
-        // (surrogates and values above 0x10FFFF). We want to accurately
-        // forward exactly what we found in the event.
+        // (surrogates and values above 0x10FFFF). We want to faithfully reflect
+        // what we found in the event.
 
         if (nonAsciiUcs4 < 0x800)
         {
@@ -293,6 +467,25 @@ public:
         WriteEnd();
     }
 
+    // Requires: there is room for cchWorstCase chars (float = 16, double = 25).
+    // Requires: std::to_chars generates no more than cchWorstCase chars for value.
+    // Calls std::to_chars and puts the result into the output.
+    // T can be: float, double, or signed/unsigned char/short/int/long/longlong.
+    template<class T>
+    void
+    WriteNumber(
+        size_t cchWorstCase,
+        T value) noexcept
+    {
+        WriteBegin(cchWorstCase);
+
+        auto result = std::to_chars(m_pDest, m_pDest + cchWorstCase, value);
+        assert(result.ec == std::errc{});
+        m_pDest = result.ptr;
+
+        WriteEnd();
+    }
+
     // Requires: there is room for valSize * 3 - 1 chars.
     // Requires: valSize != 0.
     // Writes: valSize * 3 - 1, e.g. [00 11 22].
@@ -314,23 +507,21 @@ public:
     }
 
     // Requires: there is room for 15 chars.
+    // Reads 4 bytes.
     // Writes 7..15 chars, e.g. [0.0.0.0] or [255.255.255.255].
     void
-    WriteIPv4(uint32_t val) noexcept
+    WriteIPv4(void const* val) noexcept
     {
-        auto constexpr DestWriteMax = 15u;
-        WriteBegin(DestWriteMax);
+        WriteBegin(15u);
 
-#if _WIN32
-        auto const p = reinterpret_cast<uint8_t const*>(&val);
-        WritePrintf(DestWriteMax, "%u.%u.%u.%u",
-            p[0], p[1], p[2], p[3]);
-#else // _WIN32
-        // INET_ADDRSTRLEN includes 1 nul.
-        static_assert(INET_ADDRSTRLEN - 1 == DestWriteMax, "WriteIPv4Val length");
-        inet_ntop(AF_INET, &val, m_pDest, DestWriteMax + 1);
-        m_pDest += strnlen(m_pDest, DestWriteMax);
-#endif // _WIN32
+        auto const p = static_cast<uint8_t const*>(val);
+        WriteNumber(3, p[0]);
+        *m_pDest++ = '.';
+        WriteNumber(3, p[1]);
+        *m_pDest++ = '.';
+        WriteNumber(3, p[2]);
+        *m_pDest++ = '.';
+        WriteNumber(3, p[3]);
 
         WriteEnd();
     }
@@ -345,16 +536,48 @@ public:
         WriteBegin(DestWriteMax);
 
 #if _WIN32
-        auto const p = static_cast<uint16_t const*>(val);
-        WritePrintf(DestWriteMax,
-            "%x:%x:%x:%x:%x:%x:%x:%x",
-            bswap_16(p[0]), bswap_16(p[1]), bswap_16(p[2]), bswap_16(p[3]),
-            bswap_16(p[4]), bswap_16(p[5]), bswap_16(p[6]), bswap_16(p[7]));
+
+        using PfnRtlIpv6AddressToStringA = decltype(&RtlIpv6AddressToStringA);
+        static const auto pfnNotFound = reinterpret_cast<PfnRtlIpv6AddressToStringA>(static_cast<INT_PTR>(-1));
+        static PfnRtlIpv6AddressToStringA pfnStatic = nullptr;
+
+        auto pfn = pfnStatic;
+        if (pfn == nullptr)
+        {
+            auto const ntdll = GetModuleHandleW(L"ntdll.dll");
+            pfn = ntdll
+                ? reinterpret_cast<PfnRtlIpv6AddressToStringA>(GetProcAddress(ntdll, "RtlIpv6AddressToStringA"))
+                : nullptr;
+            if (pfn == nullptr)
+            {
+                pfn = pfnNotFound;
+            }
+
+            pfnStatic = pfn;
+        }
+
+        if (pfn == pfnNotFound)
+        {
+            auto const p = static_cast<uint16_t const*>(val);
+            WritePrintf(DestWriteMax,
+                "%x:%x:%x:%x:%x:%x:%x:%x",
+                bswap_16(p[0]), bswap_16(p[1]), bswap_16(p[2]), bswap_16(p[3]),
+                bswap_16(p[4]), bswap_16(p[5]), bswap_16(p[6]), bswap_16(p[7]));
+        }
+        else
+        {
+            char ipv6[46];
+            auto ipv6End = pfn(static_cast<in6_addr const*>(val), ipv6);
+            WriteUtf8Unchecked({ ipv6, static_cast<size_t>(ipv6End - ipv6) });
+        }
+
 #else // _WIN32
+
         // INET6_ADDRSTRLEN includes 1 nul.
         static_assert(INET6_ADDRSTRLEN - 1 == DestWriteMax, "WriteIPv6Val length");
         inet_ntop(AF_INET6, val, m_pDest, DestWriteMax + 1);
         m_pDest += strnlen(m_pDest, DestWriteMax);
+
 #endif // _WIN32
 
         WriteEnd();
@@ -432,152 +655,28 @@ public:
     void
     WriteErrno(uint32_t val) noexcept
     {
+        static_assert(ErrnoStringsCount == 134, "WriteErrno: need to update worst case (DestWriteMax)");
+
         auto const DestWriteMax = 20u;
-
-        char const* str;
-        switch (val)
+        if (val < ErrnoStringsCount)
         {
-        default: str = "ERRNO"; break;
-        case 1: str = "EPERM"; break;
-        case 2: str = "ENOENT"; break;
-        case 3: str = "ESRCH"; break;
-        case 4: str = "EINTR"; break;
-        case 5: str = "EIO"; break;
-        case 6: str = "ENXIO"; break;
-        case 7: str = "E2BIG"; break;
-        case 8: str = "ENOEXEC"; break;
-        case 9: str = "EBADF"; break;
-        case 10: str = "ECHILD"; break;
-        case 11: str = "EAGAIN"; break;
-        case 12: str = "ENOMEM"; break;
-        case 13: str = "EACCES"; break;
-        case 14: str = "EFAULT"; break;
-        case 15: str = "ENOTBLK"; break;
-        case 16: str = "EBUSY"; break;
-        case 17: str = "EEXIST"; break;
-        case 18: str = "EXDEV"; break;
-        case 19: str = "ENODEV"; break;
-        case 20: str = "ENOTDIR"; break;
-        case 21: str = "EISDIR"; break;
-        case 22: str = "EINVAL"; break;
-        case 23: str = "ENFILE"; break;
-        case 24: str = "EMFILE"; break;
-        case 25: str = "ENOTTY"; break;
-        case 26: str = "ETXTBSY"; break;
-        case 27: str = "EFBIG"; break;
-        case 28: str = "ENOSPC"; break;
-        case 29: str = "ESPIPE"; break;
-        case 30: str = "EROFS"; break;
-        case 31: str = "EMLINK"; break;
-        case 32: str = "EPIPE"; break;
-        case 33: str = "EDOM"; break;
-        case 34: str = "ERANGE"; break;
-        case 35: str = "EDEADLK"; break;
-        case 36: str = "ENAMETOOLONG"; break;
-        case 37: str = "ENOLCK"; break;
-        case 38: str = "ENOSYS"; break;
-        case 39: str = "ENOTEMPTY"; break;
-        case 40: str = "ELOOP"; break;
-        case 42: str = "ENOMSG"; break;
-        case 43: str = "EIDRM"; break;
-        case 44: str = "ECHRNG"; break;
-        case 45: str = "EL2NSYNC"; break;
-        case 46: str = "EL3HLT"; break;
-        case 47: str = "EL3RST"; break;
-        case 48: str = "ELNRNG"; break;
-        case 49: str = "EUNATCH"; break;
-        case 50: str = "ENOCSI"; break;
-        case 51: str = "EL2HLT"; break;
-        case 52: str = "EBADE"; break;
-        case 53: str = "EBADR"; break;
-        case 54: str = "EXFULL"; break;
-        case 55: str = "ENOANO"; break;
-        case 56: str = "EBADRQC"; break;
-        case 57: str = "EBADSLT"; break;
-        case 59: str = "EBFONT"; break;
-        case 60: str = "ENOSTR"; break;
-        case 61: str = "ENODATA"; break;
-        case 62: str = "ETIME"; break;
-        case 63: str = "ENOSR"; break;
-        case 64: str = "ENONET"; break;
-        case 65: str = "ENOPKG"; break;
-        case 66: str = "EREMOTE"; break;
-        case 67: str = "ENOLINK"; break;
-        case 68: str = "EADV"; break;
-        case 69: str = "ESRMNT"; break;
-        case 70: str = "ECOMM"; break;
-        case 71: str = "EPROTO"; break;
-        case 72: str = "EMULTIHOP"; break;
-        case 73: str = "EDOTDOT"; break;
-        case 74: str = "EBADMSG"; break;
-        case 75: str = "EOVERFLOW"; break;
-        case 76: str = "ENOTUNIQ"; break;
-        case 77: str = "EBADFD"; break;
-        case 78: str = "EREMCHG"; break;
-        case 79: str = "ELIBACC"; break;
-        case 80: str = "ELIBBAD"; break;
-        case 81: str = "ELIBSCN"; break;
-        case 82: str = "ELIBMAX"; break;
-        case 83: str = "ELIBEXEC"; break;
-        case 84: str = "EILSEQ"; break;
-        case 85: str = "ERESTART"; break;
-        case 86: str = "ESTRPIPE"; break;
-        case 87: str = "EUSERS"; break;
-        case 88: str = "ENOTSOCK"; break;
-        case 89: str = "EDESTADDRREQ"; break;
-        case 90: str = "EMSGSIZE"; break;
-        case 91: str = "EPROTOTYPE"; break;
-        case 92: str = "ENOPROTOOPT"; break;
-        case 93: str = "EPROTONOSUPPORT"; break;
-        case 94: str = "ESOCKTNOSUPPORT"; break;
-        case 95: str = "EOPNOTSUPP"; break;
-        case 96: str = "EPFNOSUPPORT"; break;
-        case 97: str = "EAFNOSUPPORT"; break;
-        case 98: str = "EADDRINUSE"; break;
-        case 99: str = "EADDRNOTAVAIL"; break;
-        case 100: str = "ENETDOWN"; break;
-        case 101: str = "ENETUNREACH"; break;
-        case 102: str = "ENETRESET"; break;
-        case 103: str = "ECONNABORTED"; break;
-        case 104: str = "ECONNRESET"; break;
-        case 105: str = "ENOBUFS"; break;
-        case 106: str = "EISCONN"; break;
-        case 107: str = "ENOTCONN"; break;
-        case 108: str = "ESHUTDOWN"; break;
-        case 109: str = "ETOOMANYREFS"; break;
-        case 110: str = "ETIMEDOUT"; break;
-        case 111: str = "ECONNREFUSED"; break;
-        case 112: str = "EHOSTDOWN"; break;
-        case 113: str = "EHOSTUNREACH"; break;
-        case 114: str = "EALREADY"; break;
-        case 115: str = "EINPROGRESS"; break;
-        case 116: str = "ESTALE"; break;
-        case 117: str = "EUCLEAN"; break;
-        case 118: str = "ENOTNAM"; break;
-        case 119: str = "ENAVAIL"; break;
-        case 120: str = "EISNAM"; break;
-        case 121: str = "EREMOTEIO"; break;
-        case 122: str = "EDQUOT"; break;
-        case 123: str = "ENOMEDIUM"; break;
-        case 124: str = "EMEDIUMTYPE"; break;
-        case 125: str = "ECANCELED"; break;
-        case 126: str = "ENOKEY"; break;
-        case 127: str = "EKEYEXPIRED"; break;
-        case 128: str = "EKEYREVOKED"; break;
-        case 129: str = "EKEYREJECTED"; break;
-        case 130: str = "EOWNERDEAD"; break;
-        case 131: str = "ENOTRECOVERABLE"; break;
-        case 132: str = "ERFKILL"; break;
-        case 133: str = "EHWPOISON"; break;
+            static_assert(DestWriteMax >= sizeof("ENOTRECOVERABLE(131)") - 1);
+            assert(DestWriteMax >= ErrnoStrings[val].size());
+            WriteUtf8Unchecked(ErrnoStrings[val]);
         }
-
-        WritePrintf(DestWriteMax, "%s(%d)", str, val);
+        else
+        {
+            static_assert(DestWriteMax >= sizeof("ERRNO(-2000000000)") - 1);
+            WritePrintf(DestWriteMax, "ERRNO(%d)", static_cast<int32_t>(val));
+        }
     }
 
     // Requires: there is room for 11 chars.
     // Writes 1..11 chars, e.g. [false] or [-2000000000].
+    // Note: the boolVal parameter is uint32 because u8/u16 should not be sign-extended.
+    // However, values other than 0/1 will be formatted as i32, not u32.
     void
-    WriteBoolean(int32_t boolVal) noexcept
+    WriteBoolean(uint32_t boolVal) noexcept
     {
         auto const DestWriteMax = 11u;
         WriteBegin(DestWriteMax);
@@ -585,13 +684,13 @@ public:
         switch (boolVal)
         {
         case 0:
-            WriteUtf8("false"sv);
+            WriteUtf8Unchecked("false"sv);
             break;
         case 1:
-            WriteUtf8("true"sv);
+            WriteUtf8Unchecked("true"sv);
             break;
         default:
-            WritePrintf(DestWriteMax, "%d", boolVal);
+            WriteNumber(DestWriteMax, static_cast<int32_t>(boolVal));
             break;
         }
 
@@ -624,7 +723,7 @@ public:
     }
 
     // Requires: there is room for 1 char.
-    // WriteUtf8Byte('['); SetNeedJsonComma(false);
+    // WriteUtf8ByteUnchecked('['); SetNeedJsonComma(false);
     void
     WriteJsonArrayBegin() noexcept
     {
@@ -634,7 +733,7 @@ public:
     }
 
     // Requires: there is room for 1 char.
-    // WriteUtf8Byte(']'); SetNeedJsonComma(true);
+    // WriteUtf8ByteUnchecked(']'); SetNeedJsonComma(true);
     void
     WriteJsonArrayEnd() noexcept
     {
@@ -644,7 +743,7 @@ public:
     }
 
     // Requires: there is room for 1 char.
-    // WriteUtf8Byte('{'); SetNeedJsonComma(false);
+    // WriteUtf8ByteUnchecked('{'); SetNeedJsonComma(false);
     void
     WriteJsonStructBegin() noexcept
     {
@@ -654,7 +753,7 @@ public:
     }
 
     // Requires: there is room for 1 char.
-    // WriteUtf8Byte('}'); SetNeedJsonComma(true);
+    // WriteUtf8ByteUnchecked('}'); SetNeedJsonComma(true);
     void
     WriteJsonStructEnd() noexcept
     {
@@ -691,7 +790,7 @@ public:
 
     // Requires: there is room for 6 chars.
     // Requires: NeedsJsonEscape(ch).
-    // Writes e.g. [\\u00ff].
+    // Writes e.g. [\\u001f].
     void
     WriteJsonEscapeChar(uint8_t utf8Byte) noexcept
     {
@@ -782,9 +881,9 @@ WriteUcsVal(
     assert(9u <= sb.Room());
     if (json)
     {
-        sb.WriteUtf8Byte('"');
+        sb.WriteUtf8ByteUnchecked('"');
         sb.WriteUcsCharJsonEscaped(ucs4); // UCS1
-        sb.WriteUtf8Byte('"');
+        sb.WriteUtf8ByteUnchecked('"');
     }
     else
     {
@@ -792,38 +891,196 @@ WriteUcsVal(
     }
 }
 
+// Requires: there is room for 18 chars.
 static void
-AppendUtf8(
+WriteFloat32(
+    StringBuilder& sb,
+    uint32_t valSwapped,
+    bool json)
+{
+    float valFloat;
+    static_assert(sizeof(valFloat) == sizeof(valSwapped), "Expected 32-bit float");
+    memcpy(&valFloat, &valSwapped, sizeof(valSwapped));
+    bool const needQuote = json && !isfinite(valFloat);
+    sb.WriteQuoteIf(needQuote);
+    sb.WriteNumber(18 - 2, valFloat);
+    sb.WriteQuoteIf(needQuote);
+}
+
+// Requires: there is room for 27 chars.
+static void
+WriteFloat64(
+    StringBuilder& sb,
+    uint64_t valSwapped,
+    bool json)
+{
+    double valFloat;
+    static_assert(sizeof(valFloat) == sizeof(valSwapped), "Expected 64-bit double");
+    memcpy(&valFloat, &valSwapped, sizeof(valSwapped));
+    bool const needQuote = json && !isfinite(valFloat);
+    sb.WriteQuoteIf(needQuote);
+    sb.WriteNumber(27 - 2, valFloat);
+    sb.WriteQuoteIf(needQuote);
+}
+
+static void
+AppendUtf8Unchecked(
     StringBuilder& sb,
     std::string_view utf8)
 {
     sb.EnsureRoom(utf8.size());
-    sb.WriteUtf8(utf8);
+    sb.WriteUtf8Unchecked(utf8);
 }
 
+// Requires: utf8.size() <= roomReserved <= sb.Room().
+// Postcondition: sb.Room() >= roomReserved - utf8.size(), i.e. maintains "extra" space.
+//
+// If Json is true, performs Json escape.
+//
+// Unicode (non)conformance:
+// - Accepts (passes-through) 3-byte sequences that decode to code points in the
+//   surrogate range.
+// - Other invalid UTF-8 input sequences are interpreted as Latin-1 sequences and are
+//   converted into valid UTF-8 instead of being treated as errors.
+template<bool Json>
 static void
-AppendUtf8JsonEscapedWithRoomReserved(
+AppendUtf8WithRoomReserved(
     StringBuilder& sb,
     std::string_view utf8,
     size_t roomReserved)
 {
     assert(roomReserved <= sb.Room());
     assert(roomReserved >= utf8.size());
-    auto roomNeededForJsonEscape = roomReserved + 5;
-    for (auto utf8Byte : utf8)
+    auto const pb = utf8.data();
+    auto const cb = utf8.size();
+
+    // Note: As long as consumed byte count == output byte count, we can skip EnsureRoom.
+    // We only need to call it if we're about to output more than we consume.
+    for (size_t ib = 0; ib < cb; ib += 1)
     {
-        if (sb.NeedsJsonEscape(utf8Byte))
+        uint8_t const b0 = pb[ib];
+
+        if (Json)
         {
-            sb.EnsureRoom(roomNeededForJsonEscape);
-            sb.WriteJsonEscapeChar(utf8Byte);
-        }
-        else
-        {
-            sb.WriteUtf8Byte(utf8Byte);
+            if (b0 <= 0x1F)
+            {
+                sb.WriteUtf8ByteUnchecked('\\');
+                sb.EnsureRoom(roomReserved - ib + 4);
+                switch (b0)
+                {
+                case '\b': sb.WriteUtf8ByteUnchecked('b'); break;
+                case '\f': sb.WriteUtf8ByteUnchecked('f'); break;
+                case '\n': sb.WriteUtf8ByteUnchecked('n'); break;
+                case '\r': sb.WriteUtf8ByteUnchecked('r'); break;
+                case '\t': sb.WriteUtf8ByteUnchecked('t'); break;
+                default:
+                    sb.WriteUtf8ByteUnchecked('u');
+                    sb.WriteUtf8ByteUnchecked('0');
+                    sb.WriteUtf8ByteUnchecked('0');
+                    sb.WriteHexByte(b0);
+                    break;
+                }
+
+                continue;
+            }
         }
 
-        roomNeededForJsonEscape -= 1;
+        if (b0 <= 0x7F)
+        {
+            if (Json)
+            {
+                if (b0 == '\\' || b0 == '"')
+                {
+                    sb.WriteUtf8ByteUnchecked('\\');
+                    sb.EnsureRoom(roomReserved - ib);
+                }
+            }
+
+            sb.WriteUtf8ByteUnchecked(b0);
+            continue;
+        }
+        else if (b0 <= 0xBF)
+        {
+            // Invalid lead byte. Fall-through.
+        }
+        else if (b0 <= 0xDF)
+        {
+            if (cb - ib >= 2)
+            {
+                uint8_t const b1 = pb[ib + 1];
+                if (0x80 == (b1 & 0xC0))
+                {
+                    auto ch = (b0 & 0x1F) << 6
+                        | (b1 & 0x3F);
+                    if (ch >= 0x80)
+                    {
+                        sb.WriteUtf8ByteUnchecked(b0);
+                        sb.WriteUtf8ByteUnchecked(b1);
+                        ib += 1;
+                        continue; // Valid 2-byte sequence.
+                    }
+                }
+            }
+            // Invalid 2-byte sequence. Fall-through.
+        }
+        else if (b0 <= 0xEF)
+        {
+            if (cb - ib >= 3)
+            {
+                uint8_t const b1 = pb[ib + 1];
+                uint8_t const b2 = pb[ib + 2];
+                if (0x80 == (b1 & 0xC0) && 0x80 == (b2 & 0xC0))
+                {
+                    auto ch = (b0 & 0x0F) << 12
+                        | (b1 & 0x3F) << 6
+                        | (b2 & 0x3F);
+                    if (ch >= 0x800) // Note: Allow surrogates to pass through.
+                    {
+                        sb.WriteUtf8ByteUnchecked(b0);
+                        sb.WriteUtf8ByteUnchecked(b1);
+                        sb.WriteUtf8ByteUnchecked(b2);
+                        ib += 2;
+                        continue; // Valid 3-byte sequence (or a surrogate).
+                    }
+                }
+            }
+            // Invalid 3-byte sequence. Fall-through.
+        }
+        else if (b0 <= 0xF4)
+        {
+            if (cb - ib >= 4)
+            {
+                uint8_t const b1 = pb[ib + 1];
+                uint8_t const b2 = pb[ib + 2];
+                uint8_t const b3 = pb[ib + 3];
+                if (0x80 == (b1 & 0xC0) && 0x80 == (b2 & 0xC0) && 0x80 == (b3 & 0xC0))
+                {
+                    auto ch = (b0 & 0x07) << 18
+                        | (b1 & 0x3F) << 12
+                        | (b2 & 0x3F) << 6
+                        | (b3 & 0x3F);
+                    if (ch >= 0x010000 && ch <= 0x10FFFF)
+                    {
+                        sb.WriteUtf8ByteUnchecked(b0);
+                        sb.WriteUtf8ByteUnchecked(b1);
+                        sb.WriteUtf8ByteUnchecked(b2);
+                        sb.WriteUtf8ByteUnchecked(b3);
+                        ib += 3;
+                        continue; // Valid 4-byte sequence.
+                    }
+                }
+            }
+            // Invalid 4-byte sequence. Fall-through.
+        }
+
+        // Invalid UTF-8 byte sequence.
+        // Treat this byte as Latin-1. Expand it to a 2-byte UTF-8 sequence.
+        sb.WriteUtf8ByteUnchecked(0xC0 | (b0 >> 6));
+        sb.EnsureRoom(roomReserved - ib);
+        sb.WriteUtf8ByteUnchecked(0x80 | (b0 & 0x3F));
     }
+
+    assert(sb.Room() >= roomReserved - utf8.size());
 }
 
 static void
@@ -834,7 +1091,7 @@ AppendUtf8JsonEscaped(
 {
     size_t const roomNeeded = utf8.size() + extraRoomNeeded;
     sb.EnsureRoom(roomNeeded);
-    AppendUtf8JsonEscapedWithRoomReserved(sb, utf8, roomNeeded);
+    AppendUtf8WithRoomReserved<true>(sb, utf8, roomNeeded);
     assert(sb.Room() >= extraRoomNeeded);
 }
 
@@ -847,13 +1104,14 @@ AppendUtf8Val(
     if (json)
     {
         sb.EnsureRoom(utf8.size() + 2);
-        sb.WriteUtf8Byte('"');
-        AppendUtf8JsonEscaped(sb, utf8, 1);
-        sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+        sb.WriteUtf8ByteUnchecked('"');
+        AppendUtf8WithRoomReserved<true>(sb, utf8, utf8.size() + 1);
+        sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
     }
     else
     {
-        AppendUtf8(sb, utf8);
+        sb.EnsureRoom(utf8.size());
+        AppendUtf8WithRoomReserved<false>(sb, utf8, utf8.size());
     }
 }
 
@@ -877,7 +1135,7 @@ AppendUcs(
         }
         else
         {
-            sb.WriteUtf8Byte(static_cast<uint8_t>(ucs4));
+            sb.WriteUtf8ByteUnchecked(static_cast<uint8_t>(ucs4));
         }
     }
 }
@@ -910,7 +1168,7 @@ AppendUcsJsonEscaped(
         }
         else
         {
-            sb.WriteUtf8Byte(ascii);
+            sb.WriteUtf8ByteUnchecked(ascii);
         }
     }
 }
@@ -926,13 +1184,99 @@ AppendUcsVal(
     if (json)
     {
         sb.EnsureRoom(cchUcs + 2);
-        sb.WriteUtf8Byte('"');
+        sb.WriteUtf8ByteUnchecked('"');
         AppendUcsJsonEscaped<Swapper>(sb, pchUcs, cchUcs, 1);
-        sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+        sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
     }
     else
     {
         AppendUcs<Swapper>(sb, pchUcs, cchUcs);
+    }
+}
+
+// Unicode (non)conformance:
+// - Accepts unpaired surrogates (generating 3-byte UTF-8 sequences encoding the
+//   surrogate).
+template<class Swapper, bool Json>
+static void
+AppendUtf16ValImpl(
+    StringBuilder& sb,
+    uint16_t const* pchUtf,
+    size_t cchUtf)
+{
+    Swapper swapper;
+
+    // Optimistic: assume input is ASCII.
+    // After this, we'll only need to call EnsureRoom if we output more than
+    // one byte per uint16 consumed.
+    if (Json)
+    {
+        sb.EnsureRoom(cchUtf + 2); // Include room for quotation marks.
+        sb.WriteUtf8ByteUnchecked('"');
+    }
+    else
+    {
+        sb.EnsureRoom(cchUtf);
+    }
+
+    for (size_t ich = 0; ich != cchUtf; ich += 1)
+    {
+        uint16_t const w0 = swapper(pchUtf[ich]);
+        if (w0 <= 0x7F)
+        {
+            auto const ascii = static_cast<uint8_t>(w0);
+            if (Json)
+            {
+                if (sb.NeedsJsonEscape(ascii))
+                {
+                    sb.EnsureRoom(cchUtf - ich + 6);
+                    sb.WriteJsonEscapeChar(ascii);
+                    continue;
+                }
+            }
+
+            sb.WriteUtf8ByteUnchecked(ascii);
+            continue;
+        }
+
+        uint32_t ucs4;
+
+        // Note: The following will pass-through unmatched surrogate pairs. This may
+        // result in output that is technically invalid utf-8, but it preserves more
+        // information from the event and hopefully helps in tracking down issues.
+        if (w0 <= 0xD7FF || w0 >= 0xDC00 || cchUtf - ich <= 1)
+        {
+            // w0 is one of the following:
+            // - non-surrogate (OK).
+            // - unmatched low surrogate (invalid, pass through anyway).
+            // - high surrogate at end of string (invalid, pass through anyway).
+            ucs4 = w0;
+        }
+        else
+        {
+            // High surrogate and not the end of the string.
+            uint16_t const w1 = swapper(pchUtf[ich + 1]);
+            if (w1 <= 0xDBFF || w1 >= 0xE000)
+            {
+                // w0 is an unmatched high surrogate (invalid, pass through anyway).
+                ucs4 = w0;
+            }
+            else
+            {
+                // w0 is a valid high surrogate.
+                // w1 is a valid low surrogate.
+                ucs4 = (w0 - 0xD800) << 10 | (w1 - 0xDC00) | 0x10000;
+                ich += 1; // Consume w0.
+            }
+        }
+
+        sb.EnsureRoom(cchUtf - ich + 7);
+        sb.WriteUcsNonAsciiChar(ucs4);
+    }
+
+    if (Json)
+    {
+        sb.WriteUtf8ByteUnchecked('"'); // Above code guarantees room for this.
     }
 }
 
@@ -946,14 +1290,11 @@ AppendUtf16Val(
 {
     if (json)
     {
-        sb.EnsureRoom(cchUtf + 2);
-        sb.WriteUtf8Byte('"');
-        AppendUcsJsonEscaped<Swapper>(sb, pchUtf, cchUtf, 1); // TODO: Surrogates
-        sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+        AppendUtf16ValImpl<Swapper, true>(sb, pchUtf, cchUtf);
     }
     else
     {
-        AppendUcs<Swapper>(sb, pchUtf, cchUtf); // TODO: Surrogates
+        AppendUtf16ValImpl<Swapper, false>(sb, pchUtf, cchUtf);
     }
 }
 
@@ -1059,17 +1400,17 @@ AppendJsonMemberBegin(
     sb.EnsureRoom(roomNeeded);
 
     sb.WriteJsonCommaSpaceAsNeeded();
-    sb.WriteUtf8Byte('"');
+    sb.WriteUtf8ByteUnchecked('"');
 
-    AppendUtf8JsonEscapedWithRoomReserved(sb, nameUtf8, roomNeeded - 3);
+    AppendUtf8WithRoomReserved<true>(sb, nameUtf8, roomNeeded - 3);
 
     if (fieldTag != 0 && sb.WantFieldTag())
     {
         sb.WritePrintf(11, ";tag=0x%X", fieldTag);
     }
 
-    sb.WriteUtf8Byte('"');
-    sb.WriteUtf8Byte(':');
+    sb.WriteUtf8ByteUnchecked('"');
+    sb.WriteUtf8ByteUnchecked(':');
     sb.WriteJsonSpaceIfWanted();
 
     assert(sb.Room() >= extraRoomNeeded);
@@ -1105,27 +1446,26 @@ AppendValueImpl(
         {
             unsigned const RoomNeeded = 11;
             sb.EnsureRoom(RoomNeeded);
-            auto const val = *static_cast<uint8_t const*>(valData);
             switch (format)
             {
             default:
             case event_field_format_unsigned_int:
                 // [255] = 3
-                sb.WritePrintf(RoomNeeded, "%u", val);
+                sb.WriteNumber(RoomNeeded, *static_cast<uint8_t const*>(valData));
                 break;
             case event_field_format_signed_int:
                 // [-128] = 4
-                sb.WritePrintf(RoomNeeded, "%d", static_cast<int8_t>(val));
+                sb.WriteNumber(RoomNeeded, *static_cast<int8_t const*>(valData));
                 break;
             case event_field_format_hex_int:
                 // ["0xFF"] = 6
                 sb.WriteQuoteIf(json);
-                sb.WritePrintf(RoomNeeded - 2, "0x%X", val);
+                sb.WritePrintf(RoomNeeded - 2, "0x%X", *static_cast<uint8_t const*>(valData));
                 sb.WriteQuoteIf(json);
                 break;
             case event_field_format_boolean:
                 // [-2000000000] = 11
-                sb.WriteBoolean(val);
+                sb.WriteBoolean(*static_cast<uint8_t const*>(valData));
                 break;
             case event_field_format_hex_bytes:
                 // ["00"] = 4
@@ -1135,7 +1475,7 @@ AppendValueImpl(
                 break;
             case event_field_format_string8:
                 // ["\u0000"] = 9
-                WriteUcsVal(sb, val, json); // UCS1
+                WriteUcsVal(sb, *static_cast<uint8_t const*>(valData), json); // UCS1
                 break;
             }
 
@@ -1151,30 +1491,26 @@ AppendValueImpl(
         {
             unsigned const RoomNeeded = 9;
             sb.EnsureRoom(RoomNeeded);
-            auto const val = *static_cast<uint16_t const UNALIGNED*>(valData);
             switch (format)
             {
             default:
             case event_field_format_unsigned_int:
                 // [65535] = 5
-                sb.WritePrintf(RoomNeeded, "%u",
-                    needsByteSwap ? bswap_16(val) : val);
+                sb.WriteNumber(RoomNeeded, bswap16_if<uint16_t>(needsByteSwap, valData));
                 break;
             case event_field_format_signed_int:
                 // [-32768] = 6
-                sb.WritePrintf(RoomNeeded, "%d",
-                    static_cast<int16_t>(needsByteSwap ? bswap_16(val) : val));
+                sb.WriteNumber(RoomNeeded, bswap16_if<int16_t>(needsByteSwap, valData));
                 break;
             case event_field_format_hex_int:
                 // ["0xFFFF"] = 8
                 sb.WriteQuoteIf(json);
-                sb.WritePrintf(RoomNeeded - 2, "0x%X",
-                    needsByteSwap ? bswap_16(val) : val);
+                sb.WritePrintf(RoomNeeded - 2, "0x%X", bswap16_if<uint16_t>(needsByteSwap, valData));
                 sb.WriteQuoteIf(json);
                 break;
             case event_field_format_boolean:
                 // [-32768] = 6
-                sb.WriteBoolean(needsByteSwap ? bswap_16(val) : val);
+                sb.WriteBoolean(bswap16_if<uint16_t>(needsByteSwap, valData));
                 break;
             case event_field_format_hex_bytes:
                 // ["00 00"] = 7
@@ -1184,12 +1520,11 @@ AppendValueImpl(
                 break;
             case event_field_format_string_utf:
                 // ["\u0000"] = 9
-                WriteUcsVal(sb, needsByteSwap ? bswap_16(val) : val, json); // UCS2
+                WriteUcsVal(sb, bswap16_if<uint16_t>(needsByteSwap, valData), json); // UCS2
                 break;
             case event_field_format_port:
                 // [65535] = 5
-                sb.WritePrintf(RoomNeeded, "%u",
-                    be16toh(val));
+                sb.WriteNumber(RoomNeeded, be16toh(*static_cast<uint16_t const UNALIGNED*>(valData)));
                 break;
             }
 
@@ -1205,57 +1540,44 @@ AppendValueImpl(
         {
             unsigned const RoomNeeded = 28;
             sb.EnsureRoom(RoomNeeded);
-            auto const val = *static_cast<uint32_t const UNALIGNED*>(valData);
             switch (format)
             {
             default:
             case event_field_format_unsigned_int:
                 // [4000000000] = 10
-                sb.WritePrintf(RoomNeeded, "%u",
-                    needsByteSwap ? bswap_32(val) : val);
+                sb.WriteNumber(RoomNeeded, bswap32_if<uint32_t>(needsByteSwap, valData));
                 break;
             case event_field_format_signed_int:
             case event_field_format_pid:
                 // [-2000000000] = 11
-                sb.WritePrintf(RoomNeeded, "%d",
-                    static_cast<int32_t>(needsByteSwap ? bswap_32(val) : val));
+                sb.WriteNumber(RoomNeeded, bswap32_if<int32_t>(needsByteSwap, valData));
                 break;
             case event_field_format_hex_int:
                 // ["0xFFFFFFFF"] = 12
                 sb.WriteQuoteIf(json);
-                sb.WritePrintf(RoomNeeded - 2, "0x%X",
-                    needsByteSwap ? bswap_32(val) : val);
+                sb.WritePrintf(RoomNeeded - 2, "0x%X", bswap32_if<uint32_t>(needsByteSwap, valData));
                 sb.WriteQuoteIf(json);
                 break;
             case event_field_format_errno:
                 // ["ENOTRECOVERABLE[131]"] = 22
                 sb.WriteQuoteIf(json);
-                sb.WriteErrno(needsByteSwap ? bswap_32(val) : val);
+                sb.WriteErrno(bswap32_if<uint32_t>(needsByteSwap, valData));
                 sb.WriteQuoteIf(json);
                 break;
             case event_field_format_time:
                 // ["TIME(18000000000000000000)"] = 28
                 sb.WriteQuoteIf(json);
-                sb.WriteDateTime(static_cast<int32_t>(needsByteSwap ? bswap_32(val) : val));
+                sb.WriteDateTime(bswap32_if<int32_t>(needsByteSwap, valData));
                 sb.WriteQuoteIf(json);
                 break;
             case event_field_format_boolean:
                 // [-2000000000] = 11
-                sb.WriteBoolean(needsByteSwap ? bswap_32(val) : val);
+                sb.WriteBoolean(bswap32_if<uint32_t>(needsByteSwap, valData));
                 break;
             case event_field_format_float:
-            {
-                // ["1.000000001"] = 13
-                uint32_t const valSwapped = needsByteSwap ? bswap_32(val) : val;
-                float valFloat;
-                static_assert(sizeof(valFloat) == sizeof(valSwapped), "Expected 32-bit float");
-                memcpy(&valFloat, &valSwapped, sizeof(valSwapped));
-                bool const needQuote = json && !isfinite(valFloat);
-                sb.WriteQuoteIf(needQuote);
-                sb.WritePrintf(RoomNeeded - 2, "%.9g", valFloat);
-                sb.WriteQuoteIf(needQuote);
+                // ["-1.000000001e+38"] = 18
+                WriteFloat32(sb, bswap32_if<uint32_t>(needsByteSwap, valData), json);
                 break;
-            }
             case event_field_format_hex_bytes:
                 // ["00 00 00 00"] = 13
                 sb.WriteQuoteIf(json);
@@ -1264,12 +1586,13 @@ AppendValueImpl(
                 break;
             case event_field_format_string_utf:
                 // ["nnnnnnn"] = 9 (up to 7 utf-8 bytes)
-                WriteUcsVal(sb, needsByteSwap ? bswap_32(val) : val, json); // UCS4
+                WriteUcsVal(sb, bswap32_if<uint32_t>(needsByteSwap, valData), json); // UCS4
                 break;
-            case event_field_format_ipv4:
+            case event_field_format_ip_address:
+            case event_field_format_ip_address_obsolete:
                 // ["255.255.255.255"] = 17
                 sb.WriteQuoteIf(json);
-                sb.WriteIPv4(val);
+                sb.WriteIPv4(valData);
                 sb.WriteQuoteIf(json);
                 break;
             }
@@ -1286,45 +1609,33 @@ AppendValueImpl(
         {
             unsigned const RoomNeeded = 28;
             sb.EnsureRoom(RoomNeeded);
-            auto const val = *static_cast<uint64_t const UNALIGNED*>(valData);
             switch (format)
             {
             default:
             case event_field_format_unsigned_int:
                 // [18000000000000000000] = 20
-                sb.WritePrintf(RoomNeeded, "%" PRIu64,
-                    needsByteSwap ? bswap_64(val) : val);
+                sb.WriteNumber(RoomNeeded, bswap64_if<uint64_t>(needsByteSwap, valData));
                 break;
             case event_field_format_signed_int:
                 // [-9000000000000000000] = 20
-                sb.WritePrintf(RoomNeeded, "%" PRId64,
-                    static_cast<int64_t>(needsByteSwap ? bswap_64(val) : val));
+                sb.WriteNumber(RoomNeeded, bswap64_if<int64_t>(needsByteSwap, valData));
                 break;
             case event_field_format_hex_int:
                 // ["0xFFFFFFFFFFFFFFFF"] = 20
                 sb.WriteQuoteIf(json);
-                sb.WritePrintf(RoomNeeded - 2, "0x%" PRIX64,
-                    needsByteSwap ? bswap_64(val) : val);
+                sb.WritePrintf(RoomNeeded - 2, "0x%" PRIX64, bswap64_if<uint64_t>(needsByteSwap, valData));
                 sb.WriteQuoteIf(json);
                 break;
             case event_field_format_time:
                 // ["TIME(18000000000000000000)"] = 28
                 sb.WriteQuoteIf(json);
-                sb.WriteDateTime(static_cast<int64_t>(needsByteSwap ? bswap_64(val) : val));
+                sb.WriteDateTime(bswap64_if<int64_t>(needsByteSwap, valData));
                 sb.WriteQuoteIf(json);
                 break;
             case event_field_format_float:
             {
-                // ["1.00000000000000001"] = 21
-                uint64_t const valSwapped = needsByteSwap ? bswap_64(val) : val;
-                double valFloat;
-                static_assert(sizeof(valFloat) == sizeof(valSwapped), "Expected 64-bit double");
-                memcpy(&valFloat, &valSwapped, sizeof(valSwapped));
-                bool const needQuote = json && !isfinite(valFloat);
-                sb.WriteQuoteIf(needQuote);
-                sb.WritePrintf(RoomNeeded - 2, "%.17g",
-                    valFloat);
-                sb.WriteQuoteIf(needQuote);
+                // ["-1.00000000000000001e+123"] = 27
+                WriteFloat64(sb, bswap64_if<uint64_t>(needsByteSwap, valData), json);
                 break;
             }
             case event_field_format_hex_bytes:
@@ -1362,7 +1673,8 @@ AppendValueImpl(
                 sb.WriteUuid(valData);
                 sb.WriteQuoteIf(json);
                 break;
-            case event_field_format_ipv6:
+            case event_field_format_ip_address:
+            case event_field_format_ip_address_obsolete:
                 // ["ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255"] = 47
                 sb.WriteQuoteIf(json);
                 sb.WriteIPv6(valData);
@@ -1374,7 +1686,6 @@ AppendValueImpl(
         }
         break;
     case event_field_encoding_zstring_char8:
-    case event_field_encoding_string_length16_char8:
         switch (format)
         {
         case event_field_format_hex_bytes:
@@ -1396,6 +1707,322 @@ AppendValueImpl(
         default:
         case event_field_format_string_utf:
             AppendUtf8Val(sb, { static_cast<char const*>(valData), valSize }, json);
+            break;
+        }
+
+        err = 0;
+        break;
+    case event_field_encoding_string_length16_char8:
+    case event_field_encoding_binary_length16_char8:
+        switch (format)
+        {
+        case event_field_format_unsigned_int:
+        {
+            unsigned const RoomNeeded = 20;
+            sb.EnsureRoom(RoomNeeded);
+            switch (valSize)
+            {
+            case 0:
+                sb.WriteUtf8Unchecked("null");
+                break;
+            case 1:
+                // [255] = 3
+                sb.WriteNumber(RoomNeeded, *static_cast<uint8_t const*>(valData));
+                break;
+            case 2:
+                // [65535] = 5
+                sb.WriteNumber(RoomNeeded, bswap16_if<uint16_t>(needsByteSwap, valData));
+                break;
+            case 4:
+                // [4000000000] = 10
+                sb.WriteNumber(RoomNeeded, bswap32_if<uint32_t>(needsByteSwap, valData));
+                break;
+            case 8:
+                // [18000000000000000000] = 20
+                sb.WriteNumber(RoomNeeded, bswap64_if<uint64_t>(needsByteSwap, valData));
+                break;
+            default:
+                goto Char8Default;
+            }
+            break;
+        }
+        case event_field_format_signed_int:
+        {
+            unsigned const RoomNeeded = 20;
+            sb.EnsureRoom(RoomNeeded);
+            switch (valSize)
+            {
+            case 0:
+                sb.WriteUtf8Unchecked("null");
+                break;
+            case 1:
+                // [-128] = 4
+                sb.WriteNumber(RoomNeeded, *static_cast<int8_t const*>(valData));
+                break;
+            case 2:
+                // [-32768] = 6
+                sb.WriteNumber(RoomNeeded, bswap16_if<int16_t>(needsByteSwap, valData));
+                break;
+            case 4:
+                // [-2000000000] = 11
+                sb.WriteNumber(RoomNeeded, bswap32_if<int32_t>(needsByteSwap, valData));
+                break;
+            case 8:
+                // [-9000000000000000000] = 20
+                sb.WriteNumber(RoomNeeded, bswap64_if<int64_t>(needsByteSwap, valData));
+                break;
+            default:
+                goto Char8Default;
+            }
+            break;
+        }
+        case event_field_format_hex_int:
+        {
+            unsigned const RoomNeeded = 20;
+            sb.EnsureRoom(RoomNeeded);
+            switch (valSize)
+            {
+            case 0:
+                sb.WriteUtf8Unchecked("null");
+                break;
+            case 1:
+                // ["0xFF"] = 6
+                sb.WriteQuoteIf(json);
+                sb.WritePrintf(RoomNeeded - 2, "0x%X", *static_cast<uint8_t const*>(valData));
+                sb.WriteQuoteIf(json);
+                break;
+            case 2:
+                // ["0xFFFF"] = 8
+                sb.WriteQuoteIf(json);
+                sb.WritePrintf(RoomNeeded - 2, "0x%X", bswap16_if<uint16_t>(needsByteSwap, valData));
+                sb.WriteQuoteIf(json);
+                break;
+            case 4:
+                // ["0xFFFFFFFF"] = 12
+                sb.WriteQuoteIf(json);
+                sb.WritePrintf(RoomNeeded - 2, "0x%X", bswap32_if<uint32_t>(needsByteSwap, valData));
+                sb.WriteQuoteIf(json);
+                break;
+            case 8:
+                // ["0xFFFFFFFFFFFFFFFF"] = 20
+                sb.WriteQuoteIf(json);
+                sb.WritePrintf(RoomNeeded - 2, "0x%" PRIX64, bswap64_if<uint64_t>(needsByteSwap, valData));
+                sb.WriteQuoteIf(json);
+                break;
+            default:
+                goto Char8Default;
+            }
+            break;
+        }
+        case event_field_format_errno:
+        {
+            unsigned const RoomNeeded = 22;
+            sb.EnsureRoom(RoomNeeded);
+            switch (valSize)
+            {
+            case 0:
+                sb.WriteUtf8Unchecked("null");
+                break;
+            case 4:
+                // ["ENOTRECOVERABLE[131]"] = 22
+                sb.WriteQuoteIf(json);
+                sb.WriteErrno(bswap32_if<uint32_t>(needsByteSwap, valData));
+                sb.WriteQuoteIf(json);
+                break;
+            default:
+                goto Char8Default;
+            }
+            break;
+        }
+        case event_field_format_pid:
+        {
+            unsigned const RoomNeeded = 11;
+            sb.EnsureRoom(RoomNeeded);
+            switch (valSize)
+            {
+            case 0:
+                sb.WriteUtf8Unchecked("null");
+                break;
+            case 4:
+                // [-2000000000] = 11
+                sb.WriteNumber(RoomNeeded, bswap32_if<int32_t>(needsByteSwap, valData));
+                break;
+            default:
+                goto Char8Default;
+            }
+            break;
+        }
+        case event_field_format_time:
+        {
+            unsigned const RoomNeeded = 28;
+            sb.EnsureRoom(RoomNeeded);
+            switch (valSize)
+            {
+            case 0:
+                sb.WriteUtf8Unchecked("null");
+                break;
+            case 4:
+                // ["TIME(18000000000000000000)"] = 28
+                sb.WriteQuoteIf(json);
+                sb.WriteDateTime(bswap32_if<int32_t>(needsByteSwap, valData));
+                sb.WriteQuoteIf(json);
+                break;
+            case 8:
+                // ["TIME(18000000000000000000)"] = 28
+                sb.WriteQuoteIf(json);
+                sb.WriteDateTime(bswap64_if<int64_t>(needsByteSwap, valData));
+                sb.WriteQuoteIf(json);
+                break;
+            default:
+                goto Char8Default;
+            }
+            break;
+        }
+        case event_field_format_boolean:
+        {
+            unsigned const RoomNeeded = 11;
+            sb.EnsureRoom(RoomNeeded);
+            switch (valSize)
+            {
+            case 0:
+                sb.WriteUtf8Unchecked("null");
+                break;
+            case 1:
+                // [-2000000000] = 11
+                sb.WriteBoolean(*static_cast<uint8_t const*>(valData));
+                break;
+            case 2:
+                // [-32768] = 6
+                sb.WriteBoolean(bswap16_if<uint16_t>(needsByteSwap, valData));
+                break;
+            case 4:
+                // [-2000000000] = 11
+                sb.WriteBoolean(bswap32_if<uint32_t>(needsByteSwap, valData));
+                break;
+            default:
+                goto Char8Default;
+            }
+            break;
+        }
+        case event_field_format_float:
+        {
+            unsigned const RoomNeeded = 27;
+            sb.EnsureRoom(RoomNeeded);
+            switch (valSize)
+            {
+            case 0:
+                sb.WriteUtf8Unchecked("null");
+                break;
+            case 4:
+                // ["-1.000000001e+38"] = 18
+                WriteFloat32(sb, bswap32_if<uint32_t>(needsByteSwap, valData), json);
+                break;
+            case 8:
+                // ["-1.00000000000000001e+123"] = 27
+                WriteFloat64(sb, bswap64_if<uint64_t>(needsByteSwap, valData), json);
+                break;
+            default:
+                goto Char8Default;
+            }
+            break;
+        }
+        case event_field_format_hex_bytes:
+        Char8HexBytes:
+            AppendHexBytesVal(sb, valData, valSize, json);
+            break;
+        case event_field_format_string8:
+            AppendUcsVal<SwapNo>(sb,
+                static_cast<uint8_t const*>(valData), valSize / sizeof(uint8_t),
+                json);
+            break;
+        case event_field_format_string_utf:
+        Char8StringUtf:
+            AppendUtf8Val(sb, { static_cast<char const*>(valData), valSize }, json);
+            break;
+        case event_field_format_string_utf_bom:
+        case event_field_format_string_xml:
+        case event_field_format_string_json:
+            if (TryAppendUtfBomVal(sb, valData, valSize, json))
+            {
+                break;
+            }
+            goto Char8StringUtf;
+        case event_field_format_uuid:
+        {
+            unsigned const RoomNeeded = 38;
+            sb.EnsureRoom(RoomNeeded);
+            switch (valSize)
+            {
+            case 0:
+                sb.WriteUtf8Unchecked("null");
+                break;
+            case 16:
+                // ["00000000-0000-0000-0000-000000000000"] = 38
+                sb.WriteQuoteIf(json);
+                sb.WriteUuid(valData);
+                sb.WriteQuoteIf(json);
+                break;
+            default:
+                goto Char8Default;
+            }
+            break;
+        }
+        case event_field_format_port:
+        {
+            unsigned const RoomNeeded = 5;
+            sb.EnsureRoom(RoomNeeded);
+            switch (valSize)
+            {
+            case 0:
+                sb.WriteUtf8Unchecked("null");
+                break;
+            case 2:
+                // [65535] = 5
+                sb.WriteNumber(RoomNeeded, be16toh(*static_cast<uint16_t const UNALIGNED*>(valData)));
+                break;
+            default:
+                goto Char8Default;
+            }
+            break;
+        }
+        case event_field_format_ip_address:
+        case event_field_format_ip_address_obsolete:
+        {
+            unsigned const RoomNeeded = 47;
+            sb.EnsureRoom(RoomNeeded);
+            switch (valSize)
+            {
+            case 0:
+                sb.WriteUtf8Unchecked("null");
+                break;
+            case 4:
+                // ["255.255.255.255"] = 17
+                sb.WriteQuoteIf(json);
+                sb.WriteIPv4(valData);
+                sb.WriteQuoteIf(json);
+                break;
+            case 16:
+                // ["ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255"] = 47
+                sb.WriteQuoteIf(json);
+                sb.WriteIPv6(valData);
+                sb.WriteQuoteIf(json);
+                break;
+            default:
+                goto Char8Default;
+            }
+            break;
+        }
+        default:
+        case event_field_format_default:
+        Char8Default:
+            if (encoding == event_field_encoding_binary_length16_char8)
+            {
+                goto Char8HexBytes;
+            }
+            else
+            {
+                goto Char8StringUtf;
+            }
             break;
         }
 
@@ -1591,11 +2218,11 @@ AppendMetaN(
     }
 
     AppendJsonMemberBegin(sb, 0, "n"sv, 1);
-    sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+    sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
     AppendUtf8JsonEscaped(sb, { ei.TracepointName, ei.ProviderNameLength }, 1);
-    sb.WriteUtf8Byte(':'); // 1 extra byte reserved above.
+    sb.WriteUtf8ByteUnchecked(':'); // 1 extra byte reserved above.
     AppendUtf8JsonEscaped(sb, { ei.Name, cchName }, 1);
-    sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+    sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
 }
 
 static void
@@ -1607,35 +2234,35 @@ AppendMetaEventInfo(
     if (metaFlags & EventFormatterMetaFlags_provider)
     {
         AppendJsonMemberBegin(sb, 0, "provider"sv, 1);
-        sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+        sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
         AppendUtf8JsonEscaped(sb, { ei.TracepointName, ei.ProviderNameLength }, 1);
-        sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+        sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
     }
 
     if (metaFlags & EventFormatterMetaFlags_event)
     {
         AppendJsonMemberBegin(sb, 0, "event"sv, 1);
-        sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+        sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
         AppendUtf8JsonEscaped(sb, ei.Name, 1);
-        sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+        sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
     }
 
     if ((metaFlags & EventFormatterMetaFlags_id) && ei.Header.id != 0)
     {
         AppendJsonMemberBegin(sb, 0, "id"sv, 5);
-        sb.WritePrintf(5, "%u", ei.Header.id);
+        sb.WriteNumber(5, ei.Header.id);
     }
 
     if ((metaFlags & EventFormatterMetaFlags_version) && ei.Header.version != 0)
     {
         AppendJsonMemberBegin(sb, 0, "version"sv, 3);
-        sb.WritePrintf(3, "%u", ei.Header.version);
+        sb.WriteNumber(3, ei.Header.version);
     }
 
     if ((metaFlags & EventFormatterMetaFlags_level) && ei.Header.level != 0)
     {
         AppendJsonMemberBegin(sb, 0, "level"sv, 3);
-        sb.WritePrintf(3, "%u", ei.Header.level);
+        sb.WriteNumber(3, ei.Header.level);
     }
 
     if ((metaFlags & EventFormatterMetaFlags_keyword) && ei.Keyword != 0)
@@ -1647,7 +2274,7 @@ AppendMetaEventInfo(
     if ((metaFlags & EventFormatterMetaFlags_opcode) && ei.Header.opcode != 0)
     {
         AppendJsonMemberBegin(sb, 0, "opcode"sv, 3);
-        sb.WritePrintf(3, "%u", ei.Header.opcode);
+        sb.WriteNumber(3, ei.Header.opcode);
     }
 
     if ((metaFlags & EventFormatterMetaFlags_tag) && ei.Header.tag != 0)
@@ -1659,28 +2286,28 @@ AppendMetaEventInfo(
     if ((metaFlags & EventFormatterMetaFlags_activity) && ei.ActivityId != nullptr)
     {
         AppendJsonMemberBegin(sb, 0, "activity"sv, 38);
-        sb.WriteUtf8Byte('"');
+        sb.WriteUtf8ByteUnchecked('"');
         sb.WriteUuid(ei.ActivityId);
-        sb.WriteUtf8Byte('"');
+        sb.WriteUtf8ByteUnchecked('"');
     }
 
     if ((metaFlags & EventFormatterMetaFlags_relatedActivity) && ei.RelatedActivityId != nullptr)
     {
         AppendJsonMemberBegin(sb, 0, "relatedActivity"sv, 38);
-        sb.WriteUtf8Byte('"');
+        sb.WriteUtf8ByteUnchecked('"');
         sb.WriteUuid(ei.RelatedActivityId);
-        sb.WriteUtf8Byte('"');
+        sb.WriteUtf8ByteUnchecked('"');
     }
 
     if ((metaFlags & EventFormatterMetaFlags_options) && ei.OptionsIndex < ei.TracepointNameLength)
     {
         AppendJsonMemberBegin(sb, 0, "options"sv, 1);
-        sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+        sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
         std::string_view options = {
             ei.TracepointName + ei.OptionsIndex,
             (size_t)ei.TracepointNameLength - ei.OptionsIndex };
         AppendUtf8JsonEscaped(sb, options, 1);
-        sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+        sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
     }
 
     if (metaFlags & EventFormatterMetaFlags_flags)
@@ -1710,7 +2337,7 @@ AppendIntegerSampleFieldAsJsonImpl(
         case PerfFieldElementSize8:
             if (fieldRawData.size() < sizeof(uint8_t))
             {
-                AppendUtf8(sb, "null"sv);
+                AppendUtf8Unchecked(sb, "null"sv);
             }
             else
             {
@@ -1723,7 +2350,7 @@ AppendIntegerSampleFieldAsJsonImpl(
         case PerfFieldElementSize16:
             if (fieldRawData.size() < sizeof(uint16_t))
             {
-                AppendUtf8(sb, "null"sv);
+                AppendUtf8Unchecked(sb, "null"sv);
             }
             else
             {
@@ -1736,7 +2363,7 @@ AppendIntegerSampleFieldAsJsonImpl(
         case PerfFieldElementSize32:
             if (fieldRawData.size() < sizeof(uint32_t))
             {
-                AppendUtf8(sb, "null"sv);
+                AppendUtf8Unchecked(sb, "null"sv);
             }
             else
             {
@@ -1749,7 +2376,7 @@ AppendIntegerSampleFieldAsJsonImpl(
         case PerfFieldElementSize64:
             if (fieldRawData.size() < sizeof(uint64_t))
             {
-                AppendUtf8(sb, "null"sv);
+                AppendUtf8Unchecked(sb, "null"sv);
             }
             else
             {
@@ -1975,17 +2602,17 @@ EventFormatter::AppendSampleAsJson(
         if (metaFlags & EventFormatterMetaFlags_n)
         {
             AppendJsonMemberBegin(sb, 0, "n"sv, 1);
-            sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+            sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
             AppendUcsJsonEscaped<SwapNo>(sb,
                 reinterpret_cast<uint8_t const*>(sampleProviderName.data()),
                 sampleProviderName.size(),
                 1);
-            sb.WriteUtf8Byte(':'); // 1 extra byte reserved above.
+            sb.WriteUtf8ByteUnchecked(':'); // 1 extra byte reserved above.
             AppendUcsJsonEscaped<SwapNo>(sb,
                 reinterpret_cast<uint8_t const*>(sampleEventName.data()),
                 sampleEventName.size(),
                 1);
-            sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+            sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
         }
 
         if (sampleEventInfoMetadata)
@@ -2024,7 +2651,7 @@ EventFormatter::AppendSampleAsJson(
             if (sampleEventInfo.session_info->ClockOffsetKnown())
             {
                 auto timeSpec = sampleEventInfo.session_info->TimeToRealTime(sampleEventInfo.time);
-                sb.WriteUtf8Byte('\"');
+                sb.WriteUtf8ByteUnchecked('\"');
                 sb.WriteDateTime(timeSpec.tv_sec);
                 sb.WritePrintf(12, ".%09uZ\"", timeSpec.tv_nsec);
             }
@@ -2039,19 +2666,19 @@ EventFormatter::AppendSampleAsJson(
         if ((metaFlags & EventFormatterMetaFlags_cpu) && (sampleEventInfoSampleType & PERF_SAMPLE_CPU))
         {
             AppendJsonMemberBegin(sb, 0, "cpu"sv, 10);
-            sb.WritePrintf(10, "%u", sampleEventInfo.cpu);
+            sb.WriteNumber(10, sampleEventInfo.cpu);
         }
 
         if ((metaFlags & EventFormatterMetaFlags_pid) && (sampleEventInfoSampleType & PERF_SAMPLE_TID))
         {
             AppendJsonMemberBegin(sb, 0, "pid"sv, 10);
-            sb.WritePrintf(10, "%u", sampleEventInfo.pid);
+            sb.WriteNumber(10, sampleEventInfo.pid);
         }
 
         if ((metaFlags & EventFormatterMetaFlags_tid) && (sampleEventInfoSampleType & PERF_SAMPLE_TID))
         {
             AppendJsonMemberBegin(sb, 0, "tid"sv, 10);
-            sb.WritePrintf(10, "%u", sampleEventInfo.tid);
+            sb.WriteNumber(10, sampleEventInfo.tid);
         }
 
         if (eventInfoValid)
@@ -2063,19 +2690,18 @@ EventFormatter::AppendSampleAsJson(
             if ((metaFlags & EventFormatterMetaFlags_provider) && !sampleProviderName.empty())
             {
                 AppendJsonMemberBegin(sb, 0, "provider"sv, 1);
-                sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+                sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
                 AppendUtf8JsonEscaped(sb, sampleProviderName, 1);
-                sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+                sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
             }
 
             if ((metaFlags & EventFormatterMetaFlags_event) && !sampleEventName.empty())
             {
                 AppendJsonMemberBegin(sb, 0, "event"sv, 1);
-                sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+                sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
                 AppendUtf8JsonEscaped(sb, sampleEventName, 1);
-                sb.WriteUtf8Byte('"'); // 1 extra byte reserved above.
+                sb.WriteUtf8ByteUnchecked('"'); // 1 extra byte reserved above.
             }
-
         }
 
         sb.EnsureRoom(4); // Room to end meta and top-level.

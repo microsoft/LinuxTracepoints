@@ -20,6 +20,8 @@ extern "C" {
 
 } // extern "C"
 
+bool TestDynamic();
+
 extern char const* g_interceptorFileName;
 
 int main(int argc, char* argv[])
@@ -69,11 +71,15 @@ int main(int argc, char* argv[])
     TraceLoggingUnregister(LongProvider);
 
     oneOk = TestC();
-    printf("TestProvider: %s\n", oneOk ? "ok" : "ERROR");
+    printf("TestC: %s\n", oneOk ? "ok" : "ERROR");
     allOk &= oneOk;
 
     oneOk = TestCpp();
-    printf("TestProvider: %s\n", oneOk ? "ok" : "ERROR");
+    printf("TestCpp: %s\n", oneOk ? "ok" : "ERROR");
+    allOk &= oneOk;
+
+    oneOk = TestDynamic();
+    printf("TestDynamic: %s\n", oneOk ? "ok" : "ERROR");
     allOk &= oneOk;
 
     printf("Events saved to \"%s\".\n", g_interceptorFileName);

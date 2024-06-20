@@ -1063,6 +1063,7 @@ EventEnumerator::StartArray() noexcept
     case event_field_encoding_string_length16_char8:
     case event_field_encoding_string_length16_char16:
     case event_field_encoding_string_length16_char32:
+    case event_field_encoding_binary_length16_char8:
         movedToItem = true;
         goto Done;
 
@@ -1180,6 +1181,7 @@ EventEnumerator::StartValue() noexcept
         break;
 
     case event_field_encoding_string_length16_char8:
+    case event_field_encoding_binary_length16_char8:
         StartValueStringLength16(0);
         break;
 

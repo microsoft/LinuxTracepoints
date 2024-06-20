@@ -56,7 +56,7 @@ Notes:
   "user_events:MyCompany_MyComponent_L5K1f".
 - Collect events to a file using a tool such as "perf", e.g.
   "perf record -k monotonic -e user_events:MyCompany_MyComponent_L5K1f".
-- Decode events using a tool such as "decode-perf" (from the tools in the
+- Decode events using a tool such as "perf-decode" (from the tools in the
   libeventheader-decode-cpp library).
 */
 

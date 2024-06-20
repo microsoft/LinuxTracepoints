@@ -25,7 +25,7 @@
 
 #endif // _WIN32
 
-#define PROGRAM_NAME "decode-perf"
+#define PROGRAM_NAME "perf-decode"
 
 using namespace eventheader_decode;
 using namespace tracepoint_decode;

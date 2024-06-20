@@ -2,8 +2,9 @@
 
 ## v1.4.0 (2024-06-20)
 
-- libtracepoint-control: New `tracepoint-collect` tool that records tracepoint
-  events into a perf.data file.
+- libtracepoint-control: New `perf-collect` tool that records tracepoint events
+  into a perf.data file.
+- libeventheader-decode: renamed `decode-perf` tool to `perf-decode`.
 - libtracepoint-control: TracepointSession SavePerfDataFile adds a
   `PERF_RECORD_FINISHED_INIT` record to the generated perf.data file.
 - libeventheader: tool `eventheader-register` deleted. Instead, use

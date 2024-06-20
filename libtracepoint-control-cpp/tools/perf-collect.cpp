@@ -18,7 +18,7 @@ Simple tool for collecting tracepoints into perf.data files.
 
 #include <vector>
 
-#define PROGRAM_NAME "tracepoint-collect"
+#define PROGRAM_NAME "perf-collect"
 #define EXIT_SIGNALS      SIGTERM, SIGINT
 #define EXIT_SIGNALS_STR "SIGTERM or SIGINT"
 

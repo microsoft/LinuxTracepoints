@@ -1,7 +1,7 @@
-add_executable(tracepoint-collect
-    tracepoint-collect.cpp)
-target_link_libraries(tracepoint-collect
+add_executable(perf-collect
+    perf-collect.cpp)
+target_link_libraries(perf-collect
     tracepoint-control tracepoint-decode)
-target_compile_features(tracepoint-collect
+target_compile_features(perf-collect
     PRIVATE cxx_std_17)
-install(TARGETS tracepoint-collect)
+install(TARGETS perf-collect)

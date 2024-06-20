@@ -67,7 +67,7 @@ Related repositories:
   C++ library for decoding events that use the `eventheader` envelope.
   - `EventEnumerator` class parses an event into fields.
   - `EventFormatter` class converts event data into a string.
-  - `decode-perf` tool that decodes `perf.data` files to JSON.
+  - `perf-decode` tool that decodes `perf.data` files to JSON.
 
 ## General Usage
 
@@ -111,10 +111,10 @@ Related repositories:
   restricted by default.
 
 - To collect events without writing C++ code, use the included
-  [tracepoint-collect](libtracepoint-control-cpp/tools/tracepoint-collect.cpp) tool
+  [perf-collect](libtracepoint-control-cpp/tools/perf-collect.cpp) tool
   or the Linux [`perf`](https://www.man7.org/linux/man-pages/man1/perf.1.html) tool
   to collect events to a `perf.data` file, e.g.
-  `tracepoint-collect -o File.perf user_events:MyEvent1 user_events:MyEvent2` or
+  `perf-collect -o File.perf user_events:MyEvent1 user_events:MyEvent2` or
   `perf record -o File.perf -k monotonic -e user_events:MyEvent1,user_events:MyEvent2`.
   Note that you must run the tool as a privileged user to collect events (`CAP_PERFMON`
   capability plus read access to `/sys/kernel/tracing/events`).
@@ -137,7 +137,7 @@ Related repositories:
     ok to use e.g. `perf_5.10` even if you are running a newer kernel.
 
 - Note that tracepoints must be registered before you can start collecting
-  them. The `tracepoint-collect` tool has facilities to pre-register a user_events
+  them. The `perf-collect` tool has facilities to pre-register a user_events
   tracepoint. The `perf` command will report an error if the tracepoint is not yet
   registered.
 
@@ -154,7 +154,7 @@ Related repositories:
     `PreregisterEventHeaderTracepoint` methods of the `TracepointCache` class
     in [`libtracepoint=control`](libtracepoint-control-cpp).
 
-- Use the [`decode-perf`](libeventheader-decode-cpp/tools/decode-perf.cpp)
+- Use the [`perf-decode`](libeventheader-decode-cpp/tools/perf-decode.cpp)
   tool to decode the `perf.data` file to JSON text, or write your own decoding
   tool using [libtracepoint-decode-cpp](libtracepoint-decode-cpp) and
   `libeventheader-decode-cpp`.

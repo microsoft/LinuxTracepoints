@@ -1,8 +1,8 @@
-add_executable(decode-perf
-    decode-perf.cpp)
-target_link_libraries(decode-perf
+add_executable(perf-decode
+    perf-decode.cpp)
+target_link_libraries(perf-decode
     eventheader-decode
     tracepoint-decode)
-target_compile_features(decode-perf
+target_compile_features(perf-decode
     PRIVATE cxx_std_17)
-install(TARGETS decode-perf)
+install(TARGETS perf-decode)

@@ -2848,6 +2848,26 @@ EventFormatter::AppendValue(
     return err;
 }
 
+int
+EventFormatter::AppendValueAsJson(
+    std::string& dest,
+    _In_reads_bytes_(valueSize) void const* valueData,
+    uint32_t valueSize,
+    event_field_encoding encoding,
+    event_field_format format,
+    bool needsByteSwap,
+    EventFormatterJsonFlags jsonFlags)
+{
+    StringBuilder sb(dest, jsonFlags);
+    int const err = AppendValueImpl(sb, valueData, valueSize,
+        encoding, format, needsByteSwap, true);
+    if (err == 0)
+    {
+        sb.Commit();
+    }
+    return err;
+}
+
 void
 EventFormatter::AppendUuid(
     std::string& dest,

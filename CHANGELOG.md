@@ -1,6 +1,6 @@
 # LinuxTracepoints Change Log
 
-## v1.4.0 (TBD)
+## v1.4.0 (2024-06-20)
 
 - libtracepoint-control: New `tracepoint-collect` tool that records tracepoint
   events into a perf.data file.

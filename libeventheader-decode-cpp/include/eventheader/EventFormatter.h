@@ -167,6 +167,22 @@ namespace eventheader_decode
             bool needsByteSwap);
 
         /*
+        Formats the specified event field value as a UTF-8 JSON string and appends the
+        result to dest.
+
+        Returns 0 for success, errno for error. May throw bad_alloc.
+        */
+        int
+        AppendValueAsJson(
+            std::string& dest,
+            _In_reads_bytes_(valueSize) void const* valueData,
+            uint32_t valueSize,
+            event_field_encoding encoding,
+            event_field_format format,
+            bool needsByteSwap,
+            EventFormatterJsonFlags jsonFlags = static_cast<EventFormatterJsonFlags>(0));
+
+        /*
         Formats the specified big-endian UUID value as a UTF-8 string and appends
         the result to dest. UUID is formatted as 36 chars with dashes, e.g.
         "00000000-0000-0000-0000-000000000000".

@@ -53,7 +53,7 @@ public:
         int error;
 
         // Use standard tracepoint-spec parsing for the text.
-        // For details on the syntax, see the help text for the tracepoint-collect tool.
+        // For details on the syntax, see the help text for the perf-collect tool.
         TracepointSpec spec(tracepointSpecText); // Parse the text.
         switch (spec.Kind)
         {

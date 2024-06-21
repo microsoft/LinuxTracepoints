@@ -538,6 +538,9 @@ public:
 
 #if _WIN32
 
+// The following is not supported for UWP.
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
+
         using PfnRtlIpv6AddressToStringA = decltype(&RtlIpv6AddressToStringA);
         static const auto pfnNotFound = reinterpret_cast<PfnRtlIpv6AddressToStringA>(static_cast<INT_PTR>(-1));
         static PfnRtlIpv6AddressToStringA pfnStatic = nullptr;
@@ -557,19 +560,20 @@ public:
             pfnStatic = pfn;
         }
 
-        if (pfn == pfnNotFound)
+        if (pfn != pfnNotFound)
+        {
+            char ipv6[46];
+            auto ipv6End = pfn(static_cast<in6_addr const*>(val), ipv6);
+            WriteUtf8Unchecked({ ipv6, static_cast<size_t>(ipv6End - ipv6) });
+        }
+        else
+#endif // WINAPI_FAMILY_PARTITION
         {
             auto const p = static_cast<uint16_t const*>(val);
             WritePrintf(DestWriteMax,
                 "%x:%x:%x:%x:%x:%x:%x:%x",
                 bswap_16(p[0]), bswap_16(p[1]), bswap_16(p[2]), bswap_16(p[3]),
                 bswap_16(p[4]), bswap_16(p[5]), bswap_16(p[6]), bswap_16(p[7]));
-        }
-        else
-        {
-            char ipv6[46];
-            auto ipv6End = pfn(static_cast<in6_addr const*>(val), ipv6);
-            WriteUtf8Unchecked({ ipv6, static_cast<size_t>(ipv6End - ipv6) });
         }
 
 #else // _WIN32

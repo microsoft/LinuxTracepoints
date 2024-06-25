@@ -7,8 +7,10 @@ writes data to the Linux
 The implementation of this interface can be replaced at link time to support
 alternative scenarios, e.g. testing with a mock tracing implementation.
 
-- [samples/tracepoint-sample.c](samples/tracepoint-sample.c) -
-  demonstrates basic usage of the interface.
+- [samples/api-sample.c](samples/api-sample.c) -
+  demonstrates basic usage of the low-level interface.
+- [samples/provider-sample.c](samples/provider-sample.c) -
+  demonstrates usage of the developer-friendly `tracepoint-provider.h` helpers.
 - [tracepoint.h](include/tracepoint/tracepoint.h) -
   interface functions.
 - [tracepoint-state.h](include/tracepoint/tracepoint-state.h) -

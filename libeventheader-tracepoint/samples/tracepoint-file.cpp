@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 /*
-Implementation of the tracepoint.h interface that writes events to a file.
-This is part of the eventheader-interceptor-sample program.
+tracepoint-file is an implementation of the tracepoint.h interface that writes
+events to a file. This is part of the eventheader-interceptor-sample program.
 */
 
+#include "tracepoint-file.h"
 #include <tracepoint/tracepoint.h>
 #include <tracepoint/tracepoint-impl.h>
 #include <eventheader/eventheader.h>

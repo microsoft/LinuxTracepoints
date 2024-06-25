@@ -1,18 +1,20 @@
 # Libraries for Linux Tracepoints and user_events
 
-This repository contains C/C++ libraries for collecting and decoding
+This repository contains C and C++ libraries and tools for collecting and decoding
 [Linux Tracepoint](https://www.kernel.org/doc/html/latest/trace/tracepoints.html)
 events and for generating Tracepoint events from user mode using the
-[user_events](https://docs.kernel.org/trace/user_events.html) facility.
+[user_events](https://docs.kernel.org/trace/user_events.html) facility. This
+includes support for `eventheader` events and `perf.data` files.
 
 Related repositories:
 
 - [LinuxTracepoints-Net](https://github.com/microsoft/LinuxTracepoints-Net) -
-  .NET libraries and tools for decoding perf.data files, including `eventheader`
-  events.
+  .NET libraries and tools for decoding Linux Tracepoint events and for generating
+  Tracepoint events from user mode using the `user_events` facility. This includes
+  support for `eventheader` events and `perf.data` files.
 - [LinuxTracepoints-Rust](https://github.com/microsoft/LinuxTracepoints-Rust) -
   Rust libraries for generating Tracepoint events from user mode using the
-  [user_events](https://docs.kernel.org/trace/user_events.html) facility
+  `user_events`facility. This includes support for `eventheader` events.
 
 ## Overview
 
@@ -31,18 +33,26 @@ Related repositories:
 - [libtracepoint-control-cpp](libtracepoint-control-cpp) -
   C++ library for controlling a tracepoint event collection session.
 
-  - `TracingSession.h` implements an event collection session that can
+  - [perf-collect](tools/perf-collect.cpp) is a tool that collects tracepoint
+    events into a `perf.data` file using the `libtracepoint-control-cpp` library.
+    This tool is similar to the `perf record` command, but it includes special
+    "pre-register" support to simplify collection of `user_events` tracepoints
+    that are not yet registered when trace collection begins.
+  - `TracepointSession.h` implements an event collection session that can
     collect tracepoint events and enumerate the events that the session has
-    collected. Supports real-time and circular-buffer modes.
-  - `TracingPath.h` has functions for finding the `/sys/kernel/tracing`
+    collected.
+  - `TracepointPath.h` has functions for finding the `/sys/kernel/tracing`
     mount point and reading `format` files.
-  - `TracepointSpec.h` parses tracepoint event specifications for configuring
-    a tracepoint collection session.
-  - `TracingCache.h` implements a cache for tracking parsed `format` files
-    based on system+name or by `common_type` id.
+  - `TracepointName.h` represents a tracepoint name (system name + event
+    name); for instance, `user_events:eventName`.
+  - `TracepointSpec.h` represents a tracepoint specification (system name + event
+    name + field definitions); for instance, `user_events:eventName int field1`.
+  - `TracepointCache.h` implements a cache for tracking parsed `format` files
+    and locating cached data by `TracepointName` or by `common_type` id.
 
 - [libtracepoint-decode-cpp](libtracepoint-decode-cpp) -
-  C++ library for decoding tracepoints. Works on both Linux and Windows.
+  C++ library for decoding tracepoints and reading/writing `perf.data` files. Works
+  on both Linux and Windows.
 
   - `PerfDataFile.h` defines the `PerfDataFile` class that decodes
     `perf.data` files.
@@ -64,10 +74,12 @@ Related repositories:
     OpenTelemetry.
 
 - [libeventheader-decode-cpp](libeventheader-decode-cpp) -
-  C++ library for decoding events that use the `eventheader` envelope.
+  C++ library for decoding events that use the `eventheader` envelope. Works on
+  both Linux and Windows.
   - `EventEnumerator` class parses an event into fields.
   - `EventFormatter` class converts event data into a string.
-  - `perf-decode` tool that decodes `perf.data` files to JSON.
+  - `perf-decode` tool that decodes `perf.data` files to JSON with support for
+    `eventheader` events.
 
 ## General Usage
 
@@ -100,9 +112,10 @@ Related repositories:
     [EventHeaderDynamic.h](libeventheader-tracepoint/include/eventheader/EventHeaderDynamic.h)
     to generate eventheader-enabled Tracepoint events that are runtime-dynamic.
     (Link with `libtracepoint` and `libeventheader-tracepoint`.)
-  - Rust programs can use
-    [LinuxTracepoints-Rust](https://github.com/microsoft/LinuxTracepoints-Rust)
-    to generate eventheader-enabled Tracepoint events.
+  - Rust or .NET programs can use
+    [LinuxTracepoints-Rust](https://github.com/microsoft/LinuxTracepoints-Rust) or
+    [LinuxTracepoints-Net](https://github.com/microsoft/LinuxTracepoints-Net)
+    to generate Tracepoint events.
 
 - To collect events in a C++ program, use
   [libtracepoint-control-cpp](libtracepoint-control-cpp). Note that your

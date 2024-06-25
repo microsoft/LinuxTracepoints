@@ -7,5 +7,5 @@ C++ library for decoding events that use the eventheader envelope.
 - **[EventFormatter.h](include/eventheader/EventFormatter.h):**
   Turns events or fields into strings.
 - **[perf-decode](tools/perf-decode.cpp):**
-  Simple tool that uses `EventFormatter` and `PerfDataFile` to decode a
+  Tool that uses `EventFormatter` and `PerfDataFile` to decode a
   `perf.data` file into JSON text. Works on Linux or Windows.

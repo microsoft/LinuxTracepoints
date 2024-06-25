@@ -7,8 +7,10 @@ writes data to the Linux
 The implementation of this interface can be replaced at link time to support
 alternative scenarios, e.g. testing with a mock tracing implementation.
 
-- [samples/tracepoint-sample.c](samples/tracepoint-sample.c) -
-  demonstrates basic usage of the interface.
+- [samples/api-sample.c](samples/api-sample.c) -
+  demonstrates basic usage of the low-level interface.
+- [samples/provider-sample.c](samples/provider-sample.c) -
+  demonstrates usage of the developer-friendly `tracepoint-provider.h` helpers.
 - [tracepoint.h](include/tracepoint/tracepoint.h) -
   interface functions.
 - [tracepoint-state.h](include/tracepoint/tracepoint-state.h) -
@@ -18,6 +20,9 @@ alternative scenarios, e.g. testing with a mock tracing implementation.
 - [tracepoint-provider.h](include/tracepoint/tracepoint-provider.h) -
   high-level C/C++ API for writing tracepoint events to any implementation
   of the tracepoint interface.
+- [tracepoint-register](tools/tracepoint-register.cpp) -
+  tool to pre-register a `user_event` tracepoint for cases when trace collection
+  needs to begin before the tracepoint is registered.
 
 `tracepoint.h` is a low-level interface. Application developers are more likely
 to use a higher-level library implemented on top of this interface, such as

@@ -14,7 +14,7 @@ target_compile_features(eventheader-provider-sample
 
 add_executable(eventheader-interceptor-sample
     interceptor-sample.cpp
-    InterceptToFile.cpp)
+    tracepoint-file.cpp)
 target_link_libraries(eventheader-interceptor-sample
     PUBLIC eventheader-tracepoint)
 target_compile_features(eventheader-interceptor-sample

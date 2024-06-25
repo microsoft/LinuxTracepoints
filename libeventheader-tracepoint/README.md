@@ -16,8 +16,9 @@
   This is intended for use as an implementation layer for a higher-level API
   like OpenTelemetry. Developers instrumenting their own C/C++ code would
   normally use `TraceLoggingProvider.h` instead of `EventHeaderDynamic.h`.
-- [Similar APIs](https://github.com/microsoft/LinuxTracepoints-Rust)
-  are available for Rust.
+- Similar APIs are available for
+  [Rust](https://github.com/microsoft/LinuxTracepoints-Rust) and
+  [.NET](https://github.com/microsoft/LinuxTracepoints-Net).
 
 ## EventHeader
 
@@ -310,7 +311,13 @@ int main(int argc, char* argv[])
 }
 ```
 
-Additional TraceLogging examples:
+Additional examples:
 
-- [samples/sample.cpp](samples/sample.cpp)
-- [samples/interceptor-sample.cpp](samples/interceptor-sample.cpp)
+- [samples/provider-sample.cpp](samples/provider-sample.cpp) - demonstrates how to
+  use `TraceLoggingProvider.h` to generate events with compile-time-specified
+  fields.
+- [samples/dynamic-sample.cpp](samples/dynamic-sample.cpp) - demonstrates how to
+  use `EventHeaderDynamic.h` to generate events with runtime-specified fields.
+- [samples/interceptor-sample.cpp](samples/interceptor-sample.cpp) - demonstrates
+  how to redirect logged events so that they go to a file instead of going to the
+  Linux `user_events` system.

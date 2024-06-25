@@ -1,6 +1,6 @@
 add_executable(eventheader-dat-utest
     dat-utest.cpp
-    ../samples/InterceptToFile.cpp
+    ../samples/tracepoint-file.cpp
     TestCommon.cpp
     TestDynamic.cpp
     TestProviderC.c

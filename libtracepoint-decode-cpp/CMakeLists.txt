@@ -5,9 +5,11 @@ project(tracepoint-decode-cpp
     DESCRIPTION "Tracepoint decoding for C/C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 98)  # Ensure projects declare minimum C++ requirement.
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+
+set(CMAKE_CXX_STANDARD 98)  # Ensure projects declare minimum C++ requirement.
 
 if(WIN32)
     add_compile_options(/W4 /WX /permissive-)

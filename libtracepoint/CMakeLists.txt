@@ -5,12 +5,14 @@ project(tracepoint
     DESCRIPTION "Linux tracepoints interface for C/C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES C CXX)
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+
 set(CMAKE_C_STANDARD 90)    # Ensure projects declare minimum C requirement.
 set(CMAKE_CXX_STANDARD 98)  # Ensure projects declare minimum C++ requirement.
 set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
-set(BUILD_TESTS ON CACHE BOOL "Build test code")
+set(BUILD_TESTING ON CACHE BOOL "Build test code")
 set(BUILD_TOOLS ON CACHE BOOL "Build tool code")
 
 if(WIN32)
@@ -34,16 +36,16 @@ add_subdirectory(include)
 if(NOT WIN32)
     add_subdirectory(src)
 
-    if(BUILD_TESTS)
-        add_subdirectory(utest)
-    endif()
-
     if(BUILD_SAMPLES)
         add_subdirectory(samples)
     endif()
 
     if(BUILD_TOOLS)
         add_subdirectory(tools)
+    endif()
+
+    if(BUILD_TESTING)
+        add_subdirectory(utest)
     endif()
 
 endif()

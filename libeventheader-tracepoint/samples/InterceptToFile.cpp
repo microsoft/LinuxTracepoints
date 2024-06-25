@@ -3,6 +3,7 @@
 
 /*
 Implementation of the tracepoint.h interface that writes events to a file.
+This is part of the eventheader-interceptor-sample program.
 */
 
 #include <tracepoint/tracepoint.h>
@@ -32,7 +33,20 @@ static std::vector<TracepointInfo> s_eventsByWriteIndex;
 static int s_eventsFile = -1;
 static unsigned s_eventsFileRefCount = 0;
 
-static char const* const InterceptorFileNameDefault = "Interceptor.dat";
+static char const* const InterceptorFileNameDefault = "EventHeaderInterceptor"
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+    "LE"
+#elif __BYTE_ORDER == __BIG_ENDIAN
+    "BE"
+#endif
+#if __SIZEOF_POINTER__ == 8
+    "64"
+#elif __SIZEOF_POINTER__ == 4
+    "32"
+#endif
+    ".dat"
+    ;
+
 char const* g_interceptorFileName = InterceptorFileNameDefault;
 
 void

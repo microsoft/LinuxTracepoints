@@ -1,19 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/*
+Demonstrates how to use TraceLoggingProvider.h to generate eventheader-encoded
+tracepoint events.
+*/
+
 #include <eventheader/TraceLoggingProvider.h>
-
-#include <inttypes.h>
-#include <limits.h>
 #include <stdio.h>
-#include <string.h>
 
+// Define a symbol for a "provider" (a group of related events).
 TRACELOGGING_DEFINE_PROVIDER(
     MyProvider,
     "MyProviderName",
     // {b7aa4d18-240c-5f41-5852-817dbf477472}
     (0xb7aa4d18, 0x240c, 0x5f41, 0x58, 0x52, 0x81, 0x7d, 0xbf, 0x47, 0x74, 0x72));
 
+// A program can have multiple providers. In this case, we set the group name.
 TRACELOGGING_DEFINE_PROVIDER(
     OtherProvider,
     "OtherProviderName",
@@ -24,10 +27,10 @@ TRACELOGGING_DEFINE_PROVIDER(
 int
 main(int argc, char** argv)
 {
-    int err = 0;
-
-    printf("\n");
-
+    // At component initialization, register any providers.
+    // If a provider is not registered or if registration fails, subsequent operations
+    // on that provider (e.g. TraceLoggingWrite and TraceLoggingUnregister) will be safe
+    // no-ops.
     TraceLoggingRegister(MyProvider);
     TraceLoggingRegister(OtherProvider);
 
@@ -88,7 +91,8 @@ main(int argc, char** argv)
         }
     }
 
+    // At component cleanup, unregister the providers.
     TraceLoggingUnregister(MyProvider);
     TraceLoggingUnregister(OtherProvider);
-    return err;
+    return 0;
 }

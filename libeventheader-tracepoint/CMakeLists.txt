@@ -5,11 +5,14 @@ project(eventheader-tracepoint
     DESCRIPTION "EventHeader-encoded Linux tracepoints for C/C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES C CXX)
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+
 set(CMAKE_C_STANDARD 90)    # Ensure projects declare minimum C requirement.
 set(CMAKE_CXX_STANDARD 98)  # Ensure projects declare minimum C++ requirement.
 set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
+set(BUILD_TESTING ON CACHE BOOL "Build test code")
 
 if(WIN32)
     add_compile_options(/W4 /WX /permissive-)
@@ -43,6 +46,10 @@ if(NOT WIN32)
 
     if(BUILD_SAMPLES)
         add_subdirectory(samples)
+    endif()
+
+    if(BUILD_TESTING)
+        add_subdirectory(utest)
     endif()
 
 endif()

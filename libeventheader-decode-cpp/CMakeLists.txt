@@ -5,10 +5,13 @@ project(eventheader-decode-cpp
     DESCRIPTION "EventHeader tracepoint decoding for C/C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES CXX)
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+
 set(CMAKE_CXX_STANDARD 98)  # Ensure projects declare minimum C++ requirement.
 set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
+set(BUILD_TESTING ON CACHE BOOL "Build test code")
 set(BUILD_TOOLS ON CACHE BOOL "Build tool code")
 
 if(NOT TARGET tracepoint-decode)
@@ -43,4 +46,8 @@ endif()
 
 if(BUILD_TOOLS)
     add_subdirectory(tools)
+endif()
+
+if(BUILD_TESTING)
+    add_subdirectory(utest)
 endif()

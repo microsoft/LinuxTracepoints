@@ -5,9 +5,11 @@ project(tracepoint-control-cpp
     DESCRIPTION "Linux tracepoint collection for C++"
     HOMEPAGE_URL "https://github.com/microsoft/LinuxTracepoints"
     LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 98)  # Ensure projects declare minimum C++ requirement.
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+
+set(CMAKE_CXX_STANDARD 98)  # Ensure projects declare minimum C++ requirement.
 set(BUILD_SAMPLES ON CACHE BOOL "Build sample code")
 set(BUILD_TOOLS ON CACHE BOOL "Build tool code")
 

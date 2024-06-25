@@ -1,14 +1,18 @@
-add_executable(tracepoint-utest
-    tracepoint-utest.cpp)
-target_compile_features(tracepoint-utest
+add_executable(tracepoint-api-utest
+    api-utest.cpp)
+target_compile_features(tracepoint-api-utest
     PRIVATE cxx_std_11)
-target_link_libraries(tracepoint-utest
+target_link_libraries(tracepoint-api-utest
     PUBLIC tracepoint)
+add_test(NAME tracepoint-api-utest
+    COMMAND tracepoint-api-utest)
 
-add_executable(tpp-utest
-    tpp-utest-c.c
-    tpp-utest-cpp.cpp)
-target_compile_features(tpp-utest
+add_executable(tracepoint-provider-utest
+    provider-utest-c.c
+    provider-utest-cpp.cpp)
+target_compile_features(tracepoint-provider-utest
     PRIVATE cxx_std_11)
-target_link_libraries(tpp-utest
+target_link_libraries(tracepoint-provider-utest
     PUBLIC tracepoint)
+add_test(NAME tracepoint-provider-utest
+    COMMAND tracepoint-provider-utest)

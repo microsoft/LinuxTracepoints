@@ -1,6 +1,6 @@
-add_executable(eventheader-decode-file
-    decode-file.cpp)
-target_link_libraries(eventheader-decode-file
+add_executable(eventheader-decode-file-sample
+    decode-file-sample.cpp)
+target_link_libraries(eventheader-decode-file-sample
     eventheader-decode)
 
 if(NOT WIN32)
@@ -10,9 +10,9 @@ if(NOT WIN32)
 
     if(TRACEFS_LIBRARIES AND TRACEEVENT_LIBRARIES)
 
-        add_executable(eventheader-decode-live
-            decode-live.cpp)
-        target_link_libraries(eventheader-decode-live
+        add_executable(eventheader-decode-live-sample
+            decode-live-sample.cpp)
+        target_link_libraries(eventheader-decode-live-sample
             eventheader-decode
             "${TRACEFS_LIBRARIES}" "${TRACEEVENT_LIBRARIES}")
 

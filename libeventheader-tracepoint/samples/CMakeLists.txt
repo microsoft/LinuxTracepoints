@@ -5,29 +5,16 @@ target_link_libraries(eventheader-dynamic-sample
 target_compile_features(eventheader-dynamic-sample
     PRIVATE cxx_std_17)
 
-add_executable(eventheader-sample
-    sample.cpp)
-target_link_libraries(eventheader-sample
+add_executable(eventheader-provider-sample
+    provider-sample.cpp)
+target_link_libraries(eventheader-provider-sample
     PUBLIC eventheader-tracepoint tracepoint)
-target_compile_features(eventheader-sample
+target_compile_features(eventheader-provider-sample
     PRIVATE cxx_std_11)
-
-add_executable(eventheader-tracepoint-sample
-    tracepoint-sample.cpp
-    TestDynamic.cpp
-    TestProviderC.c
-    TestProviderCpp.cpp)
-target_link_libraries(eventheader-tracepoint-sample
-    PUBLIC eventheader-tracepoint tracepoint)
-target_compile_features(eventheader-tracepoint-sample
-    PRIVATE cxx_std_17 c_std_11)
 
 add_executable(eventheader-interceptor-sample
     interceptor-sample.cpp
-    TestDynamic.cpp
-    TestProviderC.c
-    TestProviderCpp.cpp
-    tracepoint-file.cpp)
+    InterceptToFile.cpp)
 target_link_libraries(eventheader-interceptor-sample
     PUBLIC eventheader-tracepoint)
 target_compile_features(eventheader-interceptor-sample

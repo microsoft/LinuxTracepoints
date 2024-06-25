@@ -1,5 +1,10 @@
 # LinuxTracepoints Change Log
 
+## v1.4.1 (TBD)
+
+- Renamed CMake variable `BUILD_TESTS` to `BUILD_TESTING` to match CTest
+  conventions.
+
 ## v1.4.0 (2024-06-20)
 
 - libtracepoint-control: New `perf-collect` tool that records tracepoint events

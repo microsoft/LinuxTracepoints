@@ -1,3 +1,11 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+/*
+Demonstrates how to use EventHeaderDynamic.h to generate eventheader-encoded
+tracepoint events.
+*/
+
 #include <eventheader/EventHeaderDynamic.h>
 #include <stdio.h>
 

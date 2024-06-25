@@ -5,7 +5,7 @@
 Demonstrates how to replace the libtracepoint library with an alternative implementation
 of the tracepoint.h interface.
 
-This sample uses the implementation from InterceptToFile.cpp which writes events to a
+This sample uses the implementation from tracepoint-file.cpp which writes events to a
 simple file. This means the events are not written to user_events and we don't link
 against libtracepoint.
 */
@@ -14,7 +14,7 @@ against libtracepoint.
 #include <stdio.h>
 #include <errno.h>
 
-// Used by InterceptToFile.cpp to determine the output file name.
+// Used by tracepoint-file.cpp to determine the output file name.
 extern char const* g_interceptorFileName;
 
 // Define a symbol for a "provider" (a group of related events).
@@ -35,7 +35,7 @@ TRACELOGGING_DEFINE_PROVIDER(
 
 int main(int argc, char* argv[])
 {
-    // Initialize InterceptToFile:
+    // Initialize tracepoint-file:
     // Override the default output file name if appropriate, then delete the output file
     // if it already exists.
 

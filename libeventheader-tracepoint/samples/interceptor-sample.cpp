@@ -14,8 +14,7 @@ against libtracepoint.
 #include <stdio.h>
 #include <errno.h>
 
-// Used by tracepoint-file.cpp to determine the output file name.
-extern char const* g_interceptorFileName;
+#include "tracepoint-file.h" // g_interceptorFileName
 
 // Define a symbol for a "provider" (a group of related events).
 TRACELOGGING_DEFINE_PROVIDER(

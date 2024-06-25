@@ -12,7 +12,7 @@ Verifies that the resulting .dat.actual file is the same as the .dat.expected fi
 #include <exception>
 #include <string>
 
-extern char const* g_interceptorFileName;
+#include "../samples/tracepoint-file.h" // g_interceptorFileName
 
 static std::string
 LoadFile(char const* filename)

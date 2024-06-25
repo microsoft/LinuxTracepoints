@@ -33,7 +33,7 @@ Related repositories:
 - [libtracepoint-control-cpp](libtracepoint-control-cpp) -
   C++ library for controlling a tracepoint event collection session.
 
-  - [perf-collect](tools/perf-collect.cpp) is a tool that collects tracepoint
+  - `perf-collect` is a tool that collects tracepoint
     events into a `perf.data` file using the `libtracepoint-control-cpp` library.
     This tool is similar to the `perf record` command, but it includes special
     "pre-register" support to simplify collection of `user_events` tracepoints

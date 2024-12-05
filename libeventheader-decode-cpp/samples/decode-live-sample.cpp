@@ -10,6 +10,8 @@ extern "C" {
 #include <errno.h>
 #include <stdio.h>
 
+using namespace eventheader_decode;
+
 struct CallbackContext
 {
     std::string Value;
@@ -32,7 +34,7 @@ IterateCallback(tep_event* ev, tep_record* rec, int cpu, void* pContext)
         auto const pData = static_cast<uint8_t const*>(rec->data) + flagsOffset;
         auto const cData = rec->size - flagsOffset;
 
-        if (!ctx.Enumerator.StartEvent(ev->name, pData, cData))
+        if (!ctx.Enumerator.StartEvent(ev->name, strlen(ev->name), pData, cData))
         {
             fprintf(stdout, "- StartEvent error %u: \"%s\"\n", ctx.Enumerator.LastError(), ev->name);
         }

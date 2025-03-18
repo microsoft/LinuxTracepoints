@@ -9,16 +9,14 @@ if(NOT WIN32)
 
     if (PKG_CONFIG_FOUND)
 
-        pkg_check_modules(TRACEEVENT REQUIRED libtraceevent)
-        pkg_check_modules(TRACEFS REQUIRED libtracefs)
+        pkg_check_modules(TRACEEVENT libtraceevent)
+        pkg_check_modules(TRACEFS libtracefs)
 
     else()
 
         # If pkgconfig isn't available, try to find things manually (Why?)
         #
-        # On Ubuntu, at least, the required headers are already in the default search path.
-        # Everybody should already have pkgconfig anyway though, so we'll just continue in this case
-        # assuming the headers can be found by the compiler.
+        # This won't work properly unless the required headers are all in the default search path.
         find_library(TRACEFS_LIBRARIES tracefs)
         find_library(TRACEEVENT_LIBRARIES traceevent)
 
